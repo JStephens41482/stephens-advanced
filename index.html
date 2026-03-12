@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0a0c10">
+<title>Stephens Advanced</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+/* ═══════════════════════════════════════════
+   STEPHENS ADVANCED — PRODUCTION CSS
+   ═══════════════════════════════════════════ */
+:root{--bg:#0a0c10;--s1:#111318;--s2:#181c24;--s3:#1f2430;--bd:#282e3a;--tx:#e8eaef;--dim:#7a8292;--mt:#454d5e;--br:#e85d26;--br2:#ff7a42;--brs:rgba(232,93,38,.1);--gn:#22c55e;--gns:rgba(34,197,94,.1);--rd:#ef4444;--rds:rgba(239,68,68,.1);--yl:#eab308;--yls:rgba(234,179,8,.1);--bl:#3b82f6;--bls:rgba(59,130,246,.1)}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none}
+html,body{height:100%;overflow:hidden;overscroll-behavior:none}
+body{font-family:'Outfit',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--tx);font-size:14px;line-height:1.4}
+::-webkit-scrollbar{width:3px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:#333;border-radius:3px}
+input,select,textarea,button{font-family:inherit;font-size:inherit}
+.mono{font-family:'JetBrains Mono',monospace}
+
+/* ── APP SHELL ── */
+#app{display:flex;flex-direction:column;height:100dvh;height:100vh}
+
+/* ── TOP BAR ── */
+.top{display:flex;align-items:center;justify-content:space-between;padding:max(env(safe-area-inset-top),12px) 16px 10px;flex-shrink:0;background:var(--bg);z-index:90;border-bottom:1px solid var(--bd)}
+.top h1{font-size:18px;font-weight:800;letter-spacing:-.5px}
+.top h1 b{color:var(--br);font-weight:800}
+.top .dt{font-size:11px;color:var(--dim);font-weight:500}
+
+/* ── NAV ── */
+.nav{display:flex;background:var(--s1);border-top:1px solid var(--bd);padding:6px 0 max(env(safe-area-inset-bottom),24px);flex-shrink:0;z-index:90}
+.nav button{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 0;border:none;background:none;color:var(--mt);cursor:pointer;transition:color .15s}
+.nav button.a{color:var(--br)}
+.nav .i{font-size:22px;line-height:1}
+.nav .t{font-size:9px;font-weight:700;letter-spacing:.5px;text-transform:uppercase}
+
+/* ── VIEWS ── */
+.vw{display:none;flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch}
+.vw.a{display:flex;flex-direction:column}
+.vw.a.scroll{display:block}
+.px{padding:0 16px 140px}
+
+/* ════════════════════════════════════════
+   DASHBOARD / TODAY
+   ════════════════════════════════════════ */
+.row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin:12px 0 2px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:12px 0 2px}
+.card{background:var(--s1);border:1px solid var(--bd);border-radius:14px;padding:14px 12px;text-align:center}
+.card .n{font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:700;line-height:1}
+.card .n.o{color:var(--br)}.card .n.g{color:var(--gn)}.card .n.y{color:var(--yl)}.card .n.r{color:var(--rd)}
+.card .l{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--dim);margin-top:6px}
+
+/* Section headers */
+.hd{display:flex;align-items:center;justify-content:space-between;margin:20px 0 8px}
+.hd h3{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim)}
+.hd button{font-size:11px;color:var(--br);font-weight:700;border:none;background:none;cursor:pointer;padding:4px 8px}
+
+/* Readiness */
+.ready{background:var(--s1);border:1px solid var(--bd);border-radius:14px;padding:14px;margin-bottom:2px}
+.ready .rh{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.ready .rt{font-size:14px;font-weight:700}
+.pill{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;padding:3px 12px;border-radius:20px}
+.pill.ok{background:var(--gns);color:var(--gn)}.pill.chk{background:var(--yls);color:var(--yl)}.pill.bad{background:var(--rds);color:var(--rd)}
+.chips{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px}
+.chip{display:flex;align-items:center;gap:5px;background:var(--s2);border-radius:8px;padding:6px 10px;font-size:12px;font-weight:500}
+.chip b{font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--br)}
+.rbtn{width:100%;padding:11px;border:none;border-radius:10px;font-weight:800;font-size:13px;cursor:pointer;transition:all .15s}
+.rbtn:active{transform:scale(.98)}.rbtn.go{background:var(--br);color:#fff}.rbtn.done{background:var(--gn);color:#fff}
+
+/* ════════════════════════════════════════
+   JOB CARDS
+   ════════════════════════════════════════ */
+.jc{background:var(--s1);border:1px solid var(--bd);border-radius:14px;padding:14px 14px 14px 17px;margin-bottom:6px;position:relative;overflow:hidden;cursor:pointer;transition:border-color .12s}
+.jc:active{border-color:var(--br)}
+.jc::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px}
+.jc.s-sched::before{background:var(--bl)}.jc.s-active::before{background:var(--gn)}.jc.s-done::before{background:#555}.jc.s-over::before{background:var(--rd)}
+.jc .r1{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:3px}
+.jc .nm{font-size:15px;font-weight:700;line-height:1.2;flex:1}
+.jc .tm{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--dim);white-space:nowrap;margin-left:8px}
+.jc .ad{font-size:11px;color:var(--dim);margin-bottom:6px}
+.tgs{display:flex;flex-wrap:wrap;gap:3px;margin-bottom:5px}
+.tg{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:3px 7px;border-radius:4px}
+.tg.ts{background:var(--brs);color:var(--br)}.tg.te{background:var(--gns);color:var(--gn)}.tg.tl{background:var(--yls);color:var(--yl)}.tg.th{background:var(--bls);color:var(--bl)}.tg.to{background:var(--rds);color:var(--rd)}.tg.tb{background:rgba(168,85,247,.1);color:#a855f7}
+.jc .vl{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:var(--gn);margin-top:4px}
+.jc .btns{display:flex;gap:5px;margin-top:8px}
+.jb{flex:1;padding:10px;border-radius:10px;font-size:12px;font-weight:800;border:none;cursor:pointer;transition:all .12s;text-transform:uppercase;letter-spacing:.5px}
+.jb:active{transform:scale(.97)}
+.jb.nv{background:var(--s3);color:var(--tx);border:1px solid var(--bd)}
+.jb.st{background:var(--br);color:#fff}
+.jb.ac{background:var(--gn);color:#fff}
+.jb.em{background:var(--rd);color:#fff}
+
+/* ════════════════════════════════════════
+   CUSTOMER CARDS
+   ════════════════════════════════════════ */
+.cc{background:var(--s1);border:1px solid var(--bd);border-radius:14px;padding:14px;margin-bottom:6px;cursor:pointer;transition:border-color .12s}
+.cc:active{border-color:var(--br)}
+.cc .cn{font-size:15px;font-weight:700}
+.cc .ca{font-size:11px;color:var(--dim);margin-top:2px}
+.cc .inf{display:flex;flex-wrap:wrap;gap:10px;margin-top:8px;font-size:11px;color:var(--dim)}
+.cc .inf b{color:var(--tx);font-weight:600}
+.cc .brflag{color:var(--yl);font-weight:700}
+
+/* ════════════════════════════════════════
+   INVOICE CARDS
+   ════════════════════════════════════════ */
+.ic{background:var(--s1);border:1px solid var(--bd);border-radius:14px;padding:14px;margin-bottom:6px}
+.ic .ir{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px}
+.ic .in{font-size:14px;font-weight:700}
+.bg{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;padding:3px 10px;border-radius:20px}
+.bg.p{background:var(--gns);color:var(--gn)}.bg.s{background:var(--bls);color:var(--bl)}.bg.o{background:var(--rds);color:var(--rd)}.bg.d{background:rgba(107,114,128,.1);color:var(--dim)}
+
+/* ════════════════════════════════════════
+   SEARCH
+   ════════════════════════════════════════ */
+.srch{width:100%;padding:12px 16px;background:var(--s1);border:1px solid var(--bd);border-radius:14px;color:var(--tx);font-size:15px;outline:none;margin-bottom:10px;transition:border-color .15s}
+.srch:focus{border-color:var(--br)}
+.srch::placeholder{color:var(--mt)}
+
+/* ════════════════════════════════════════
+   CHAT / ASSISTANT
+   ════════════════════════════════════════ */
+.chat-msgs{flex:1;overflow-y:auto;padding:16px;-webkit-overflow-scrolling:touch}
+.cm{margin-bottom:14px;animation:fadeIn .2s ease}
+@keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+.cm.u{display:flex;justify-content:flex-end}
+.cm.u .bl{background:var(--br);color:#fff;border-radius:18px 18px 4px 18px;padding:10px 16px;max-width:82%;font-size:14px;line-height:1.5;font-weight:500}
+.cm.a .bl{max-width:94%;font-size:13px;line-height:1.7;color:#c8ccd4;white-space:pre-wrap;font-weight:400}
+.cm.a .bl strong{color:var(--tx);font-weight:700}
+.think{display:flex;gap:5px;padding:4px}
+.think span{width:7px;height:7px;background:#444;border-radius:50%;animation:bonce 1s infinite}
+.think span:nth-child(2){animation-delay:.12s}
+.think span:nth-child(3){animation-delay:.24s}
+@keyframes bonce{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-6px)}}
+
+/* ── INPUT BAR ── */
+.ib{flex-shrink:0;border-top:1px solid var(--bd);background:var(--s1);padding:10px 12px max(env(safe-area-inset-bottom),20px);display:flex;align-items:flex-end;gap:8px}
+.ib textarea{flex:1;background:var(--s2);border:1px solid var(--bd);border-radius:22px;color:var(--tx);padding:11px 16px;outline:none;resize:none;min-height:44px;max-height:100px;line-height:1.4;font-size:15px;transition:border-color .15s}
+.ib textarea:focus{border-color:var(--br)}
+.ib textarea::placeholder{color:var(--mt)}
+.ib .btn{width:44px;height:44px;border-radius:50%;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:all .12s}
+.ib .btn:active{transform:scale(.9)}
+.ib .mic{background:var(--s2);border:1px solid var(--bd)}
+.ib .mic.on{background:var(--rd);border-color:var(--rd);animation:pulse 1.5s infinite}
+.ib .snd{background:var(--br);display:none}
+.ib .snd.vis{display:flex}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.3)}50%{box-shadow:0 0 0 10px rgba(239,68,68,0)}}
+
+/* ════════════════════════════════════════
+   JOB DETAIL OVERLAY
+   ════════════════════════════════════════ */
+.overlay{display:none;position:fixed;inset:0;z-index:100;background:var(--bg);flex-direction:column}
+.overlay.open{display:flex}
+.ov-head{display:flex;align-items:center;gap:10px;padding:max(env(safe-area-inset-top),12px) 16px 10px;border-bottom:1px solid var(--bd);flex-shrink:0;background:var(--bg);z-index:10}
+.ov-head .back{font-size:28px;color:var(--dim);background:none;border:none;cursor:pointer;padding:2px 4px;line-height:1}
+.ov-head h2{font-size:17px;font-weight:700;flex:1}
+.ov-body{flex:1;overflow-y:auto;padding:16px 16px 160px;-webkit-overflow-scrolling:touch}
+.ov-foot{position:fixed;bottom:0;left:0;right:0;padding:12px 16px max(env(safe-area-inset-bottom),20px);background:var(--s1);border-top:1px solid var(--bd);z-index:11}
+
+/* Detail sections */
+.ds{margin-bottom:20px}
+.ds h4{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim);margin-bottom:8px}
+.ds .info{font-size:13px;color:var(--dim);line-height:1.5}
+
+/* Equipment items */
+.eq{background:var(--s1);border:1px solid var(--bd);border-radius:12px;padding:12px;margin-bottom:5px}
+.eq .er1{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:2px}
+.eq .en{font-size:13px;font-weight:700}
+.eq .ed{font-size:11px;color:var(--dim);margin-top:1px}
+.eq .ep{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:var(--gn)}
+
+/* Status buttons */
+.sbtns{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px}
+.sb{padding:7px 11px;border-radius:8px;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;border:1px solid var(--bd);background:var(--s2);color:var(--dim);cursor:pointer;transition:all .12s}
+.sb:active{transform:scale(.95)}
+.sb.sp{background:var(--gns);color:var(--gn);border-color:var(--gn)}
+.sb.ss{background:var(--yls);color:var(--yl);border-color:var(--yl)}
+.sb.sr{background:var(--brs);color:var(--br);border-color:var(--br)}
+.sb.sc{background:var(--rds);color:var(--rd);border-color:var(--rd)}
+.sb.su{background:rgba(107,114,128,.1);color:var(--dim);border-color:var(--dim)}
+
+/* Signature */
+.sig{background:#fff;border-radius:14px;height:140px;position:relative;touch-action:none;margin-bottom:8px}
+.sig canvas{width:100%;height:100%;border-radius:14px}
+.sig .ph{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#aaa;font-size:14px;pointer-events:none;font-weight:500}
+.sig .cl{position:absolute;top:8px;right:8px;background:rgba(0,0,0,.5);color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:10px;font-weight:700;cursor:pointer}
+
+/* Complete button */
+.cbtn{width:100%;padding:16px;background:var(--br);color:#fff;border:none;border-radius:14px;font-size:16px;font-weight:800;cursor:pointer;letter-spacing:.3px;transition:all .12s}
+.cbtn:active{transform:scale(.98);opacity:.9}
+.cbtn:disabled{opacity:.5}
+
+/* ════════════════════════════════════════
+   NEW JOB OVERLAY
+   ════════════════════════════════════════ */
+.fi{margin-bottom:12px}
+.fi label{display:block;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--dim);margin-bottom:5px}
+.fi input,.fi select,.fi textarea{width:100%;padding:12px;background:var(--s1);border:1px solid var(--bd);border-radius:12px;color:var(--tx);outline:none;transition:border-color .15s}
+.fi input:focus,.fi select:focus,.fi textarea:focus{border-color:var(--br)}
+.fi input::placeholder,.fi textarea::placeholder{color:var(--mt)}
+.fi textarea{height:70px;resize:none}
+.fi .row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.fi .row3{display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px}
+
+/* Toggle chips */
+.tc{display:flex;flex-wrap:wrap;gap:5px}
+.tc button{padding:8px 14px;border-radius:10px;font-size:12px;font-weight:700;border:1px solid var(--bd);background:var(--s1);color:var(--dim);cursor:pointer;transition:all .12s}
+.tc button:active{transform:scale(.95)}
+.tc button.on{border-color:var(--br);background:var(--brs);color:var(--br)}
+.tc button.gon{border-color:var(--gn);background:var(--gns);color:var(--gn)}
+
+/* Autocomplete dropdown */
+.ac-wrap{position:relative}
+.ac-drop{position:absolute;left:0;right:0;top:100%;margin-top:4px;background:var(--s2);border:1px solid var(--bd);border-radius:12px;max-height:240px;overflow-y:auto;z-index:20;box-shadow:0 8px 30px rgba(0,0,0,.4);display:none}
+.ac-drop.vis{display:block}
+.ac-drop .ac-item{padding:10px 14px;border-bottom:1px solid var(--bd);cursor:pointer;transition:background .1s}
+.ac-drop .ac-item:last-child{border-bottom:none}
+.ac-drop .ac-item:active{background:var(--s3)}
+.ac-drop .ac-item .ac-n{font-size:13px;font-weight:600}
+.ac-drop .ac-item .ac-d{font-size:11px;color:var(--dim)}
+.ac-drop .ac-create{padding:12px 14px;background:var(--brs);cursor:pointer}
+.ac-drop .ac-create:active{background:rgba(232,93,38,.15)}
+.ac-drop .ac-create .ac-n{font-size:13px;font-weight:700;color:var(--br)}
+.ac-drop .ac-create .ac-d{font-size:11px;color:var(--dim)}
+
+/* Inline new customer */
+.inl{background:var(--s1);border:1px solid rgba(232,93,38,.25);border-radius:12px;padding:12px;margin-top:6px}
+.inl .inl-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.inl .inl-h span{font-size:11px;font-weight:800;color:var(--br);text-transform:uppercase;letter-spacing:1px}
+.inl .inl-h button{font-size:11px;color:var(--dim);background:none;border:none;cursor:pointer}
+.inl input{width:100%;padding:10px;background:var(--s2);border:1px solid var(--bd);border-radius:10px;color:var(--tx);outline:none;margin-bottom:6px;font-size:13px}
+.inl input:focus{border-color:var(--br)}
+.inl input::placeholder{color:var(--mt)}
+.inl .r2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.inl .r3{display:grid;grid-template-columns:2fr 1fr 1fr;gap:6px}
+
+/* Primary button */
+.pbtn{width:100%;padding:15px;background:var(--br);color:#fff;border:none;border-radius:14px;font-size:15px;font-weight:800;cursor:pointer;transition:all .12s;margin-top:8px}
+.pbtn:active{transform:scale(.98)}.pbtn:disabled{opacity:.4}
+
+/* Empty state */
+.ey{text-align:center;padding:48px 24px;color:var(--dim)}
+.ey .ei{font-size:40px;margin-bottom:10px;opacity:.25}
+.ey .et{font-size:13px;line-height:1.6}
+
+/* ════════════════════════════════════════
+   INVOICE PREVIEW MODAL
+   ════════════════════════════════════════ */
+.inv-modal{display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.92);overflow-y:auto;padding:16px}
+.inv-modal.open{display:block}
+.inv-paper{background:#fff;color:#111;border-radius:16px;padding:28px 22px;max-width:460px;margin:0 auto}
+.inv-paper h2{font-size:22px;font-weight:800;margin-bottom:2px}
+.inv-paper .sub{font-size:11px;color:#888;margin-bottom:4px}
+.inv-paper .dt{font-size:12px;color:#999;margin-bottom:16px}
+.inv-paper .to{font-size:14px;padding-bottom:12px;border-bottom:1px solid #eee;margin-bottom:12px}
+.inv-paper .to strong{display:block;font-size:15px}
+.inv-line{display:flex;justify-content:space-between;padding:6px 0;font-size:13px;border-bottom:1px solid #f5f5f5}
+.inv-line .desc{flex:1;padding-right:10px}
+.inv-line .amt{font-family:'JetBrains Mono',monospace;font-weight:600;white-space:nowrap}
+.inv-total{display:flex;justify-content:space-between;margin-top:14px;padding-top:14px;border-top:2.5px solid #111;font-size:20px;font-weight:800}
+.inv-total .amt{font-family:'JetBrains Mono',monospace}
+.inv-acts{display:flex;gap:8px;margin-top:20px}
+.inv-acts button{flex:1;padding:14px;border-radius:12px;font-size:14px;font-weight:700;border:none;cursor:pointer}
+.inv-acts .ia-close{background:#f0f0f0;color:#333}
+.inv-acts .ia-send{background:var(--br);color:#fff}
+
+/* Toast */
+.toast{position:fixed;bottom:100px;left:50%;transform:translateX(-50%) translateY(16px);background:var(--gn);color:#fff;padding:11px 24px;border-radius:30px;font-size:13px;font-weight:700;z-index:300;opacity:0;transition:all .25s;pointer-events:none}
+.toast.vis{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- TOP BAR -->
+  <div class="top">
+    <h1>Stephens <b>Advanced</b></h1>
+    <div class="dt" id="dt"></div>
+  </div>
+
+  <!-- ═══ ASSISTANT VIEW ═══ -->
+  <div class="vw a" id="v-chat">
+    <div class="chat-msgs" id="msgs"></div>
+    <div class="ib">
+      <textarea id="inp" rows="1" placeholder="Talk or type..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();send()}" oninput="grow(this)"></textarea>
+      <button class="btn mic" id="micB" onclick="mic()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button>
+      <button class="btn snd" id="sndB" onclick="send()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
+    </div>
+  </div>
+
+  <!-- ═══ JOBS VIEW ═══ -->
+  <div class="vw scroll" id="v-jobs"><div class="px" id="jobsC"></div></div>
+
+  <!-- ═══ CUSTOMERS VIEW ═══ -->
+  <div class="vw scroll" id="v-cust"><div class="px" id="custC"></div></div>
+
+  <!-- ═══ MONEY VIEW ═══ -->
+  <div class="vw scroll" id="v-money"><div class="px" id="moneyC"></div></div>
+
+  <!-- NAV -->
+  <div class="nav">
+    <button class="a" data-v="v-chat" onclick="go(this)"><span class="i">💬</span><span class="t">Assistant</span></button>
+    <button data-v="v-jobs" onclick="go(this)"><span class="i">📋</span><span class="t">Jobs</span></button>
+    <button data-v="v-cust" onclick="go(this)"><span class="i">👤</span><span class="t">Customers</span></button>
+    <button data-v="v-money" onclick="go(this)"><span class="i">💰</span><span class="t">Money</span></button>
+  </div>
+</div>
+
+<!-- JOB DETAIL OVERLAY -->
+<div class="overlay" id="jobOv"></div>
+
+<!-- NEW JOB OVERLAY -->
+<div class="overlay" id="newOv"></div>
+
+<!-- INVOICE MODAL -->
+<div class="inv-modal" id="invM"></div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<!-- FAB -->
+<button onclick="openNew()" style="position:fixed;bottom:80px;right:14px;width:52px;height:52px;border-radius:50%;background:var(--br);color:#fff;border:none;font-size:24px;font-weight:300;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 20px rgba(232,93,38,.35);cursor:pointer;z-index:80;transition:transform .12s" onmousedown="this.style.transform='scale(.9)'" onmouseup="this.style.transform=''">+</button>
+
+<script>
+// ════════════════════════════════════════════════════════════
+// STEPHENS ADVANCED — ENGINE
+// ════════════════════════════════════════════════════════════
+
+const SB_URL='https://motjasdokoxwiodwzyps.supabase.co'
+const SB_KEY='sb_publishable_9lsQtlPsnPjeODdys7EKMw_cpXeppYb'
+const sb=supabase.createClient(SB_URL,SB_KEY)
+
+// Date
+document.getElementById('dt').textContent=new Date().toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric'})
+
+// ── STATE ──
+let D={jobs:[],locs:[],invs:[],bas:[],rc:{}}
+let chatH=[]
+let thinking=false
+let listening=false
+let recog=null
+let extRes={}
+let sigCtx=null
+let sigDrawing=false
+let curJob=null
+
+// ════════════════════════════════════════
+// DATABASE
+// ════════════════════════════════════════
+async function load(){
+  const[j,l,i,b,r]=await Promise.all([
+    sb.from('jobs').select('*,location:locations(*)').order('scheduled_date').order('scheduled_time'),
+    sb.from('locations').select('*,extinguishers(id,type,size,serial_number,location_in_building,manufacture_date),suppression_systems(id,system_type,category,tank_count,nozzle_count,fusible_link_count),emergency_lights(id,fixture_count),billing_account:billing_accounts(*)').order('name'),
+    sb.from('invoices').select('*').order('date',{ascending:false}).limit(50),
+    sb.from('billing_accounts').select('*').order('name'),
+    sb.from('rate_card').select('key,price')
+  ])
+  D.jobs=j.data||[];D.locs=l.data||[];D.invs=i.data||[];D.bas=b.data||[]
+  const rc={};(r.data||[]).forEach(x=>rc[x.key]=+x.price);D.rc=rc
+}
+
+function today(){return new Date().toISOString().split('T')[0]}
+
+function estJob(j){
+  const l=j.location||{},rc=D.rc,sc=j.scope||[];let t=0
+  if(sc.includes('extinguishers'))t+=(l.extinguishers?.length||0)*(rc.extinguisher_inspection||20)
+  if(sc.includes('suppression')&&l.suppression_systems)l.suppression_systems.forEach(s=>{
+    let b=rc.suppression_standard||250
+    if(s.category==='captiveaire_tank')b=rc.suppression_captiveaire_tank||450
+    if(s.category==='captiveaire_core')b=rc.suppression_captiveaire_core||650
+    t+=b+((s.tank_count-1)*(rc.suppression_additional_tank||50))
+    t+=(s.fusible_link_count||0)*(rc.fusible_link||25)
+    t+=(s.nozzle_count||0)*(rc.metal_blowoff_cap||25)
+  })
+  if(sc.includes('elights')&&l.emergency_lights?.[0])t+=(l.emergency_lights[0].fixture_count||0)*(rc.emergency_light||20)
+  return t
+}
+
+function cartridge(sys){
+  const t=sys.system_type||''
+  if(t.includes('R-102')||t.includes('Piranha'))return sys.tank_count>1?'LT-30 Nitrogen':'LT-10 Nitrogen'
+  if(t.includes('Pyro-Chem')||t.includes('Kitchen Knight'))return '16g CO2'
+  if(t.includes('Buckeye'))return 'Buckeye N2'
+  if(t.includes('Kidde'))return 'Kidde XV N2'
+  return 'Cartridge'
+}
+
+function truckLoad(jobs){
+  let tags=0,links=0,caps=0,carts=[]
+  jobs.forEach(j=>{const l=j.location||{},sc=j.scope||[]
+    if(sc.includes('extinguishers'))tags+=l.extinguishers?.length||0
+    if(sc.includes('suppression')&&l.suppression_systems)l.suppression_systems.forEach(s=>{
+      links+=s.fusible_link_count||0;caps+=s.nozzle_count||0;carts.push(cartridge(s))
+    })
+  })
+  return{tags,links,caps,carts}
+}
+
+function dbCtx(){
+  const td=today(),tj=D.jobs.filter(j=>j.scheduled_date===td),ov=D.jobs.filter(j=>j.status==='scheduled'&&j.scheduled_date<td)
+  const up=D.jobs.filter(j=>j.status==='scheduled'&&j.scheduled_date>=td).slice(0,15)
+  const pd=D.invs.filter(i=>i.status==='paid').reduce((s,i)=>s+(+i.total),0)
+  const ow=D.invs.filter(i=>i.status!=='paid'&&i.status!=='void').reduce((s,i)=>s+(+i.total),0)
+  let c=`TODAY:${td}\n\nTODAY'S JOBS(${tj.length}):\n`
+  tj.forEach(j=>c+=`- ${j.location?.name||'?'}|${j.location?.city||''}|${j.scheduled_time||''}|${(j.scope||[]).join(',')}|${j.notes||''}\n`)
+  c+=`\nOVERDUE(${ov.length}):\n`
+  ov.forEach(j=>c+=`- ${j.location?.name||'?'}|${j.location?.city||''}|Due:${j.scheduled_date}|${(j.scope||[]).join(',')}|${j.notes||''}\n`)
+  c+=`\nUPCOMING:\n`;up.forEach(j=>c+=`- ${j.scheduled_date} ${j.scheduled_time||''}|${j.location?.name||'?'}|${j.location?.city||''}\n`)
+  c+=`\nCUSTOMERS(${D.locs.length}):\n`
+  D.locs.forEach(l=>{c+=`- ${l.name}|${l.address||''},${l.city||''}|${l.extinguishers?.length||0}ext|${l.suppression_systems?.length||0}sys`
+    if(l.is_brycer_jurisdiction)c+='|BRYCER';c+='\n'
+    l.suppression_systems?.forEach(s=>c+=`  ${s.system_type}|${s.category}|${s.tank_count}T ${s.nozzle_count}N ${s.fusible_link_count}L\n`)
+  })
+  c+=`\nBILLING:`;D.bas.forEach(b=>c+=`\n- ${b.name}|${b.contact_name||''}|${b.phone||''}`)
+  c+=`\n\nREVENUE: Collected $${pd.toFixed(0)}|Outstanding $${ow.toFixed(0)}`
+  return c
+}
+
+// ════════════════════════════════════════
+// NAVIGATION
+// ════════════════════════════════════════
+function go(btn){
+  const v=btn.dataset.v
+  document.querySelectorAll('.vw').forEach(e=>{e.classList.remove('a');e.style.display='none'})
+  const el=document.getElementById(v)
+  el.style.display=v==='v-chat'?'flex':'block'
+  el.classList.add('a')
+  document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('a'));btn.classList.add('a')
+  if(v==='v-jobs')rJobs()
+  if(v==='v-cust')rCust()
+  if(v==='v-money')rMoney()
+}
+
+// ════════════════════════════════════════
+// CHAT
+// ════════════════════════════════════════
+const SYS=`You are the AI operations manager for Stephens Advanced, a fire suppression business in DFW owned by Jon Stephens. You run inside his phone app. Compress his work so he can get home to his son William.
+
+You have FULL database context in each message. When Jon asks you to do something, describe what you'll do concisely. When he confirms, say DONE and describe what was saved.
+
+RULES:
+- Concise. Jon's in his truck.
+- Fort Worth = Brycer jurisdiction.
+- Base: Euless TX. Free 50mi. Beyond: $250/hr + $0.70/mi round trip.
+- Cluster nearby jobs. Route efficiently.
+- Calculate truck loads from equipment profiles.
+- Flag overdue items proactively.
+
+RATE CARD: Ext $20/ea | Suppression: Std $250, CaptAire Tank $450, CORE $650, +$50/tank | E-lights $20/fixture | Hydro: K $275, CO2 $72, H2O $57, ABC $68 | Internal $68 | Labor $200/hr | Links $25, Nozzles $92.50, Si caps $9, Metal caps $25 | New 5lb $102.50, 10lb $141.50 | Emergency $500/$750/$1000
+
+PARTS: R-102→LT-10/LT-30 nitrogen+rubber caps | Kitchen Knight II→16g CO2+rubber caps | Buckeye→nitrogen+SS caps | Kidde WHDR→XV nitrogen+foil caps
+
+NFPA 10: Annual=all ext. 6yr=ABC/BC internal. Hydro: ABC 12yr, K/CO2/H2O 5yr. System tanks 12yr. E-lights annual 90min.
+
+Statuses: Pass, Swap, Replace, Condemn, Remove Unnecessary.
+
+Be direct. Think ahead. Get him home.`
+
+function addM(role,text){
+  const d=document.getElementById('msgs'),m=document.createElement('div')
+  m.className=`cm ${role==='user'?'u':'a'}`
+  m.innerHTML=`<div class="bl">${esc(text)}</div>`
+  d.appendChild(m);d.scrollTop=d.scrollHeight
+}
+function showT(){const d=document.getElementById('msgs'),m=document.createElement('div');m.id='thk';m.className='cm a';m.innerHTML='<div class="think"><span></span><span></span><span></span></div>';d.appendChild(m);d.scrollTop=d.scrollHeight}
+function hideT(){document.getElementById('thk')?.remove()}
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>').replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>')}
+
+async function send(){
+  const el=document.getElementById('inp'),t=el.value.trim()
+  if(!t||thinking)return
+  el.value='';el.style.height='44px';document.getElementById('sndB').classList.remove('vis')
+  addM('user',t);await callAI(t)
+}
+
+async function callAI(text){
+  thinking=true;showT();await load()
+  chatH.push({role:'user',content:`DB:\n${dbCtx()}\n\nJon: "${text}"`})
+  try{
+    const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1000,system:SYS,messages:chatH.slice(-8)})})
+    const d=await r.json();let reply=d.content?.[0]?.text||"Didn't catch that. Try again."
+    chatH.push({role:'assistant',content:reply});hideT();addM('a',reply)
+  }catch(e){console.error(e);hideT();addM('a','Connection error. Try again.')}
+  thinking=false
+}
+
+function grow(el){el.style.height='44px';el.style.height=Math.min(el.scrollHeight,100)+'px';document.getElementById('sndB').classList.toggle('vis',el.value.trim().length>0)}
+
+// ── VOICE ──
+function mic(){
+  if(listening){recog?.stop();return}
+  const SR=window.webkitSpeechRecognition||window.SpeechRecognition
+  if(!SR){addM('a','Voice needs Chrome or Safari.');return}
+  recog=new SR();recog.continuous=false;recog.interimResults=true;recog.lang='en-US'
+  recog.onstart=()=>{listening=true;const b=document.getElementById('micB');b.classList.add('on');b.querySelector('svg').setAttribute('stroke','#fff')}
+  recog.onresult=e=>{let t='';for(let i=0;i<e.results.length;i++)t+=e.results[i][0].transcript;document.getElementById('inp').value=t;grow(document.getElementById('inp'))}
+  recog.onend=()=>{listening=false;const b=document.getElementById('micB');b.classList.remove('on');b.querySelector('svg').setAttribute('stroke','#6b7280');const t=document.getElementById('inp').value.trim();if(t)send()}
+  recog.onerror=()=>{listening=false;document.getElementById('micB').classList.remove('on');document.getElementById('micB').querySelector('svg').setAttribute('stroke','#6b7280')}
+  recog.start()
+}
+
+// ════════════════════════════════════════
+// JOBS VIEW
+// ════════════════════════════════════════
+function rJobs(){
+  const c=document.getElementById('jobsC'),td=today()
+  const tjs=D.jobs.filter(j=>j.scheduled_date===td)
+  const ovs=D.jobs.filter(j=>j.status==='scheduled'&&j.scheduled_date<td)
+  const ups=D.jobs.filter(j=>j.status==='scheduled'&&j.scheduled_date>td).slice(0,15)
+  const est=tjs.reduce((s,j)=>s+estJob(j),0)
+  const ld=truckLoad(tjs)
+
+  let h=`<div class="row3"><div class="card"><div class="n o">${tjs.length}</div><div class="l">Today</div></div><div class="card"><div class="n g">$${est.toLocaleString()}</div><div class="l">Estimated</div></div><div class="card"><div class="n r">${ovs.length}</div><div class="l">Overdue</div></div></div>`
+
+  // Readiness
+  h+=`<div class="hd"><h3>Truck Readiness</h3></div><div class="ready"><div class="rh"><div class="rt">Today's Load</div><span class="pill chk" id="rdyP">Check</span></div><div class="chips">`
+  if(!tjs.length)h+=`<div class="chip">No jobs scheduled</div>`
+  else{
+    if(ld.tags)h+=`<div class="chip"><b>${ld.tags}</b>Tags</div>`
+    if(ld.links)h+=`<div class="chip"><b>${ld.links}</b>Links</div>`
+    if(ld.caps)h+=`<div class="chip"><b>${ld.caps}</b>Caps</div>`
+    ld.carts.forEach(c=>h+=`<div class="chip"><b>1</b>${c}</div>`)
+  }
+  h+=`</div><button class="rbtn go" onclick="this.textContent='✓ Confirmed';this.className='rbtn done';document.getElementById('rdyP').className='pill ok';document.getElementById('rdyP').textContent='Ready';toast('Truck confirmed')">I have everything</button></div>`
+
+  if(tjs.length){h+=`<div class="hd"><h3>Today</h3></div>`;tjs.forEach(j=>h+=jcHtml(j,false))}
+  if(ovs.length){h+=`<div class="hd"><h3>Overdue (${ovs.length})</h3></div>`;ovs.forEach(j=>h+=jcHtml(j,true))}
+  if(ups.length){h+=`<div class="hd"><h3>Upcoming</h3></div>`;ups.forEach(j=>h+=jcHtml(j,false))}
+  if(!tjs.length&&!ovs.length&&!ups.length)h+=`<div class="ey"><div class="ei">📋</div><div class="et">No jobs. Talk to the assistant to schedule some.</div></div>`
+  c.innerHTML=h
+}
+
+function jcHtml(j,isOv){
+  const l=j.location||{},sc=j.scope||[],e=estJob(j),a=[l.address,l.city].filter(Boolean).join(', ')
+  const ds=j.scheduled_date?new Date(j.scheduled_date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}):''
+  const cls=isOv?'s-over':j.status==='active'?'s-active':j.status==='completed'?'s-done':'s-sched'
+  return`<div class="jc ${cls}" onclick="openJob('${j.id}')"><div class="r1"><div class="nm">${l.name||'Unknown'}</div><div class="tm">${ds} ${(j.scheduled_time||'').slice(0,5)}</div></div><div class="ad">${a}</div><div class="tgs">${sc.includes('suppression')?'<span class="tg ts">suppression</span>':''}${sc.includes('extinguishers')?'<span class="tg te">extinguishers</span>':''}${sc.includes('elights')?'<span class="tg tl">e-lights</span>':''}${sc.includes('hydro')?'<span class="tg th">hydro</span>':''}${isOv?'<span class="tg to">overdue</span>':''}${l.is_brycer_jurisdiction?'<span class="tg tb">brycer</span>':''}</div><div class="vl">$${e.toLocaleString()}</div><div class="btns"><button class="jb nv" onclick="event.stopPropagation();navTo('${a}')">Navigate</button><button class="jb st" onclick="event.stopPropagation();startJ('${j.id}')">Start Job</button></div></div>`
+}
+
+function navTo(a){if(a)window.open('https://maps.apple.com/?daddr='+encodeURIComponent(a),'_blank')}
+
+async function startJ(id){
+  await sb.from('jobs').update({status:'active',started_at:new Date().toISOString()}).eq('id',id)
+  const j=D.jobs.find(x=>x.id===id)
+  toast(`Job started${j?.location?.name?' — '+j.location.name:''}. Customer notified.`)
+  await load();rJobs()
+}
+
+// ════════════════════════════════════════
+// JOB DETAIL
+// ════════════════════════════════════════
+async function openJob(id){
+  await load()
+  const j=D.jobs.find(x=>x.id===id);if(!j)return
+  curJob=j;extRes={};const l=j.location||{},sc=j.scope||[],rc=D.rc
+
+  let h=`<div class="ov-head"><button class="back" onclick="closeJob()">‹</button><h2>${l.name||'Job'}</h2></div><div class="ov-body">`
+
+  // Info
+  h+=`<div class="ds"><h4>Location</h4><div class="info">${[l.address,l.city,l.state,l.zip].filter(Boolean).join(', ')}`
+  if(l.contact_name)h+=`<br>Contact: ${l.contact_name}${l.contact_phone?' — '+l.contact_phone:''}`
+  if(l.is_brycer_jurisdiction)h+=`<br><span style="color:var(--yl);font-weight:700">⚡ Brycer Jurisdiction — Report auto-submits to ${l.brycer_ahj_name||'AHJ'}</span>`
+  if(j.notes)h+=`<br><span style="color:var(--dim)">Notes: ${j.notes}</span>`
+  h+=`</div></div>`
+
+  // Suppression
+  if(sc.includes('suppression')&&l.suppression_systems?.length){
+    h+=`<div class="ds"><h4>Suppression Systems</h4>`
+    l.suppression_systems.forEach(s=>{
+      let base=rc.suppression_standard||250
+      if(s.category==='captiveaire_tank')base=rc.suppression_captiveaire_tank||450
+      if(s.category==='captiveaire_core')base=rc.suppression_captiveaire_core||650
+      const price=base+((s.tank_count-1)*(rc.suppression_additional_tank||50))
+      const lnk=(s.fusible_link_count||0)*(rc.fusible_link||25)
+      const cap=(s.nozzle_count||0)*(rc.metal_blowoff_cap||25)
+      h+=`<div class="eq"><div class="er1"><div><div class="en">${s.system_type}</div><div class="ed">${s.tank_count} tank${s.tank_count>1?'s':''} · ${s.nozzle_count} nozzles · ${s.fusible_link_count} links · ${cartridge(s)}</div></div><div class="ep">$${price+lnk+cap}</div></div></div>`
+    })
+    h+=`</div>`
+  }
+
+  // Extinguishers
+  if(sc.includes('extinguishers')&&l.extinguishers?.length){
+    h+=`<div class="ds"><h4>Extinguishers (${l.extinguishers.length})</h4>`
+    l.extinguishers.forEach(e=>{
+      h+=`<div class="eq"><div class="er1"><div><div class="en">${e.type} ${e.size||''}</div><div class="ed">${e.location_in_building||''} ${e.serial_number?'· '+e.serial_number:''}</div></div></div><div class="sbtns">`
+      ;['pass','swap','replace','condemn','remove'].forEach(st=>{
+        h+=`<button class="sb" data-ext="${e.id}" data-st="${st}" onclick="setExt(this,'${e.id}','${st}')">${st}</button>`
+      })
+      h+=`</div></div>`
+    })
+    h+=`</div>`
+  }
+
+  // E-lights
+  if(sc.includes('elights')&&l.emergency_lights?.[0]?.fixture_count){
+    const fc=l.emergency_lights[0].fixture_count,pr=fc*(rc.emergency_light||20)
+    h+=`<div class="ds"><h4>Emergency Lighting (${fc} fixtures)</h4><div class="eq"><div class="er1"><div><div class="en">90-Minute Annual Test</div><div class="ed">${fc} fixtures × $${rc.emergency_light||20}</div></div><div class="ep">$${pr}</div></div></div></div>`
+  }
+
+  // Signature
+  h+=`<div class="ds"><h4>Customer Signature</h4><div class="sig"><canvas id="sigC"></canvas><div class="ph" id="sigPh">Sign here</div><button class="cl" onclick="clrSig()">Clear</button></div></div>`
+
+  h+=`</div><div class="ov-foot"><button class="cbtn" onclick="completeJob()">Complete Job — Generate Invoice</button></div>`
+
+  document.getElementById('jobOv').innerHTML=h
+  document.getElementById('jobOv').classList.add('open')
+  setTimeout(initSig,100)
+}
+
+function closeJob(){document.getElementById('jobOv').classList.remove('open');curJob=null}
+
+function setExt(btn,id,st){
+  extRes[id]=st
+  const parent=btn.parentElement
+  parent.querySelectorAll('.sb').forEach(b=>b.className='sb')
+  btn.className='sb s'+st[0]
+}
+
+// Signature
+function initSig(){
+  const c=document.getElementById('sigC');if(!c)return
+  const r=c.parentElement.getBoundingClientRect();c.width=r.width;c.height=r.height
+  sigCtx=c.getContext('2d');sigCtx.strokeStyle='#111';sigCtx.lineWidth=2;sigCtx.lineCap='round'
+  c.addEventListener('touchstart',e=>{e.preventDefault();sigDrawing=true;document.getElementById('sigPh').style.display='none';const p=sPos(e);sigCtx.beginPath();sigCtx.moveTo(p.x,p.y)},{passive:false})
+  c.addEventListener('touchmove',e=>{if(!sigDrawing)return;e.preventDefault();const p=sPos(e);sigCtx.lineTo(p.x,p.y);sigCtx.stroke()},{passive:false})
+  c.addEventListener('touchend',()=>sigDrawing=false)
+  c.addEventListener('mousedown',e=>{sigDrawing=true;document.getElementById('sigPh').style.display='none';const p=mPos(e);sigCtx.beginPath();sigCtx.moveTo(p.x,p.y)})
+  c.addEventListener('mousemove',e=>{if(!sigDrawing)return;const p=mPos(e);sigCtx.lineTo(p.x,p.y);sigCtx.stroke()})
+  c.addEventListener('mouseup',()=>sigDrawing=false)
+}
+function sPos(e){const c=document.getElementById('sigC'),r=c.getBoundingClientRect(),t=e.touches[0];return{x:t.clientX-r.left,y:t.clientY-r.top}}
+function mPos(e){const c=document.getElementById('sigC'),r=c.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top}}
+function clrSig(){const c=document.getElementById('sigC');if(sigCtx)sigCtx.clearRect(0,0,c.width,c.height);document.getElementById('sigPh').style.display=''}
+
+async function completeJob(){
+  if(!curJob)return
+  const j=curJob,l=j.location||{},rc=D.rc,sc=j.scope||[]
+  let lines=[],sub=0
+
+  // Suppression
+  if(sc.includes('suppression')&&l.suppression_systems)l.suppression_systems.forEach(s=>{
+    let base=rc.suppression_standard||250
+    if(s.category==='captiveaire_tank')base=rc.suppression_captiveaire_tank||450
+    if(s.category==='captiveaire_core')base=rc.suppression_captiveaire_core||650
+    const p=base+((s.tank_count-1)*(rc.suppression_additional_tank||50))
+    lines.push({d:`${s.system_type} Semi-Annual (${s.tank_count} tank${s.tank_count>1?'s':''})`,q:1,u:p,t:p});sub+=p
+    if(s.fusible_link_count){const lt=s.fusible_link_count*(rc.fusible_link||25);lines.push({d:'Fusible Links',q:s.fusible_link_count,u:rc.fusible_link||25,t:lt});sub+=lt}
+    if(s.nozzle_count){const ct=s.nozzle_count*(rc.metal_blowoff_cap||25);lines.push({d:'Blow-Off Caps',q:s.nozzle_count,u:rc.metal_blowoff_cap||25,t:ct});sub+=ct}
+  })
+
+  // Extinguishers
+  if(sc.includes('extinguishers')&&l.extinguishers?.length){
+    const n=l.extinguishers.length,t=n*(rc.extinguisher_inspection||20)
+    lines.push({d:'Portable Extinguisher Inspection',q:n,u:rc.extinguisher_inspection||20,t});sub+=t
+    Object.entries(extRes).forEach(([id,st])=>{
+      if(st==='replace'){
+        const ext=l.extinguishers.find(e=>e.id===id)
+        const pr=ext?.size==='5lb'?(rc.new_5lb_ext||102.5):(rc.new_10lb_ext||141.5)
+        lines.push({d:`New ${ext?.size||''} ${ext?.type||''} Extinguisher`,q:1,u:pr,t:pr});sub+=pr
+      }
+    })
+  }
+
+  // E-lights
+  if(sc.includes('elights')&&l.emergency_lights?.[0]?.fixture_count){
+    const fc=l.emergency_lights[0].fixture_count,t=fc*(rc.emergency_light||20)
+    lines.push({d:'Emergency Light Annual Test (90-min)',q:fc,u:rc.emergency_light||20,t});sub+=t
+  }
+
+  const total=sub
+  const sigData=document.getElementById('sigC')?.toDataURL()||null
+
+  // Save invoice
+  const{data:inv,error:ie}=await sb.from('invoices').insert({job_id:j.id,location_id:l.id,billing_account_id:l.billing_account_id,subtotal:sub,total,status:'sent',sent_at:new Date().toISOString()}).select().single()
+
+  if(inv){
+    const ils=lines.map((ln,i)=>({invoice_id:inv.id,description:ln.d,quantity:ln.q,unit_price:ln.u,total:ln.t,sort_order:i}))
+    await sb.from('invoice_lines').insert(ils)
+  }
+
+  // Update job
+  await sb.from('jobs').update({status:'completed',completed_at:new Date().toISOString(),signature_data:sigData}).eq('id',j.id)
+
+  // Save ext results
+  for(const[eid,st]of Object.entries(extRes)){
+    await sb.from('extinguisher_results').insert({job_id:j.id,extinguisher_id:eid,status:st})
+  }
+
+  // Show invoice
+  showInv({num:inv?.invoice_number||'—',name:l.name||'Customer',addr:[l.address,l.city].filter(Boolean).join(', '),lines,total})
+
+  await load()
+}
+
+function showInv(d){
+  let h=`<div class="inv-paper"><h2>Invoice</h2><div class="sub">Stephens Advanced · Fire Protection Services</div><div class="dt">${new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</div><div class="to"><strong>${d.name}</strong>${d.addr}</div>`
+  d.lines.forEach(l=>h+=`<div class="inv-line"><div class="desc">${l.d}${l.q>1?' <span style="color:#999">×'+l.q+'</span>':''}</div><div class="amt">$${l.t.toFixed(2)}</div></div>`)
+  h+=`<div class="inv-total"><div>Total Due</div><div class="amt">$${d.total.toFixed(2)}</div></div><div class="inv-acts"><button class="ia-close" onclick="closeInv()">Done</button><button class="ia-send" onclick="toast('Invoice sent to customer');setTimeout(closeInv,800)">Send to Customer</button></div></div>`
+  document.getElementById('invM').innerHTML=h;document.getElementById('invM').classList.add('open')
+}
+
+function closeInv(){document.getElementById('invM').classList.remove('open');closeJob();rJobs()}
+
+// ════════════════════════════════════════
+// NEW JOB
+// ════════════════════════════════════════
+let newSt={loc:null,creating:false,ba:null,creatingBa:false}
+
+function openNew(){
+  newSt={loc:null,creating:false,ba:null,creatingBa:false}
+  renderNew()
+  document.getElementById('newOv').classList.add('open')
+}
+
+function closeNew(){document.getElementById('newOv').classList.remove('open')}
+
+function renderNew(){
+  let h=`<div class="ov-head"><button class="back" onclick="closeNew()">‹</button><h2>New Job</h2></div><div class="ov-body">`
+
+  // Customer field
+  h+=`<div class="fi"><label>Customer</label>`
+  if(newSt.loc){
+    h+=`<div style="background:var(--s1);border:1px solid rgba(34,197,94,.25);border-radius:12px;padding:12px"><div style="display:flex;justify-content:space-between;align-items:center"><div><div style="font-size:14px;font-weight:700;color:var(--gn)">${newSt.loc.name}</div><div style="font-size:11px;color:var(--dim);margin-top:2px">${[newSt.loc.address,newSt.loc.city].filter(Boolean).join(', ')||'No address'}</div></div><button style="font-size:11px;color:var(--dim);background:none;border:none;cursor:pointer" onclick="newSt.loc=null;renderNew()">Change</button></div></div>`
+  }else if(!newSt.creating){
+    h+=`<div class="ac-wrap"><input class="srch" id="nq" placeholder="Start typing customer name..." oninput="nSearch(this.value)" onfocus="nSearch(this.value)"><div class="ac-drop" id="nDrop"></div></div>`
+  }else{
+    h+=`<div class="inl"><div class="inl-h"><span>New Customer</span><button onclick="newSt.creating=false;renderNew()">Cancel</button></div>
+      <input id="nn" placeholder="Business name" value="${document.getElementById('nn')?.value||''}">
+      <input id="na" placeholder="Address">
+      <div class="r3"><input id="nc" placeholder="City"><input id="ns" placeholder="ST" value="TX"><input id="nz" placeholder="Zip"></div>
+      <div class="r2"><input id="nct" placeholder="Contact name"><input id="np" placeholder="Phone"></div>
+      <input id="ne" placeholder="Email (optional)">
+    </div>`
+  }
+  h+=`</div>`
+
+  // Billing
+  h+=`<div class="fi"><button class="tc" style="width:100%"><button style="width:100%;padding:10px;border-radius:10px;font-size:12px;font-weight:700;border:1px solid var(--bd);background:${newSt.creatingBa||newSt.ba?'var(--brs)':'var(--s1)'};color:${newSt.creatingBa||newSt.ba?'var(--br)':'var(--dim)'};cursor:pointer" onclick="newSt.creatingBa=!newSt.creatingBa;newSt.ba=null;renderNew()">${newSt.ba?'✓ Billing: '+newSt.ba.name:newSt.creatingBa?'✓ Different billing entity':'Bills to a different entity?'}</button></div>`
+
+  // Date/Time
+  h+=`<div class="fi"><div class="row"><div><label>Date</label><input type="date" id="nd" value="${new Date(Date.now()+86400000).toISOString().split('T')[0]}"></div><div><label>Time</label><input type="time" id="nt" value="09:00"></div></div></div>`
+
+  // Type
+  h+=`<div class="fi"><label>Call Type</label><div class="tc" id="typeC">`
+  ;[['inspection','Inspection'],['emergency','Emergency $500'],['emergency_after_hrs','After Hrs $750'],['emergency_holiday','Holiday $1K'],['misc','Misc']].forEach(([k,v])=>{
+    h+=`<button data-k="${k}" class="${k==='inspection'?'on':''}" onclick="document.querySelectorAll('#typeC button').forEach(b=>b.classList.remove('on'));this.classList.add('on')">${v}</button>`
+  })
+  h+=`</div></div>`
+
+  // Scope
+  h+=`<div class="fi"><label>Scope</label><div class="tc" id="scopeC">`
+  ;[['extinguishers','Extinguishers'],['suppression','Suppression'],['elights','E-Lights'],['hydro','Hydro']].forEach(([k,v])=>{
+    const on=k==='extinguishers'||k==='suppression'
+    h+=`<button data-k="${k}" class="${on?'gon':''}" onclick="this.classList.toggle('gon')">${v}</button>`
+  })
+  h+=`</div></div>`
+
+  // Notes
+  h+=`<div class="fi"><label>Notes</label><textarea id="nno" placeholder="Any notes..."></textarea></div>`
+
+  // Submit
+  h+=`<button class="pbtn" onclick="saveNew()">Create Job</button>`
+
+  h+=`</div>`
+  document.getElementById('newOv').innerHTML=h
+}
+
+function nSearch(q){
+  const drop=document.getElementById('nDrop');if(!drop)return
+  if(q.length<1){drop.classList.remove('vis');return}
+  const filt=D.locs.filter(l=>l.name.toLowerCase().includes(q.toLowerCase())||(l.city||'').toLowerCase().includes(q.toLowerCase()))
+  const showCreate=q.length>=2&&!filt.some(l=>l.name.toLowerCase()===q.toLowerCase())
+  let h=''
+  filt.forEach(l=>{h+=`<div class="ac-item" onclick="newSt.loc={id:'${l.id}',name:'${l.name.replace(/'/g,"\\'")}',address:'${(l.address||'').replace(/'/g,"\\'")}',city:'${(l.city||'').replace(/'/g,"\\'")}',billing_account_id:'${l.billing_account_id||''}'};renderNew()"><div class="ac-n">${l.name}</div><div class="ac-d">${[l.address,l.city].filter(Boolean).join(', ')}</div></div>`})
+  if(showCreate)h+=`<div class="ac-create" onclick="newSt.creating=true;renderNew();setTimeout(()=>{const el=document.getElementById('nn');if(el)el.value='${q.replace(/'/g,"\\'")}'},50)"><div class="ac-n">+ Create "${q}"</div><div class="ac-d">Add as new customer</div></div>`
+  if(!filt.length&&!showCreate)h=`<div class="ac-item"><div class="ac-d">Keep typing...</div></div>`
+  drop.innerHTML=h;drop.classList.add('vis')
+}
+
+async function saveNew(){
+  let locId=newSt.loc?.id
+  let baId=newSt.loc?.billing_account_id||null
+
+  // Create new customer if needed
+  if(newSt.creating){
+    const nn=document.getElementById('nn')?.value?.trim()
+    if(!nn){toast('Enter a business name');return}
+    const{data:nl,error}=await sb.from('locations').insert({
+      name:nn,
+      address:document.getElementById('na')?.value?.trim()||null,
+      city:document.getElementById('nc')?.value?.trim()||null,
+      state:document.getElementById('ns')?.value?.trim()||'TX',
+      zip:document.getElementById('nz')?.value?.trim()||null,
+      contact_name:document.getElementById('nct')?.value?.trim()||null,
+      contact_phone:document.getElementById('np')?.value?.trim()||null,
+      contact_email:document.getElementById('ne')?.value?.trim()||null,
+      is_brycer_jurisdiction:(document.getElementById('nc')?.value||'').toLowerCase().includes('fort worth'),
+      brycer_ahj_name:(document.getElementById('nc')?.value||'').toLowerCase().includes('fort worth')?'Fort Worth Fire Department':null
+    }).select().single()
+    if(error){toast('Error creating customer');console.error(error);return}
+    locId=nl.id
+  }
+
+  if(!locId){toast('Select or create a customer');return}
+
+  const type=document.querySelector('#typeC button.on')?.dataset?.k||'inspection'
+  const scope=Array.from(document.querySelectorAll('#scopeC button.gon')).map(b=>b.dataset.k)
+  const date=document.getElementById('nd')?.value
+  const time=document.getElementById('nt')?.value
+  const notes=document.getElementById('nno')?.value?.trim()||null
+
+  const{error}=await sb.from('jobs').insert({location_id:locId,billing_account_id:baId,type,scope,scheduled_date:date,scheduled_time:time,status:'scheduled',notes})
+  if(error){toast('Error creating job');console.error(error);return}
+
+  toast('Job created')
+  closeNew();await load();rJobs()
+}
+
+// ════════════════════════════════════════
+// CUSTOMERS VIEW
+// ════════════════════════════════════════
+function rCust(){
+  let h=`<div class="hd" style="margin-top:12px"><h3>Customers (${D.locs.length})</h3></div><input class="srch" placeholder="Search customers..." oninput="fCust(this.value)"><div id="cList">${cListH(D.locs)}</div>`
+  document.getElementById('custC').innerHTML=h
+}
+
+function cListH(ls){
+  if(!ls.length)return`<div class="ey"><div class="ei">👤</div><div class="et">No customers yet.</div></div>`
+  return ls.map(l=>`<div class="cc"><div class="cn">${l.name}</div><div class="ca">${[l.address,l.city].filter(Boolean).join(', ')||'No address'}</div><div class="inf"><div><b>${l.extinguishers?.length||0}</b> ext</div><div><b>${l.suppression_systems?.length||0}</b> systems</div>${l.emergency_lights?.[0]?.fixture_count?`<div><b>${l.emergency_lights[0].fixture_count}</b> lights</div>`:''}${l.billing_account?`<div>Bills to: <b>${l.billing_account.name}</b></div>`:''}${l.is_brycer_jurisdiction?'<div class="brflag">BRYCER</div>':''}</div></div>`).join('')
+}
+
+function fCust(q){
+  const f=D.locs.filter(l=>l.name.toLowerCase().includes(q.toLowerCase())||(l.city||'').toLowerCase().includes(q.toLowerCase())||(l.address||'').toLowerCase().includes(q.toLowerCase()))
+  document.getElementById('cList').innerHTML=cListH(f)
+}
+
+// ════════════════════════════════════════
+// MONEY VIEW
+// ════════════════════════════════════════
+function rMoney(){
+  const pd=D.invs.filter(i=>i.status==='paid').reduce((s,i)=>s+(+i.total),0)
+  const ow=D.invs.filter(i=>i.status!=='paid'&&i.status!=='void').reduce((s,i)=>s+(+i.total),0)
+  let h=`<div class="row2"><div class="card"><div class="n g">$${pd.toLocaleString()}</div><div class="l">Collected</div></div><div class="card"><div class="n r">$${ow.toLocaleString()}</div><div class="l">Outstanding</div></div></div><div class="hd"><h3>Recent Invoices</h3></div>`
+  if(!D.invs.length)h+=`<div class="ey"><div class="ei">💰</div><div class="et">No invoices yet.</div></div>`
+  else D.invs.forEach(i=>{
+    const d=new Date(i.date).toLocaleDateString('en-US',{month:'short',day:'numeric'})
+    const bc=i.status==='paid'?'p':i.status==='sent'?'s':i.status==='overdue'?'o':'d'
+    h+=`<div class="ic"><div class="ir"><div class="in">${i.invoice_number||'—'}</div><span class="bg ${bc}">${i.status}</span></div><div style="font-size:11px;color:var(--dim)">${d}</div><div class="mono" style="font-size:14px;font-weight:700;margin-top:4px">$${(+i.total).toLocaleString()}</div></div>`
+  })
+  document.getElementById('moneyC').innerHTML=h
+}
+
+// ════════════════════════════════════════
+// TOAST
+// ════════════════════════════════════════
+function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('vis');setTimeout(()=>t.classList.remove('vis'),2500)}
+
+// ════════════════════════════════════════
+// INIT
+// ════════════════════════════════════════
+async function init(){
+  await load()
+  const hr=new Date().getHours()
+  const g=hr<12?'morning':hr<17?'afternoon':'evening'
+  callAI(`I just opened the app. Give me my ${g} briefing — what's today, what's overdue, what do I need on the truck. Be concise.`)
+}
+init()
+</script>
+</body>
+</html>
