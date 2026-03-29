@@ -36,6 +36,33 @@
   -- Add service date tracking to extinguishers
   alter table extinguishers add column if not exists last_internal text;
   alter table extinguishers add column if not exists last_hydro text;
+
+  -- Portal tokens
+  create table portal_tokens (
+    id uuid default gen_random_uuid() primary key,
+    token text unique not null,
+    location_id uuid references locations(id),
+    billing_account_id uuid,
+    is_active boolean default true,
+    last_accessed_at timestamptz,
+    created_at timestamptz default now()
+  );
+  alter table portal_tokens enable row level security;
+  create policy "allow all" on portal_tokens for all using (true) with check (true);
+
+  -- Service requests from portal
+  create table service_requests (
+    id uuid default gen_random_uuid() primary key,
+    location_id uuid references locations(id),
+    billing_account_id uuid,
+    job_id uuid,
+    requested_date date,
+    reason text,
+    status text default 'pending',
+    created_at timestamptz default now()
+  );
+  alter table service_requests enable row level security;
+  create policy "allow all" on service_requests for all using (true) with check (true);
 -->
 <!DOCTYPE html>
 <html lang="en">
@@ -319,7 +346,7 @@ document.addEventListener('touchend',e=>{
 document.getElementById('invOv').addEventListener('click',function(e){if(e.target===this)this.classList.remove('open')})
 
 async function load(){
-  const[j,l,i,b,r,ci,td2,mz,bq,tk]=await Promise.all([
+  const[j,l,i,b,r,ci,td2,mz,bq,tk,sr,pt]=await Promise.all([
     SB.from('jobs').select('*,location:locations(*)').order('scheduled_date').order('scheduled_time'),
     SB.from('locations').select('*,extinguishers(id,type,size,serial_number,location_in_building,manufacture_date,last_internal,last_hydro),suppression_systems(id,system_type,category,tank_count,nozzle_count,fusible_link_count),emergency_lights(id,fixture_count),billing_account:billing_accounts(*)').order('name'),
     SB.from('invoices').select('*').order('date',{ascending:false}).limit(100),
@@ -329,7 +356,9 @@ async function load(){
     SB.from('todos').select('*').eq('done',false).order('created_at'),
     SB.from('mazon_queue').select('*').order('created_at',{ascending:false}),
     SB.from('brycer_queue').select('*').eq('submitted',false).order('created_at'),
-    SB.from('techs').select('*').order('name')
+    SB.from('techs').select('*').order('name'),
+    SB.from('service_requests').select('*').eq('status','pending').order('created_at',{ascending:false}),
+    SB.from('portal_tokens').select('*').order('created_at',{ascending:false})
   ])
   if(j.error)console.error('jobs error:',j.error)
   if(l.error)console.error('locations error:',l.error)
@@ -348,6 +377,8 @@ async function load(){
   D.mazonQueue=mz.data||[]
   D.brycerQueue=bq.data||[]
   D.techs=tk.data||[]
+  D.serviceRequests=sr.data||[]
+  D.portalTokens=pt.data||[]
 }
 
 const td=()=>new Date().toISOString().split('T')[0]
@@ -428,6 +459,37 @@ function showItemsNeeded(){
   }
   h+=`</div>`
   push(h)
+}
+
+async function openServiceRequests(){
+  const{data:reqs}=await SB.from('service_requests').select('*').eq('status','pending').order('created_at',{ascending:false})
+  const items=reqs||[]
+  let h=`<div class="ov-hdr"><button class="ov-back" onclick="pop()">‹</button><div class="ov-title">Customer Requests · ${items.length}</div></div><div class="ov-body">`
+  if(!items.length)h+=`<div class="ey"><div class="ey-t">No pending requests</div></div>`
+  else items.forEach(r=>{
+    const loc=D.locs.find(l=>l.id===r.location_id)||{}
+    const dt=r.created_at?new Date(r.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):''
+    h+=`<div style="background:var(--c1);border:1px solid var(--b1);border-radius:var(--r);padding:14px;margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
+        <div style="font-size:14px;font-weight:700">${esc(loc.name||'Unknown')}</div>
+        <span style="font-size:10px;color:var(--g1)">${dt}</span>
+      </div>
+      <div style="font-size:13px;color:var(--w2);margin-bottom:4px">${esc(r.reason||'')}</div>
+      ${r.requested_date?`<div style="font-size:12px;color:var(--fire);font-weight:700">Requested: ${new Date(r.requested_date+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})}</div>`:''}
+      <div style="display:flex;gap:6px;margin-top:10px">
+        <button class="qa-btn ok2" style="flex:1;font-size:11px" onclick="handleServiceReq('${r.id}','approved')">Approve & Schedule</button>
+        <button class="qa-btn" style="flex:1;font-size:11px;background:var(--c2);color:var(--g1);border-color:var(--b1)" onclick="handleServiceReq('${r.id}','acknowledged')">Acknowledge</button>
+      </div>
+    </div>`
+  })
+  h+=`</div>`
+  push(h)
+}
+
+async function handleServiceReq(reqId,status){
+  await SB.from('service_requests').update({status}).eq('id',reqId)
+  await load();toast(status==='approved'?'Approved — schedule the job':'Acknowledged')
+  pop();if(D.serviceRequests?.length)openServiceRequests();rDash()
 }
 
 async function openBrycerQueue(){
@@ -1290,6 +1352,18 @@ function rDash(){
           <div style="font-size:11px;color:var(--w2);margin-top:2px">${brycerPending.length} pending submission${brycerPending.length>1?'s':''}</div>
         </div>
         <span style="background:var(--warn);color:#000;font-size:13px;font-weight:900;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center">${brycerPending.length}</span>
+      </div>
+    </div>`
+  }
+  // service requests from portal
+  const svcReqs=D.serviceRequests||[]
+  if(svcReqs.length){
+    h+=`<div style="background:var(--infos);border:1.5px solid var(--info);border-radius:var(--r);padding:12px 14px;margin-bottom:16px;cursor:pointer" onclick="openServiceRequests()">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div><span style="font-size:13px;font-weight:800;color:var(--info)">Customer Requests</span>
+          <div style="font-size:11px;color:var(--w2);margin-top:2px">${svcReqs.length} pending request${svcReqs.length>1?'s':''}</div>
+        </div>
+        <span style="background:var(--info);color:#fff;font-size:13px;font-weight:900;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center">${svcReqs.length}</span>
       </div>
     </div>`
   }
@@ -3467,6 +3541,13 @@ async function sendInvoiceEmail(invId,toEmail,custName,invNum,btn){
   const total=ls.reduce((s,l)=>s+(+l.total||0),0)||+inv.total||0
   const loc=D.locs.find(x=>x.id===inv.location_id)||{}
 
+  // generate portal link
+  let portalUrl=''
+  try{
+    const pToken=await getOrCreatePortalToken(inv.location_id,loc.billing_account_id||null)
+    if(pToken)portalUrl='https://stephensadvanced.com/portal?t='+pToken
+  }catch(e){console.error('portal token:',e)}
+
   const html=buildInvoiceEmailHtml({
     invNum:inv.invoice_number||invNum,
     custName:custName||loc.name||'',
@@ -3474,7 +3555,8 @@ async function sendInvoiceEmail(invId,toEmail,custName,invNum,btn){
     date:inv.date?new Date(inv.date).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):'',
     dueDate:inv.due_date?new Date(inv.due_date).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):'',
     lines:ls,
-    total
+    total,
+    portalUrl
   })
 
   try{
@@ -3508,7 +3590,21 @@ async function sendInvoiceEmail(invId,toEmail,custName,invNum,btn){
   }
 }
 
-function buildInvoiceEmailHtml({invNum,custName,addr,date,dueDate,lines,total}){
+async function getOrCreatePortalToken(locId,baId){
+  // check for existing token
+  const col=baId?'billing_account_id':'location_id'
+  const val=baId||locId
+  if(!val)return null
+  const{data:existing}=await SB.from('portal_tokens').select('token').eq(col,val).eq('is_active',true).limit(1)
+  if(existing?.[0])return existing[0].token
+  // generate new token
+  const arr=new Uint8Array(16);crypto.getRandomValues(arr)
+  const token=Array.from(arr,b=>b.toString(16).padStart(2,'0')).join('')
+  await SB.from('portal_tokens').insert({token,location_id:locId||null,billing_account_id:baId||null})
+  return token
+}
+
+function buildInvoiceEmailHtml({invNum,custName,addr,date,dueDate,lines,total,portalUrl}){
   const lineRows=lines.map(l=>{const isTrv=(l.description||'').startsWith('Travel —');return`
     <tr>
       <td style="padding:10px 0;border-bottom:1px solid #f0f0f0;font-size:14px;color:${isTrv?'#f59e0b':'#333'}">${isTrv?'🚗 ':''}${l.description||''}${l.quantity>1?' ×'+l.quantity:''}</td>
@@ -3539,6 +3635,10 @@ function buildInvoiceEmailHtml({invNum,custName,addr,date,dueDate,lines,total}){
         To pay by check, make payable to <strong>Stephens Advanced LLC</strong>.<br>
         Questions? Reply to this email or call <strong>(214) 994-4799</strong>.
       </div>
+      ${portalUrl?`<div style="margin-top:20px;text-align:center">
+        <a href="${portalUrl}" style="display:inline-block;padding:14px 32px;background:#f05a28;color:#fff;text-decoration:none;border-radius:8px;font-size:14px;font-weight:800;letter-spacing:.3px">View Your Customer Portal</a>
+        <div style="font-size:11px;color:#aaa;margin-top:8px">View your equipment, service history, reports & upcoming inspections</div>
+      </div>`:''}
     </td></tr>
     <tr><td style="padding:20px 32px;background:#fafafa;font-size:11px;color:#aaa;text-align:center;border-top:1px solid #eee">
       Stephens Advanced LLC · Fire Suppression &amp; Safety · DFW Texas<br>jonathan@stephensadvanced.com · (214) 994-4799
@@ -3700,12 +3800,14 @@ async function sendInvoiceEmailFromDetail(invId,custName,invNum){
   const ls=lines||[]
   const total=ls.reduce((s,l)=>s+(+l.total||0),0)||+inv.total||0
   const loc=D.locs.find(x=>x.id===inv.location_id)||{}
+  let portalUrl2=''
+  try{const pTk=await getOrCreatePortalToken(inv.location_id,loc.billing_account_id||null);if(pTk)portalUrl2='https://stephensadvanced.com/portal?t='+pTk}catch(e){}
   const html=buildInvoiceEmailHtml({
     invNum:inv.invoice_number||invNum,custName:custName||loc.name||'',
     addr:[loc.address,loc.city,loc.state,loc.zip].filter(Boolean).join(', '),
     date:inv.date?new Date(inv.date).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):'',
     dueDate:inv.due_date?new Date(inv.due_date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'',
-    lines:ls,total
+    lines:ls,total,portalUrl:portalUrl2
   })
   // attach ALL inspection reports for this job
   let attachments=[]

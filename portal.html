@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<meta name="theme-color" content="#ffffff">
+<title>Stephens Advanced — Customer Portal</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--fire:#f05a28;--ok:#10b981;--warn:#f59e0b;--bad:#ef4444;--r:12px;--rs:8px}
+body{font-family:'Inter',system-ui,sans-serif;background:#f8f9fb;color:#1a1a2e;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+.wrap{max-width:640px;margin:0 auto;padding:0 16px 80px}
+.hdr{background:#fff;border-bottom:1px solid #e8eaed;padding:20px 16px;margin-bottom:24px}
+.hdr-inner{max-width:640px;margin:0 auto;display:flex;align-items:center;gap:12px}
+.logo{display:flex;align-items:center;gap:8px;font-size:18px;font-weight:900;letter-spacing:-.5px;color:#1a1a2e}
+.logo span{color:var(--fire)}
+.cust-name{font-size:12px;color:#888;margin-top:2px}
+.card{background:#fff;border:1px solid #e8eaed;border-radius:var(--r);padding:20px;margin-bottom:16px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+.card-t{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:#999;margin-bottom:12px}
+.welcome{background:linear-gradient(135deg,var(--fire),#d44a1a);border-radius:var(--r);padding:24px;margin-bottom:20px;color:#fff}
+.welcome h1{font-size:22px;font-weight:900;margin-bottom:4px}
+.welcome p{font-size:13px;opacity:.85;line-height:1.5}
+.stat-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px}
+.stat{background:#fff;border:1px solid #e8eaed;border-radius:var(--r);padding:16px;text-align:center}
+.stat-n{font-size:24px;font-weight:900;color:var(--fire)}
+.stat-l{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#999;margin-top:4px}
+.loc{border-bottom:1px solid #f0f0f0;padding:14px 0}
+.loc:last-child{border-bottom:none}
+.loc-nm{font-size:15px;font-weight:700}
+.loc-addr{font-size:12px;color:#888;margin-top:2px}
+.loc-eq{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+.eq-tag{font-size:10px;font-weight:700;padding:4px 10px;border-radius:20px;background:#f0f4f8;color:#555}
+.inv-row{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #f0f0f0}
+.inv-row:last-child{border-bottom:none}
+.inv-num{font-size:13px;font-weight:700}
+.inv-date{font-size:11px;color:#888}
+.inv-amt{font-size:16px;font-weight:800}
+.badge{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;padding:3px 10px;border-radius:20px}
+.b-paid{background:#d1fae5;color:#059669}
+.b-sent{background:#e0e7ff;color:#4f46e5}
+.b-draft{background:#f3f4f6;color:#6b7280}
+.b-over{background:#fee2e2;color:#dc2626}
+.job-row{padding:12px 0;border-bottom:1px solid #f0f0f0}
+.job-row:last-child{border-bottom:none}
+.job-date{font-size:14px;font-weight:700}
+.job-scope{font-size:11px;color:#888;margin-top:2px}
+.eq-item{padding:10px 0;border-bottom:1px solid #f0f0f0;display:flex;justify-content:space-between;align-items:center}
+.eq-item:last-child{border-bottom:none}
+.eq-name{font-size:13px;font-weight:600}
+.eq-detail{font-size:11px;color:#888}
+.req-form{margin-top:12px}
+.req-form input,.req-form textarea,.req-form select{width:100%;padding:12px;border:1.5px solid #e0e0e0;border-radius:var(--rs);font-size:14px;font-family:inherit;margin-bottom:10px;background:#fff;color:#1a1a2e}
+.req-form input:focus,.req-form textarea:focus{border-color:var(--fire);outline:none}
+.req-form textarea{min-height:80px;resize:none}
+.btn{width:100%;padding:14px;border-radius:var(--r);background:var(--fire);color:#fff;font-size:15px;font-weight:800;border:none;cursor:pointer;min-height:50px}
+.btn:active{opacity:.9}
+.btn-dim{width:100%;padding:12px;border-radius:var(--r);background:#f3f4f6;color:#555;font-size:13px;font-weight:700;border:none;cursor:pointer;margin-top:8px}
+.footer{text-align:center;padding:32px 16px;font-size:11px;color:#bbb}
+.footer a{color:var(--fire);text-decoration:none}
+.empty{text-align:center;padding:40px;color:#ccc;font-size:13px}
+.tab-bar{display:flex;gap:4px;margin-bottom:16px;background:#fff;border:1px solid #e8eaed;border-radius:var(--r);padding:4px;overflow-x:auto}
+.tab{flex:1;padding:10px 8px;border-radius:var(--rs);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;text-align:center;color:#888;cursor:pointer;white-space:nowrap;border:none;background:none}
+.tab.on{background:var(--fire);color:#fff}
+.note{background:#fffbf5;border:1px solid #fed7aa;border-radius:var(--rs);padding:14px;margin-bottom:16px;font-size:12px;color:#92400e;line-height:1.6}
+.loading{text-align:center;padding:80px;color:#999;font-size:14px}
+@media(max-width:480px){.stat-row{grid-template-columns:1fr 1fr 1fr}.stat-n{font-size:20px}}
+</style>
+</head>
+<body>
+<div class="hdr">
+  <div class="hdr-inner">
+    <svg width="28" height="32" viewBox="0 0 32 38" fill="none"><path d="M16 2C16 2 6 10 6 20C6 26 10 30 16 30C22 30 26 26 26 20C26 10 16 2 16 2Z" fill="#f05a28"/><path d="M16 8C16 8 10 14 10 20C10 23 12 25 14 26C13 23 14 20 16 18C18 20 19 23 18 26C20 25 22 23 22 20C22 14 16 8 16 8Z" fill="#ff7847"/><ellipse cx="16" cy="30" rx="5" ry="6" fill="#3498db"/><ellipse cx="16" cy="29" rx="3" ry="3.5" fill="#5dade2"/></svg>
+    <div>
+      <div class="logo">Stephens <span>Advanced</span></div>
+      <div class="cust-name" id="portalCustName">Customer Portal</div>
+    </div>
+  </div>
+</div>
+
+<div class="wrap" id="portalContent">
+  <div class="loading" id="portalLoading">
+    <div style="font-size:32px;margin-bottom:12px;opacity:.3">🔒</div>
+    Loading your portal...
+  </div>
+</div>
+
+<div class="footer">
+  Stephens Advanced LLC · Fire Suppression & Safety<br>
+  <a href="tel:2149944799">(214) 994-4799</a> · <a href="mailto:jonathan@stephensadvanced.com">jonathan@stephensadvanced.com</a><br><br>
+  Need your W-9 or COI? <a href="mailto:jonathan@stephensadvanced.com?subject=W-9%20or%20COI%20Request">Request via email</a>
+</div>
+
+<script>
+const SB=supabase.createClient('https://motjasdokoxwiodwzyps.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1vdGphc2Rva294d2lvZHd6eXBzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzNDI2NTcsImV4cCI6MjA4ODkxODY1N30.IMf0plnDRhVgts9LjJr219Tax4J175iuWN1u6ZKTZ-I',{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}})
+
+const esc=s=>(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')
+const fmt=n=>'$'+Math.round(n||0).toLocaleString()
+let _portalData={}
+let _activeTab='overview'
+
+async function initPortal(){
+  const params=new URLSearchParams(window.location.search)
+  const token=params.get('t')
+  if(!token){showError('No access token provided. Use the link from your invoice email.');return}
+
+  // validate token
+  const{data:tk,error}=await SB.from('portal_tokens').select('*').eq('token',token).eq('is_active',true).single()
+  if(error||!tk){showError('This portal link is invalid or has been deactivated. Contact Stephens Advanced at (214) 994-4799.');return}
+
+  // update last accessed
+  await SB.from('portal_tokens').update({last_accessed_at:new Date().toISOString()}).eq('id',tk.id)
+
+  // load data scoped to this billing account or location
+  const locId=tk.location_id
+  const baId=tk.billing_account_id
+
+  // get locations for this token
+  let locs=[]
+  if(baId){
+    const{data}=await SB.from('locations').select('*,extinguishers(id,type,size,location_in_building),suppression_systems(id,system_type,tank_count,nozzle_count,fusible_link_count),emergency_lights(id,fixture_count)').eq('billing_account_id',baId)
+    locs=data||[]
+  }
+  if(locId&&!locs.length){
+    const{data}=await SB.from('locations').select('*,extinguishers(id,type,size,location_in_building),suppression_systems(id,system_type,tank_count,nozzle_count,fusible_link_count),emergency_lights(id,fixture_count)').eq('id',locId)
+    locs=data||[]
+  }
+  if(!locs.length){showError('No locations found for this account.');return}
+
+  const locIds=locs.map(l=>l.id)
+
+  // fetch jobs and invoices
+  const[jobsRes,invsRes,reportsRes]=await Promise.all([
+    SB.from('jobs').select('*').in('location_id',locIds).order('scheduled_date',{ascending:false}),
+    SB.from('invoices').select('*').in('location_id',locIds).order('date',{ascending:false}),
+    SB.from('reports').select('id,report_type,report_data,created_at,job_id').in('location_id',locIds).order('created_at',{ascending:false})
+  ])
+
+  const jobs=jobsRes.data||[]
+  const invs=invsRes.data||[]
+  const reports=reportsRes.data||[]
+  const upcoming=jobs.filter(j=>j.status==='scheduled'&&j.scheduled_date>=new Date().toISOString().split('T')[0])
+  const completed=jobs.filter(j=>j.status==='completed')
+  const totalOwed=invs.filter(i=>!['paid','void','record'].includes(i.status)).reduce((s,i)=>s+(+i.total||0),0)
+
+  _portalData={locs,jobs,invs,reports,upcoming,completed,totalOwed,locIds,token:tk}
+
+  document.getElementById('portalCustName').textContent=locs[0]?.name||(locs.length+' locations')
+  renderPortal()
+}
+
+function renderPortal(){
+  const{locs,jobs,invs,reports,upcoming,completed,totalOwed}=_portalData
+  const content=document.getElementById('portalContent')
+
+  let h=`<div class="welcome">
+    <h1>Welcome</h1>
+    <p>View your fire protection service history, equipment, invoices, and upcoming inspections. We appreciate your business.</p>
+  </div>
+
+  <div class="stat-row">
+    <div class="stat"><div class="stat-n">${locs.length}</div><div class="stat-l">Location${locs.length!==1?'s':''}</div></div>
+    <div class="stat"><div class="stat-n">${completed.length}</div><div class="stat-l">Services</div></div>
+    <div class="stat"><div class="stat-n">${upcoming.length}</div><div class="stat-l">Upcoming</div></div>
+  </div>
+
+  <div class="tab-bar">
+    <button class="tab${_activeTab==='overview'?' on':''}" onclick="switchTab('overview')">Overview</button>
+    <button class="tab${_activeTab==='equipment'?' on':''}" onclick="switchTab('equipment')">Equipment</button>
+    <button class="tab${_activeTab==='invoices'?' on':''}" onclick="switchTab('invoices')">Invoices</button>
+    <button class="tab${_activeTab==='history'?' on':''}" onclick="switchTab('history')">History</button>
+    <button class="tab${_activeTab==='request'?' on':''}" onclick="switchTab('request')">Request</button>
+  </div>
+
+  <div id="portalTab"></div>`
+
+  content.innerHTML=h
+  renderTab()
+}
+
+function switchTab(tab){
+  _activeTab=tab
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'))
+  document.querySelector(`.tab[onclick="switchTab('${tab}')"]`)?.classList.add('on')
+  renderTab()
+}
+
+function renderTab(){
+  const{locs,jobs,invs,reports,upcoming,completed,totalOwed}=_portalData
+  const wrap=document.getElementById('portalTab')
+  let h=''
+
+  if(_activeTab==='overview'){
+    // upcoming services
+    if(upcoming.length){
+      h+=`<div class="card"><div class="card-t">Upcoming Services</div>`
+      upcoming.forEach(j=>{
+        const loc=locs.find(l=>l.id===j.location_id)
+        const dt=j.scheduled_date?new Date(j.scheduled_date+'T12:00:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'}):''
+        h+=`<div class="job-row">
+          <div class="job-date">${dt}</div>
+          <div class="job-scope">${esc(loc?.name||'')} · ${(j.scope||[]).join(', ')}${j.scheduled_time?' · '+j.scheduled_time.slice(0,5):''}</div>
+        </div>`
+      })
+      h+=`</div>`
+    }else{
+      h+=`<div class="note">No upcoming services currently scheduled. Need an inspection? Use the Request tab to let us know.</div>`
+    }
+
+    // locations summary
+    h+=`<div class="card"><div class="card-t">Your Locations</div>`
+    locs.forEach(l=>{
+      const extCount=l.extinguishers?.length||0
+      const sysCount=l.suppression_systems?.length||0
+      const lightCount=l.emergency_lights?.[0]?.fixture_count||0
+      h+=`<div class="loc">
+        <div class="loc-nm">${esc(l.name)}</div>
+        <div class="loc-addr">${esc([l.address,l.city,l.state,l.zip].filter(Boolean).join(', '))}</div>
+        <div class="loc-eq">
+          ${extCount?`<span class="eq-tag">${extCount} Extinguisher${extCount!==1?'s':''}</span>`:''}
+          ${sysCount?`<span class="eq-tag">${sysCount} Suppression System${sysCount!==1?'s':''}</span>`:''}
+          ${lightCount?`<span class="eq-tag">${lightCount} E-Light Fixture${lightCount!==1?'s':''}</span>`:''}
+        </div>
+      </div>`
+    })
+    h+=`</div>`
+
+    // outstanding balance
+    if(totalOwed>0){
+      h+=`<div class="card" style="border-color:#fed7aa">
+        <div class="card-t" style="color:var(--warn)">Outstanding Balance</div>
+        <div style="font-size:28px;font-weight:900;color:var(--fire)">${fmt(totalOwed)}</div>
+        <div style="font-size:12px;color:#888;margin-top:4px">Please remit payment to Stephens Advanced LLC</div>
+      </div>`
+    }
+  }
+
+  if(_activeTab==='equipment'){
+    locs.forEach(l=>{
+      h+=`<div class="card"><div class="card-t">${esc(l.name)}</div>`
+      if(l.suppression_systems?.length){
+        h+=`<div style="font-size:10px;font-weight:800;color:#999;text-transform:uppercase;letter-spacing:1px;margin:8px 0 4px">Suppression Systems</div>`
+        l.suppression_systems.forEach(s=>{
+          h+=`<div class="eq-item"><div><div class="eq-name">${esc(s.system_type)}</div><div class="eq-detail">${s.tank_count} tank${s.tank_count!==1?'s':''} · ${s.nozzle_count} nozzles · ${s.fusible_link_count} links</div></div></div>`
+        })
+      }
+      if(l.extinguishers?.length){
+        h+=`<div style="font-size:10px;font-weight:800;color:#999;text-transform:uppercase;letter-spacing:1px;margin:12px 0 4px">Extinguishers</div>`
+        l.extinguishers.forEach(e=>{
+          h+=`<div class="eq-item"><div><div class="eq-name">${esc(e.type)} ${esc(e.size||'')}</div><div class="eq-detail">${esc(e.location_in_building||'')}</div></div></div>`
+        })
+      }
+      if(l.emergency_lights?.[0]?.fixture_count){
+        h+=`<div style="font-size:10px;font-weight:800;color:#999;text-transform:uppercase;letter-spacing:1px;margin:12px 0 4px">Emergency Lighting</div>
+          <div class="eq-item"><div class="eq-name">${l.emergency_lights[0].fixture_count} fixtures</div></div>`
+      }
+      if(!l.suppression_systems?.length&&!l.extinguishers?.length)h+=`<div class="empty">No equipment on file</div>`
+      h+=`</div>`
+    })
+  }
+
+  if(_activeTab==='invoices'){
+    if(!invs.length){h+=`<div class="card"><div class="empty">No invoices on file</div></div>`}
+    else{
+      h+=`<div class="card"><div class="card-t">Invoices</div>`
+      invs.forEach(i=>{
+        const loc=locs.find(l=>l.id===i.location_id)
+        const bc=i.status==='paid'?'b-paid':i.status==='sent'?'b-sent':i.status==='overdue'?'b-over':'b-draft'
+        h+=`<div class="inv-row">
+          <div>
+            <div class="inv-num">${esc(i.invoice_number||'—')}${loc?' · '+esc(loc.name):''}</div>
+            <div class="inv-date">${i.date?new Date(i.date+'T12:00:00').toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):''}</div>
+          </div>
+          <div style="text-align:right">
+            <div class="inv-amt">${fmt(+i.total)}</div>
+            <span class="badge ${bc}">${i.status}</span>
+          </div>
+        </div>`
+      })
+      h+=`</div>`
+    }
+  }
+
+  if(_activeTab==='history'){
+    if(!completed.length){h+=`<div class="card"><div class="empty">No service history yet</div></div>`}
+    else{
+      h+=`<div class="card"><div class="card-t">Service History</div>`
+      completed.slice(0,30).forEach(j=>{
+        const loc=locs.find(l=>l.id===j.location_id)
+        const dt=j.scheduled_date?new Date(j.scheduled_date+'T12:00:00').toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):''
+        const jobReports=reports.filter(r=>r.job_id===j.id)
+        h+=`<div class="job-row">
+          <div class="job-date">${dt}</div>
+          <div class="job-scope">${esc(loc?.name||'')} · ${(j.scope||[]).join(', ')}</div>
+          ${jobReports.length?`<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">${jobReports.map(r=>`<span class="eq-tag" style="background:#e0e7ff;color:#4f46e5">${r.report_type==='extinguisher'?'🧯 Ext Report':r.report_type==='clean_agent'?'🔵 Clean Agent':'📋 Suppression Report'}</span>`).join('')}</div>`:''}
+          ${j.notes?`<div style="font-size:11px;color:#888;margin-top:4px">${esc(j.notes)}</div>`:''}
+        </div>`
+      })
+      h+=`</div>`
+    }
+  }
+
+  if(_activeTab==='request'){
+    h+=`<div class="card">
+      <div class="card-t">Request Service</div>
+      <div class="note">
+        We understand schedules change. If you need your inspection moved up or want to schedule additional service, let us know below. We'll get back to you within one business day.
+      </div>
+      <div class="req-form">
+        <select id="req-loc">
+          ${locs.map(l=>`<option value="${l.id}">${esc(l.name)}</option>`).join('')}
+        </select>
+        <select id="req-type">
+          <option>Move up existing service</option>
+          <option>Schedule new inspection</option>
+          <option>Emergency service needed</option>
+          <option>Question about my account</option>
+          <option>Other</option>
+        </select>
+        <input type="date" id="req-date" placeholder="Preferred date">
+        <textarea id="req-notes" placeholder="Tell us what you need..."></textarea>
+        <button class="btn" id="reqBtn" onclick="submitRequest()">Submit Request</button>
+        <div id="req-status" style="text-align:center;margin-top:8px;font-size:13px;min-height:20px"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-t">Contact Us Directly</div>
+      <div style="font-size:14px;line-height:2">
+        <strong>Jon Stephens</strong><br>
+        📞 <a href="tel:2149944799" style="color:var(--fire);text-decoration:none">(214) 994-4799</a><br>
+        ✉️ <a href="mailto:jonathan@stephensadvanced.com" style="color:var(--fire);text-decoration:none">jonathan@stephensadvanced.com</a>
+      </div>
+    </div>`
+  }
+
+  wrap.innerHTML=h
+}
+
+async function submitRequest(){
+  const btn=document.getElementById('reqBtn')
+  const st=document.getElementById('req-status')
+  btn.textContent='Sending...';btn.disabled=true
+
+  const locId=document.getElementById('req-loc')?.value
+  const type=document.getElementById('req-type')?.value
+  const date=document.getElementById('req-date')?.value
+  const notes=document.getElementById('req-notes')?.value?.trim()
+  const loc=_portalData.locs.find(l=>l.id===locId)||{}
+
+  // save request
+  try{
+    await SB.from('service_requests').insert({
+      location_id:locId,
+      billing_account_id:_portalData.token.billing_account_id||null,
+      requested_date:date||null,
+      reason:type+(notes?' — '+notes:''),
+      status:'pending'
+    })
+  }catch(e){console.error(e)}
+
+  // email notification to Jon
+  try{
+    await fetch('/api/send-email',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        to:'jonathan@stephensadvanced.com',
+        subject:'Service Request — '+loc.name,
+        html:`<div style="font-family:Arial,sans-serif;max-width:500px;margin:20px auto;padding:20px">
+          <h2 style="color:#f05a28;margin-bottom:16px">Customer Service Request</h2>
+          <p><strong>Customer:</strong> ${loc.name||'Unknown'}</p>
+          <p><strong>Location:</strong> ${[loc.address,loc.city].filter(Boolean).join(', ')}</p>
+          <p><strong>Type:</strong> ${type}</p>
+          ${date?`<p><strong>Preferred Date:</strong> ${new Date(date+'T12:00:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'})}</p>`:''}
+          ${notes?`<p><strong>Notes:</strong> ${notes}</p>`:''}
+          <hr style="margin:20px 0;border:none;border-top:1px solid #eee">
+          <p style="font-size:12px;color:#888">Submitted via Customer Portal</p>
+        </div>`
+      })
+    })
+  }catch(e){console.error(e)}
+
+  st.textContent='✓ Request submitted — we\'ll be in touch!'
+  st.style.color='#059669'
+  btn.textContent='Submitted ✓'
+  btn.style.background='#059669'
+}
+
+function showError(msg){
+  document.getElementById('portalContent').innerHTML=`
+    <div style="text-align:center;padding:60px 24px">
+      <div style="font-size:48px;margin-bottom:16px;opacity:.3">🔒</div>
+      <div style="font-size:15px;color:#666;line-height:1.6;max-width:400px;margin:0 auto">${msg}</div>
+      <div style="margin-top:24px"><a href="tel:2149944799" style="color:#f05a28;font-weight:700;text-decoration:none;font-size:16px">(214) 994-4799</a></div>
+    </div>`
+}
+
+initPortal()
+</script>
+</body>
+</html>
