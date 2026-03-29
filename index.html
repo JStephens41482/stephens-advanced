@@ -3897,127 +3897,199 @@ const NFPA10={
 }
 
 let _extRptData=[]
+let _extRptIdx=0
 
-async function openExtReport(jobId){
+async function openExtReport(jobId,editMode){
   const j=D.jobs.find(x=>x.id===jobId);if(!j)return
   const l=D.locs.find(x=>x.id===(j.location_id||j.location?.id))||j.location||{}
   const exts=l.extinguishers||[]
 
-  // load previous report if exists
   const{data:prevRpt}=await SB.from('reports').select('report_data').eq('job_id',jobId).eq('report_type','extinguisher').limit(1)
   const prev=prevRpt?.[0]?.report_data||{}
+  const hasSaved=!!prevRpt?.length
 
   _extRptData=exts.map((e,i)=>{
-    const p=prev.units?.[i]||{}
+    // match by id first, then by index
+    const p=(prev.units||[]).find(u=>u.id===e.id)||(prev.units||[])[i]||{}
     return{
       id:e.id,type:p.type||e.type||'',size:p.size||e.size||'',
       location:p.location||e.location_in_building||'',
       mfgDate:p.mfgDate||e.manufacture_date||'',
-      status:p.status||'',lastInternal:p.lastInternal||'',
-      lastHydro:p.lastHydro||'',condition:p.condition||'pass',
+      lastInternal:p.lastInternal||e.last_internal||'',
+      lastHydro:p.lastHydro||e.last_hydro||'',condition:p.condition||'pass',
       notes:p.notes||'',photoB64:p.photoB64||''
     }
   })
 
-  let h=`<div class="ov-hdr">
-    <button class="ov-back" onclick="pop()">‹</button>
-    <div class="ov-title">Extinguisher Report</div>
-    <button class="ov-act" id="extRptSaveBtn" onclick="saveExtReport('${jobId}')">Save</button>
-  </div><div class="ov-body" style="padding-bottom:200px">
-  <div style="background:var(--c1);border:1px solid var(--b1);border-radius:var(--r);padding:14px;margin-bottom:16px">
-    <div style="font-size:14px;font-weight:700">${esc(l.name||'')}</div>
-    <div style="font-size:12px;color:var(--g1);margin-top:4px">${exts.length} extinguisher${exts.length!==1?'s':''} on file · ${j.scheduled_date||td()}</div>
-  </div>
-  <input type="file" id="extPhotoInput" accept="image/*" capture="environment" style="display:none" onchange="handleExtPhoto(event)">`
-
-  if(!exts.length){
-    h+=`<div style="background:var(--warns);border:1.5px solid var(--warn);border-radius:var(--r);padding:14px;margin-bottom:16px">
-      <div style="font-size:13px;font-weight:700;color:var(--warn)">No extinguishers on file</div>
-      <div style="font-size:12px;color:var(--w2);margin-top:4px">Add extinguishers to this location first, or use the camera below to identify and add them.</div>
-    </div>
-    <button class="trk-btn trk-go" style="margin-bottom:12px" onclick="snapNewExt('${jobId}','${l.id}')">📷 Snap an Extinguisher to Add</button>`
+  // if report exists and not in edit mode, show summary view
+  if(hasSaved&&!editMode){
+    showExtReportSummary(jobId,l)
+    return
   }
 
-  exts.forEach((e,i)=>{
-    const nfpa=NFPA10[e.type]||NFPA10['ABC Dry Chemical']
-    const d=_extRptData[i]
-    // check if internal/hydro are due
-    let internalDue='',hydroDue=''
-    if(nfpa.internal&&d.mfgDate){
-      const mfg=new Date(d.mfgDate+'-01')
-      const nextInt=new Date(mfg);nextInt.setFullYear(nextInt.getFullYear()+nfpa.internal)
-      if(d.lastInternal){const li=new Date(d.lastInternal);nextInt.setTime(li.getTime());nextInt.setFullYear(nextInt.getFullYear()+nfpa.internal)}
-      if(nextInt<=new Date())internalDue='DUE'
-    }
-    if(d.mfgDate){
-      const mfg=new Date(d.mfgDate+'-01')
-      const nextHyd=new Date(mfg);nextHyd.setFullYear(nextHyd.getFullYear()+nfpa.hydro)
-      if(d.lastHydro){const lh=new Date(d.lastHydro);nextHyd.setTime(lh.getTime());nextHyd.setFullYear(nextHyd.getFullYear()+nfpa.hydro)}
-      if(nextHyd<=new Date())hydroDue='DUE'
-    }
+  // edit mode — show one extinguisher at a time
+  _extRptIdx=0
+  if(exts.length)showExtEntry(jobId,l)
+  else showExtEmpty(jobId,l)
+}
 
-    h+=`<div class="trk" style="margin-bottom:12px" id="ext-rpt-${i}">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-        <div style="font-size:14px;font-weight:800">#${i+1} — ${esc(e.type)} ${esc(e.size||'')}</div>
-        <button style="font-size:11px;color:var(--fire);font-weight:700;padding:4px 8px" onclick="snapExtPhoto(${i},'${jobId}')">📷 AI Snap</button>
+function showExtReportSummary(jobId,l){
+  const exts=l.extinguishers||[]
+  let h=`<div class="ov-hdr"><button class="ov-back" onclick="pop()">‹</button><div class="ov-title">Extinguisher Report</div></div><div class="ov-body">
+  <div style="background:var(--c1);border:1px solid var(--b1);border-radius:var(--r);padding:14px;margin-bottom:16px">
+    <div style="font-size:14px;font-weight:700">${esc(l.name||'')}</div>
+    <div style="font-size:12px;color:var(--g1);margin-top:4px">${_extRptData.length} extinguisher${_extRptData.length!==1?'s':''} inspected</div>
+  </div>`
+  _extRptData.forEach((d,i)=>{
+    const nfpa=NFPA10[d.type]||NFPA10['ABC Dry Chemical']
+    const condColor=d.condition==='pass'?'var(--ok)':'var(--bad)'
+    h+=`<div style="background:var(--c1);border:1px solid var(--b1);border-radius:var(--rs);padding:12px;margin-bottom:6px;display:flex;align-items:center;gap:10px">
+      <div style="width:8px;height:8px;border-radius:50%;background:${condColor};flex-shrink:0"></div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:700">${esc(d.type)} ${esc(d.size)}</div>
+        <div style="font-size:11px;color:var(--g1)">${esc(d.location||'')}${d.lastHydro?' · Hydro: '+d.lastHydro:''}${d.lastInternal?' · Int: '+d.lastInternal:''}</div>
+        ${d.notes?`<div style="font-size:10px;color:var(--warn);margin-top:2px">${esc(d.notes)}</div>`:''}
       </div>
-      ${d.photoB64?`<img src="${d.photoB64}" style="width:100%;max-height:120px;object-fit:cover;border-radius:var(--rs);margin-bottom:8px">`:''}
-      <div style="font-size:11px;color:var(--g1);margin-bottom:8px">${esc(e.location_in_building||'Location not set')}${e.manufacture_date?' · Mfg: '+e.manufacture_date:''}</div>
-
-      <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--g2);margin-bottom:6px">NFPA 10 — ${esc(nfpa.hydroLabel)} · ${nfpa.internal?nfpa.intLabel:'No internal required'}</div>
-
-      <div class="ds-row"><div class="ds-lbl">Condition</div><div class="ds-val">
-        <div style="display:flex;gap:4px;justify-content:flex-end">
-          <button style="padding:5px 10px;border-radius:6px;font-size:10px;font-weight:800;border:1.5px solid ${d.condition==='pass'?'var(--ok)':'var(--b1)'};background:${d.condition==='pass'?'var(--oks)':'var(--c2)'};color:${d.condition==='pass'?'var(--ok)':'var(--g2)'}" onclick="_extRptData[${i}].condition='pass';renderExtUnit(${i})">Pass</button>
-          <button style="padding:5px 10px;border-radius:6px;font-size:10px;font-weight:800;border:1.5px solid ${d.condition==='fail'?'var(--bad)':'var(--b1)'};background:${d.condition==='fail'?'var(--bads)':'var(--c2)'};color:${d.condition==='fail'?'var(--bad)':'var(--g2)'}" onclick="_extRptData[${i}].condition='fail';renderExtUnit(${i})">Fail</button>
-        </div>
-      </div></div>
-
-      ${nfpa.internal?`<div class="ds-row"><div class="ds-lbl">Last Internal (6-yr)${internalDue?' <span style="color:var(--bad);font-weight:800">'+internalDue+'</span>':''}</div>
-        <div class="ds-val"><input type="month" value="${d.lastInternal||''}" onchange="_extRptData[${i}].lastInternal=this.value" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:12px;font-weight:600;width:130px"></div>
-      </div>`:''}
-
-      <div class="ds-row"><div class="ds-lbl">Last Hydro (${nfpa.hydro}-yr)${hydroDue?' <span style="color:var(--bad);font-weight:800">'+hydroDue+'</span>':''}</div>
-        <div class="ds-val"><input type="month" value="${d.lastHydro||''}" onchange="_extRptData[${i}].lastHydro=this.value" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:12px;font-weight:600;width:130px"></div>
-      </div>
-
-      <div class="ds-row"><div class="ds-lbl">Notes</div>
-        <div class="ds-val"><input placeholder="Deficiencies, damage..." value="${esc(d.notes||'')}" onchange="_extRptData[${i}].notes=this.value" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:12px;font-weight:600"></div>
-      </div>
+      <span style="font-size:11px;font-weight:800;color:${condColor};text-transform:uppercase">${d.condition||'—'}</span>
     </div>`
   })
-
-  h+=`<div style="display:flex;gap:8px;margin-bottom:12px">
-    <button class="trk-btn" style="flex:1;background:var(--fire);color:#fff;font-size:12px" onclick="snapNewExt('${jobId}','${l.id}')">📷 AI — Snap to Add</button>
-    <button class="trk-btn" style="flex:1;background:var(--c2);border:1.5px solid var(--b1);color:var(--w2);font-size:12px" onclick="manualAddExt('${l.id}','${jobId}')">✏️ Add Manually</button>
-  </div>
-  </div>
+  h+=`</div>
   <div class="ov-foot" style="display:flex;gap:8px">
-    <button class="btn-p" style="flex:1;background:var(--ok)" onclick="saveExtReportAndAdd('${jobId}','${l.id}')">+ Add Next Extinguisher</button>
-    <button class="btn-p" style="flex:1" onclick="saveExtReport('${jobId}')">Save Report</button>
+    <button class="btn-p" style="flex:1" onclick="pop();openExtReport('${jobId}',true)">Edit Report</button>
+    <button class="btn-dim" style="flex:1;margin-top:0" onclick="pop()">← Back</button>
   </div>`
   push(h)
 }
 
-function renderExtUnit(i){
-  // re-render just this unit's condition buttons
-  const el=$('ext-rpt-'+i);if(!el)return
-  // simplest: re-open the whole report
-  // for now just toggle visually
-  const d=_extRptData[i]
-  el.querySelectorAll('button').forEach(b=>{
-    if(b.textContent==='Pass'){
-      b.style.borderColor=d.condition==='pass'?'var(--ok)':'var(--b1)'
-      b.style.background=d.condition==='pass'?'var(--oks)':'var(--c2)'
-      b.style.color=d.condition==='pass'?'var(--ok)':'var(--g2)'
-    }
-    if(b.textContent==='Fail'){
-      b.style.borderColor=d.condition==='fail'?'var(--bad)':'var(--b1)'
-      b.style.background=d.condition==='fail'?'var(--bads)':'var(--c2)'
-      b.style.color=d.condition==='fail'?'var(--bad)':'var(--g2)'
-    }
-  })
+function showExtEmpty(jobId,l){
+  push(`<div class="ov-hdr"><button class="ov-back" onclick="pop()">‹</button><div class="ov-title">Extinguisher Report</div></div><div class="ov-body">
+    <div style="background:var(--warns);border:1.5px solid var(--warn);border-radius:var(--r);padding:14px;margin-bottom:16px">
+      <div style="font-size:13px;font-weight:700;color:var(--warn)">No extinguishers on file</div>
+      <div style="font-size:12px;color:var(--w2);margin-top:4px">Add one to start the report.</div>
+    </div>
+    <input type="file" id="extPhotoInput" accept="image/*" capture="environment" style="display:none" onchange="handleExtPhoto(event)">
+    <div style="display:flex;gap:8px">
+      <button class="trk-btn" style="flex:1;background:var(--fire);color:#fff;font-size:12px" onclick="snapNewExt('${jobId}','${l.id}')">📷 AI Snap</button>
+      <button class="trk-btn" style="flex:1;background:var(--c2);border:1.5px solid var(--b1);color:var(--w2);font-size:12px" onclick="manualAddExt('${l.id}','${jobId}')">✏️ Add Manually</button>
+    </div>
+  </div>`)
 }
+
+function showExtEntry(jobId,l){
+  const i=_extRptIdx
+  const exts=l.extinguishers||[]
+  if(i>=exts.length){
+    // all done — offer to add more or save
+    showExtFinish(jobId,l)
+    return
+  }
+  const e=exts[i]
+  const d=_extRptData[i]
+  const nfpa=NFPA10[e.type]||NFPA10['ABC Dry Chemical']
+  let internalDue='',hydroDue=''
+  if(nfpa.internal&&d.mfgDate){
+    const base=d.lastInternal?new Date(d.lastInternal+'-01'):new Date(d.mfgDate+'-01')
+    const next=new Date(base);next.setFullYear(next.getFullYear()+nfpa.internal)
+    if(next<=new Date())internalDue='DUE'
+  }
+  if(d.mfgDate||d.lastHydro){
+    const base=d.lastHydro?new Date(d.lastHydro+'-01'):new Date(d.mfgDate+'-01')
+    const next=new Date(base);next.setFullYear(next.getFullYear()+nfpa.hydro)
+    if(next<=new Date())hydroDue='DUE'
+  }
+
+  const h=`<div class="ov-hdr"><button class="ov-back" onclick="pop()">‹</button>
+    <div class="ov-title">#${i+1} of ${exts.length}</div>
+    <button class="ov-act" onclick="snapExtPhoto(${i},'${jobId}')">📷 AI</button>
+  </div><div class="ov-body">
+  <input type="file" id="extPhotoInput" accept="image/*" capture="environment" style="display:none" onchange="handleExtPhoto(event)">
+  <div style="background:var(--c1);border:1px solid var(--b1);border-radius:var(--r);padding:14px;margin-bottom:16px">
+    <div style="font-size:18px;font-weight:900">${esc(e.type)} ${esc(e.size||'')}</div>
+    <div style="font-size:12px;color:var(--g1);margin-top:4px">${esc(e.location_in_building||'Location not set')}${e.manufacture_date?' · Mfg: '+e.manufacture_date:''}</div>
+    <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--g2);margin-top:8px">NFPA 10 — ${nfpa.hydroLabel}${nfpa.internal?' · '+nfpa.intLabel:''}</div>
+  </div>
+
+  ${d.photoB64?`<img src="${d.photoB64}" style="width:100%;max-height:140px;object-fit:cover;border-radius:var(--r);margin-bottom:12px">`:''}
+
+  <div class="fg"><label class="fg-l">Condition *</label>
+    <div style="display:flex;gap:8px">
+      <button style="flex:1;padding:14px;border-radius:var(--rs);font-size:14px;font-weight:800;border:2px solid ${d.condition==='pass'?'var(--ok)':'var(--b1)'};background:${d.condition==='pass'?'var(--oks)':'var(--c2)'};color:${d.condition==='pass'?'var(--ok)':'var(--g2)'}" onclick="_extRptData[${i}].condition='pass';this.style.borderColor='var(--ok)';this.style.background='var(--oks)';this.style.color='var(--ok)';this.nextElementSibling.style.borderColor='var(--b1)';this.nextElementSibling.style.background='var(--c2)';this.nextElementSibling.style.color='var(--g2)'">✓ Pass</button>
+      <button style="flex:1;padding:14px;border-radius:var(--rs);font-size:14px;font-weight:800;border:2px solid ${d.condition==='fail'?'var(--bad)':'var(--b1)'};background:${d.condition==='fail'?'var(--bads)':'var(--c2)'};color:${d.condition==='fail'?'var(--bad)':'var(--g2)'}" onclick="_extRptData[${i}].condition='fail';this.style.borderColor='var(--bad)';this.style.background='var(--bads)';this.style.color='var(--bad)';this.previousElementSibling.style.borderColor='var(--b1)';this.previousElementSibling.style.background='var(--c2)';this.previousElementSibling.style.color='var(--g2)'">✕ Fail</button>
+    </div>
+  </div>
+
+  ${nfpa.internal?`<div class="fg"><label class="fg-l">Last Internal (6-yr)${internalDue?' — <span style="color:var(--bad)">DUE</span>':''}</label>
+    <input type="month" id="ext-int-${i}" value="${d.lastInternal||''}" onchange="_extRptData[${i}].lastInternal=this.value">
+  </div>`:''}
+
+  <div class="fg"><label class="fg-l">Last Hydro (${nfpa.hydro}-yr)${hydroDue?' — <span style="color:var(--bad)">DUE</span>':''}</label>
+    <input type="month" id="ext-hyd-${i}" value="${d.lastHydro||''}" onchange="_extRptData[${i}].lastHydro=this.value">
+  </div>
+
+  <div class="fg"><label class="fg-l">Notes / Deficiencies</label>
+    <input id="ext-notes-${i}" value="${esc(d.notes||'')}" onchange="_extRptData[${i}].notes=this.value" placeholder="Damage, expired tags, missing pin...">
+  </div>
+
+  </div>
+  <div class="ov-foot">
+    <button class="btn-p" style="background:var(--ok)" onclick="nextExtEntry('${jobId}')">Next Extinguisher →</button>
+  </div>`
+  push(h)
+}
+
+function nextExtEntry(jobId){
+  // save current entry's values from inputs (in case onchange didn't fire)
+  const i=_extRptIdx
+  const d=_extRptData[i]
+  if(d){
+    const intEl=$('ext-int-'+i);if(intEl)d.lastInternal=intEl.value
+    const hydEl=$('ext-hyd-'+i);if(hydEl)d.lastHydro=hydEl.value
+    const notEl=$('ext-notes-'+i);if(notEl)d.notes=notEl.value
+  }
+  toast(`#${i+1} saved ✓`)
+  _extRptIdx++
+  pop()
+  const j=D.jobs.find(x=>x.id===jobId)||{}
+  const l=D.locs.find(x=>x.id===(j.location_id||j.location?.id))||j.location||{}
+  showExtEntry(jobId,l)
+}
+
+function showExtFinish(jobId,l){
+  const h=`<div class="ov-hdr"><button class="ov-back" onclick="pop()">‹</button><div class="ov-title">All Done</div></div><div class="ov-body">
+    <div style="background:var(--oks);border:1.5px solid var(--ok);border-radius:var(--r);padding:16px;margin-bottom:16px;text-align:center">
+      <div style="font-size:28px;margin-bottom:6px">✓</div>
+      <div style="font-size:15px;font-weight:800;color:var(--ok)">${_extRptData.length} extinguisher${_extRptData.length!==1?'s':''} inspected</div>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:16px">
+      <button class="trk-btn" style="flex:1;background:var(--fire);color:#fff;font-size:12px" onclick="pop();snapNewExt('${jobId}','${l.id}')">📷 Add Another (AI)</button>
+      <button class="trk-btn" style="flex:1;background:var(--c2);border:1.5px solid var(--b1);color:var(--w2);font-size:12px" onclick="pop();manualAddExt('${l.id}','${jobId}')">✏️ Add Manually</button>
+    </div>
+    <input type="file" id="extPhotoInput" accept="image/*" capture="environment" style="display:none" onchange="handleExtPhoto(event)">
+  </div>
+  <div class="ov-foot"><button class="btn-p" onclick="finishExtReport('${jobId}')">Done — Save Report</button></div>`
+  push(h)
+}
+
+async function finishExtReport(jobId){
+  const j=D.jobs.find(x=>x.id===jobId)||{}
+  const locId=j.location_id||j.location?.id
+  const data={units:_extRptData,savedAt:new Date().toISOString()}
+  try{
+    const{data:existing}=await SB.from('reports').select('id').eq('job_id',jobId).eq('report_type','extinguisher').limit(1)
+    if(existing?.length){await SB.from('reports').update({report_data:data}).eq('id',existing[0].id)}
+    else{await SB.from('reports').insert({job_id:jobId,location_id:locId,report_type:'extinguisher',report_data:data})}
+  }catch(e){console.error('ext report save:',e)}
+  for(const d of _extRptData){
+    if(!d.id)continue
+    const upd={};if(d.lastInternal)upd.last_internal=d.lastInternal;if(d.lastHydro)upd.last_hydro=d.lastHydro
+    if(Object.keys(upd).length){try{await SB.from('extinguishers').update(upd).eq('id',d.id)}catch(e){}}
+  }
+  toast('Extinguisher report saved ✓')
+  await load()
+  popAll()
+  openJob(jobId)
+}
+
 
 let _snapExtIdx=-1
 function snapExtPhoto(idx,jobId){
@@ -4167,58 +4239,6 @@ Inspected per NFPA 10 · Stephens Advanced LLC · FEL-A-2593933 · Jon Stephens
 </body></html>`
 }
 
-async function saveExtReport(jobId){
-  const btn=$('extRptSaveBtn');if(btn){btn.textContent='Saving...';btn.style.opacity='.5'}
-  const j=D.jobs.find(x=>x.id===jobId)||{}
-  const locId=j.location_id||j.location?.id
-  const data={units:_extRptData,savedAt:new Date().toISOString()}
-
-  try{
-    const{data:existing}=await SB.from('reports').select('id').eq('job_id',jobId).eq('report_type','extinguisher').limit(1)
-    if(existing?.length){
-      await SB.from('reports').update({report_data:data}).eq('id',existing[0].id)
-    }else{
-      await SB.from('reports').insert({job_id:jobId,location_id:locId,report_type:'extinguisher',report_data:data})
-    }
-  }catch(e){console.error('ext report save:',e)}
-
-  // update extinguisher records with latest internal/hydro dates
-  for(const d of _extRptData){
-    if(!d.id)continue
-    const upd={}
-    if(d.lastInternal)upd.last_internal=d.lastInternal
-    if(d.lastHydro)upd.last_hydro=d.lastHydro
-    if(Object.keys(upd).length){
-      try{await SB.from('extinguishers').update(upd).eq('id',d.id)}catch(e){}
-    }
-  }
-
-  toast('Extinguisher report saved ✓')
-  if(btn){btn.textContent='Save';btn.style.opacity=''}
-  pop()
-}
-
-async function saveExtReportAndAdd(jobId,locId){
-  // save current report first
-  const j=D.jobs.find(x=>x.id===jobId)||{}
-  const lid=locId||j.location_id||j.location?.id
-  const data={units:_extRptData,savedAt:new Date().toISOString()}
-  try{
-    const{data:existing}=await SB.from('reports').select('id').eq('job_id',jobId).eq('report_type','extinguisher').limit(1)
-    if(existing?.length){await SB.from('reports').update({report_data:data}).eq('id',existing[0].id)}
-    else{await SB.from('reports').insert({job_id:jobId,location_id:lid,report_type:'extinguisher',report_data:data})}
-  }catch(e){}
-  for(const d of _extRptData){
-    if(!d.id)continue
-    const upd={};if(d.lastInternal)upd.last_internal=d.lastInternal;if(d.lastHydro)upd.last_hydro=d.lastHydro
-    if(Object.keys(upd).length){try{await SB.from('extinguishers').update(upd).eq('id',d.id)}catch(e){}}
-  }
-  toast('Saved — add next')
-  await load()
-  // go to manual add, which will return to the report
-  pop()
-  manualAddExt(lid,jobId)
-}
 
 // EDIT EQUIPMENT
 function editSupp(sysId,locId){
