@@ -2516,7 +2516,7 @@ async function saveAIInv(ro){
     const nm=$('ai-nc-name')?.value?.trim()
     if(!nm){toast('Select or confirm a customer',false);setLoad('aiSaveBtn',false,'Save Invoice');return}
     const city=$('ai-nc-city')?.value?.trim()||''
-    const baId=_parentBillingId?.startsWith('ba-')?_parentBillingId.slice(3):_parentBillingId?.startsWith('loc-')?null:null
+    const baId=_parentBillingId?.startsWith('ba-')?_parentBillingId.slice(3):null
     const{data:newLoc,error}=await SB.from('locations').insert({
       name:nm,address:$('ai-nc-addr')?.value?.trim()||null,city:city||null,
       state:$('ai-nc-st')?.value?.trim()||'TX',zip:$('ai-nc-zip')?.value?.trim()||null,
@@ -3556,9 +3556,11 @@ async function saveSuppReport(jobId,sysId){
   try{
     // use system_id to allow multiple reports per job
     if(sysId){
-      const{data:existing}=await SB.from('reports').select('id').eq('job_id',jobId).eq('report_data->>sysId',sysId).limit(1)
-      if(existing?.length){
-        await SB.from('reports').update({report_data:{...data,sysId},report_type:'kitchen_suppression'}).eq('id',existing[0].id)
+      // fetch all reports for this job, then find matching sysId in JS
+      const{data:allRpts}=await SB.from('reports').select('id,report_data').eq('job_id',jobId).eq('report_type','kitchen_suppression')
+      const existing=(allRpts||[]).find(r=>r.report_data?.sysId===sysId)
+      if(existing){
+        await SB.from('reports').update({report_data:{...data,sysId}}).eq('id',existing.id)
       }else{
         await SB.from('reports').insert({job_id:jobId,location_id:locId,report_type:'kitchen_suppression',report_data:{...data,sysId}})
       }
@@ -3600,12 +3602,9 @@ function showAdditionalReportOption(jobId,prevLocation){
 function startAdditionalReport(jobId){
   const nextLoc=$('next-sys-loc')?.value?.trim()||''
   pop()
-  // find an unused system ID or use empty
-  const j=D.jobs.find(x=>x.id===jobId)||{}
-  const l=D.locs.find(x=>x.id===(j.location_id||j.location?.id))||j.location||{}
-  const syss=l.suppression_systems||[]
-  const sysId=syss.length>1?syss[syss.length-1].id:(syss[0]?.id||'')
-  openSuppReport(jobId,sysId+'_'+Date.now(),nextLoc)
+  // use a stable ID based on location name so re-saves don't duplicate
+  const stableId='additional_'+norm(nextLoc||'system2')
+  openSuppReport(jobId,stableId,nextLoc)
 }
 
 async function generateSuppReport(jobId,sysId,returnHtml=false){
@@ -4073,8 +4072,15 @@ async function saveCleanAgentReport(jobId,sysId){
     reportHtml:reportHtml||''
   }
   const j=D.jobs.find(x=>x.id===jobId)||{}
+  const locId2=j.location_id||j.location?.id
   try{
-    await SB.from('reports').upsert({job_id:jobId,location_id:j.location_id||j.location?.id,report_type:'clean_agent',report_data:data},{onConflict:'job_id'})
+    // check for existing clean agent report for this job
+    const{data:caExist}=await SB.from('reports').select('id').eq('job_id',jobId).eq('report_type','clean_agent').limit(1)
+    if(caExist?.length){
+      await SB.from('reports').update({report_data:data}).eq('id',caExist[0].id)
+    }else{
+      await SB.from('reports').insert({job_id:jobId,location_id:locId2,report_type:'clean_agent',report_data:data})
+    }
     if(ownerSigData)await SB.from('jobs').update({signature_data:ownerSigData,notes:($('ca-deficiencies')?.value||j.notes||null)}).eq('id',jobId)
   }catch(e){console.error('ca report save:',e)}
   toast('Report saved ✓')
