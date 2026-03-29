@@ -343,6 +343,112 @@ function setLoad(id,on,orig){
   else{b.innerHTML=b.dataset.orig||orig||'Save';b.classList.remove('loading')}
 }
 
+// ═══ ROUTING ENGINE ═══
+// City proximity order from Euless base (lat/lng approximations for DFW)
+const CITY_COORDS={
+  'euless':{lat:32.837,lng:-97.082},'bedford':{lat:32.844,lng:-97.143},
+  'hurst':{lat:32.823,lng:-97.188},'colleyville':{lat:32.900,lng:-97.150},
+  'grapevine':{lat:32.934,lng:-97.078},'irving':{lat:32.814,lng:-96.949},
+  'grand prairie':{lat:32.746,lng:-96.994},'arlington':{lat:32.735,lng:-97.108},
+  'mansfield':{lat:32.563,lng:-97.141},'fort worth':{lat:32.755,lng:-97.333},
+  'dallas':{lat:32.779,lng:-96.800},'garland':{lat:32.912,lng:-96.638},
+  'mesquite':{lat:32.767,lng:-96.599},'carrollton':{lat:32.954,lng:-96.890},
+  'lewisville':{lat:33.046,lng:-96.994},'denton':{lat:33.215,lng:-97.133},
+  'plano':{lat:33.020,lng:-96.699},'frisco':{lat:33.150,lng:-96.824},
+  'mckinney':{lat:33.197,lng:-96.640},'allen':{lat:33.103,lng:-96.671},
+  'richardson':{lat:32.948,lng:-96.730},'sachse':{lat:32.970,lng:-96.578},
+  'wylie':{lat:33.015,lng:-96.539},'melissa':{lat:33.284,lng:-96.571},
+  'weatherford':{lat:32.760,lng:-97.797},'glen rose':{lat:32.233,lng:-97.757},
+  'cleburne':{lat:32.350,lng:-97.386},'burleson':{lat:32.542,lng:-97.321}
+}
+const BASE={lat:32.837,lng:-97.082} // Euless
+
+function cityCoords(city){
+  if(!city)return BASE
+  const k=city.toLowerCase().trim()
+  return CITY_COORDS[k]||BASE
+}
+
+function distBetween(a,b){
+  const R=3959,dLat=(b.lat-a.lat)*Math.PI/180,dLng=(b.lng-a.lng)*Math.PI/180
+  const x=Math.sin(dLat/2)**2+Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*Math.sin(dLng/2)**2
+  return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x))
+}
+
+function routeJobs(jobs){
+  // nearest-neighbor from base
+  let remaining=[...jobs],route=[],cur=BASE
+  while(remaining.length){
+    let best=null,bestD=Infinity,bestI=0
+    remaining.forEach((j,i)=>{
+      const c=cityCoords(j.location?.city)
+      const d=distBetween(cur,c)
+      if(d<bestD){bestD=d;best=j;bestI=i}
+    })
+    route.push({job:best,dist:bestD})
+    cur=cityCoords(best.location?.city)
+    remaining.splice(bestI,1)
+  }
+  return route
+}
+
+function openRouteView(){
+  const t=td()
+  const tom=new Date(Date.now()+86400000).toISOString().split('T')[0]
+  const dat2=new Date(Date.now()+172800000).toISOString().split('T')[0]
+  const ov=D.jobs.filter(j=>j.status==='scheduled'&&j.scheduled_date<t)
+  const tod=D.jobs.filter(j=>j.status==='scheduled'&&j.scheduled_date===t)
+  const tmr=D.jobs.filter(j=>j.status==='scheduled'&&j.scheduled_date===tom)
+  const d2=D.jobs.filter(j=>j.status==='scheduled'&&j.scheduled_date===dat2)
+  const pool=[...ov,...tod,...tmr,...d2]
+  if(!pool.length){toast('No jobs in the next 2 days');return}
+  const routed=routeJobs(pool)
+  let totalDist=routed.reduce((s,r)=>s+r.dist,0)
+  let h=`<div class="ov-hdr">
+    <button class="ov-back" onclick="pop()">‹</button>
+    <div class="ov-title">Route Plan</div>
+    <div class="ov-act" style="font-size:11px;color:var(--g1)">${Math.round(totalDist)} mi est.</div>
+  </div><div class="ov-body">
+  <div style="background:var(--c2);border:1.5px solid var(--info);border-radius:var(--r);padding:12px 14px;margin-bottom:16px">
+    <div style="font-size:10px;font-weight:800;color:var(--info);text-transform:uppercase;letter-spacing:1.2px;margin-bottom:4px">Optimized Route · ${routed.length} stops</div>
+    <div style="font-size:12px;color:var(--g1)">Starting from Euless. Nearest-neighbor routing from overdue + today + next 2 days.</div>
+  </div>`
+  routed.forEach((r,i)=>{
+    const j=r.job,l=j.location||{},a=[l.address,l.city].filter(Boolean).join(', ')
+    const isOv=j.scheduled_date<t
+    const dateLabel=j.scheduled_date===t?'Today':j.scheduled_date===tom?'Tomorrow':isOv?`Overdue (${j.scheduled_date})`:j.scheduled_date
+    h+=`<div style="background:var(--c1);border:1px solid var(--b1);border-radius:var(--r);padding:14px;margin-bottom:8px;display:flex;gap:12px;align-items:flex-start">
+      <div style="background:var(--fire);color:#fff;border-radius:8px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;flex-shrink:0">${i+1}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:14px;font-weight:700">${esc(l.name||'Unknown')}</div>
+        <div style="font-size:11px;color:var(--g1);margin-top:2px">${esc(a)}</div>
+        <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+          <span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:4px;background:${isOv?'var(--bads)':'var(--infos)'};color:${isOv?'var(--bad)':'var(--info)'}">${dateLabel}</span>
+          ${(j.scope||[]).map(s=>`<span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:4px;background:var(--c2);color:var(--g1)">${s}</span>`).join('')}
+          <span style="font-size:10px;color:var(--g1)">${i===0?Math.round(r.dist)+' mi from base':Math.round(r.dist)+' mi from prev'}</span>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:8px">
+          ${a?`<button class="qa-btn" style="font-size:11px;padding:8px 10px" onclick="window.open('https://maps.apple.com/?daddr='+encodeURIComponent('${esc(a)}'))">🗺 Nav</button>`:''}
+          <button class="qa-btn pri" style="font-size:11px;padding:8px 10px" onclick="pop();openJob('${j.id}')">Open Job →</button>
+        </div>
+      </div>
+    </div>`
+  })
+  h+=`<button class="btn-dim" onclick="openFullMap(${JSON.stringify(routed.map(r=>r.job.location?.city||''))})">🗺 Open Full Route in Maps</button>`
+  h+=`</div>`
+  push(h)
+}
+
+function openFullMap(cities){
+  const valid=cities.filter(Boolean)
+  if(!valid.length)return
+  const base='Euless,TX'
+  const dest=valid[valid.length-1]+',TX'
+  const waypoints=valid.slice(0,-1).map(c=>encodeURIComponent(c+',TX')).join('/')
+  const url=`https://maps.apple.com/?saddr=${encodeURIComponent(base)}&daddr=${encodeURIComponent(dest)}${waypoints?'&dirflg=d':''}`
+  window.open(url)
+}
+
 // DASHBOARD
 function rDash(){
   const t=td(),tj=D.jobs.filter(j=>j.scheduled_date===t),ov=D.jobs.filter(j=>j.status==='scheduled'&&j.scheduled_date<t)
@@ -351,6 +457,9 @@ function rDash(){
     <div class="st" style="cursor:pointer;active:opacity:.7" onclick="showStatDrill('today')"><div class="sn o">${tj.length}</div><div class="sl">Today ›</div></div>
     <div class="st" style="cursor:pointer" onclick="showStatDrill('estimated')"><div class="sn g">${fmt(ev)}</div><div class="sl">Estimated ›</div></div>
     <div class="st" style="cursor:pointer" onclick="showStatDrill('overdue')"><div class="sn ${ov.length?'r':'g'}">${ov.length}</div><div class="sl">Overdue ›</div></div>
+  </div>
+  <div style="display:flex;gap:8px;margin-bottom:12px">
+    <button onclick="openRouteView()" style="flex:1;padding:11px;border-radius:var(--r);background:var(--c2);border:1.5px solid var(--info);color:var(--info);font-size:12px;font-weight:800;min-height:44px">🗺 Route My Day</button>
   </div>
   <div class="trk"><div class="trk-top"><div class="trk-t">🔧 Truck Load</div><span class="pill pchk" id="trkP">Check</span></div>
   <div class="chips">`
@@ -720,7 +829,7 @@ async function compJ(id){
 
   await load()
   pop()
-  showInv({num:inv?.invoice_number||'—',nm:l.name||'',addr:[l.address,l.city].filter(Boolean).join(', '),lines,total:sub,ro:false,iid:inv?.id,locId:l.id})
+  showInv({num:inv?.invoice_number||'—',nm:l.name||'',addr:[l.address,l.city].filter(Boolean).join(', '),lines,total:sub,ro:false,iid:inv?.id,locId:l.id,jobId:id,scope:j.scope||[],syss:l.suppression_systems||[]})
 }
 
 function setSt(btn,eid,st){
@@ -1366,6 +1475,19 @@ async function saveManInv(){
 function showInv(d){
   const loc=D.locs.find(x=>x.id===d.locId)||{}
   const toEmail=loc.contact_email||d.email||null
+  const scope=d.scope||[]
+  const syss=d.syss||loc.suppression_systems||[]
+
+  // determine if report should be suggested
+  const hasKitchenSupp=scope.includes('suppression')&&syss.some(s=>{
+    const t=(s.system_type||'').toLowerCase()
+    return t.includes('ansul')||t.includes('pyro')||t.includes('buckeye')||t.includes('kidde')||t.includes('captive')||t.includes('piranha')
+  })
+  const hasCleanAgent=scope.includes('suppression')&&syss.some(s=>{
+    const t=(s.system_type||'').toLowerCase()
+    return t.includes('fm-200')||t.includes('fm200')||t.includes('novec')||t.includes('halon')||t.includes('inergen')||t.includes('co2')||t.includes('clean agent')||t.includes('ansul sentry')||t.includes('sapphire')
+  })
+
   let h=`<div class="inv-p"><h2>Invoice ${d.num}</h2>
     <div class="co">Stephens Advanced LLC · Fire Suppression &amp; Safety · (214) 994-4799</div>
     <div class="dt">${new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</div>
@@ -1373,6 +1495,20 @@ function showInv(d){
   d.lines.forEach(l2=>h+=`<div class="inv-ln"><div class="d">${esc(l2.description||l2.d||'')}</div><div class="a">${fmtD(+l2.total)}</div></div>`)
   h+=`<div class="inv-tot"><div>Total</div><div>${fmtD(d.total)}</div></div>`
   if(d.ro)h+=`<div style="background:#f0f4f8;border-radius:8px;padding:10px 14px;margin-top:14px;font-size:12px;color:#777;text-align:center">Recorded — not sent to customer</div>`
+
+  // report suggestion banner
+  if(d.jobId&&(hasKitchenSupp||hasCleanAgent)){
+    const rptType=hasCleanAgent?'clean_agent':'kitchen'
+    const rptLabel=hasCleanAgent?'Clean Agent System Report':'Kitchen Hood Suppression Report'
+    const rptIcon=hasCleanAgent?'🔵':'🍳'
+    const sysId=syss[0]?.id||''
+    h+=`<div style="background:#fff8f0;border:2px solid #f05a28;border-radius:10px;padding:12px 14px;margin-top:14px">
+      <div style="font-size:11px;font-weight:800;color:#f05a28;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">${rptIcon} Report Required</div>
+      <div style="font-size:13px;color:#333;margin-bottom:10px">Fill out the ${rptLabel} for this job.</div>
+      <button onclick="$('invOv').classList.remove('open');${rptType==='kitchen'?`openSuppReport('${d.jobId}','${sysId}')`:`openCleanAgentReport('${d.jobId}','${sysId}')`}" style="width:100%;padding:12px;border-radius:8px;background:#f05a28;color:#fff;font-size:13px;font-weight:800;border:none;cursor:pointer">${rptIcon} Fill ${rptLabel}</button>
+    </div>`
+  }
+
   h+=`<div class="inv-acts">
     <button class="inv-close" onclick="$('invOv').classList.remove('open');rDash()">Done</button>
     ${!d.ro&&d.iid?`<button class="inv-fwd" id="invSendBtn" onclick="sendInvoiceEmail('${d.iid}','${esc(toEmail||'')}','${esc(d.nm)}','${esc(d.num)}',this)">✉️ Send Email</button>`:''}
@@ -1901,11 +2037,22 @@ function filterInvs(filter){
 }
 
 // ═══ SUPPRESSION SYSTEM REPORT ═══
-function openSuppReport(jobId,sysId){
+async function openSuppReport(jobId,sysId){
   const j=D.jobs.find(x=>x.id===jobId)||{}
   const l=j.location||{}
   const sys=l.suppression_systems?.find(s=>s.id===sysId)||l.suppression_systems?.[0]||{}
   const a=[l.address,l.city,l.state,l.zip].filter(Boolean).join(', ')
+
+  // fetch last saved report for pre-population
+  let prev={}
+  try{
+    const locId=j.location_id||l.id
+    if(locId){
+      const{data}=await SB.from('reports').select('report_data,created_at').eq('location_id',locId).eq('report_type','kitchen_suppression').order('created_at',{ascending:false}).limit(1)
+      if(data&&data.length)prev=data[0].report_data||{}
+    }
+  }catch(e){console.error('pre-pop fetch:',e)}
+
   const checks=[
     'All appliances properly covered w/correct nozzles',
     'Duct and plenum covered w/correct nozzles',
@@ -1978,13 +2125,13 @@ function openSuppReport(jobId,sysId){
 
   <!-- SYSTEM INFO -->
   <div class="ds"><div class="ds-t">System Information</div>
-    <div class="ds-row"><div class="ds-lbl">Manufacturer</div><div class="ds-val"><input id="rpt-mfg" placeholder="e.g. Ansul" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600" value="${esc(sys.system_type?.split(' ')[0]||'')}"></div></div>
-    <div class="ds-row"><div class="ds-lbl">System Name/Model</div><div class="ds-val"><input id="rpt-model" placeholder="e.g. R-102" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600" value="${esc(sys.system_type||'')}"></div></div>
-    <div class="ds-row"><div class="ds-lbl">Serial Number</div><div class="ds-val"><input id="rpt-serial" placeholder="Serial #" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600"></div></div>
-    <div class="ds-row"><div class="ds-lbl">Cylinder Size(s)</div><div class="ds-val"><input id="rpt-cyl" placeholder="Main, Secondary..." style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600"></div></div>
-    <div class="ds-row"><div class="ds-lbl">Last Hydro Test</div><div class="ds-val"><input id="rpt-hydro" type="date" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600"></div></div>
-    <div class="ds-row"><div class="ds-lbl">Last Recharge</div><div class="ds-val"><input id="rpt-recharge" type="date" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600"></div></div>
-    <div class="ds-row"><div class="ds-lbl">Fusible Links</div><div class="ds-val"><input id="rpt-links" placeholder="Qty & temp ratings" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600" value="${sys.fusible_link_count?sys.fusible_link_count+' links':''}"></div></div>
+    <div class="ds-row"><div class="ds-lbl">Manufacturer</div><div class="ds-val"><input id="rpt-mfg" placeholder="e.g. Ansul" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600" value="${esc(prev.mfg||sys.system_type?.split(' ')[0]||'')}"></div></div>
+    <div class="ds-row"><div class="ds-lbl">System Name/Model</div><div class="ds-val"><input id="rpt-model" placeholder="e.g. R-102" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600" value="${esc(prev.model||sys.system_type||'')}"></div></div>
+    <div class="ds-row"><div class="ds-lbl">Serial Number</div><div class="ds-val"><input id="rpt-serial" placeholder="Serial #" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600" value="${esc(prev.serial||'')}"></div></div>
+    <div class="ds-row"><div class="ds-lbl">Cylinder Size(s)</div><div class="ds-val"><input id="rpt-cyl" placeholder="Main, Secondary..." style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600" value="${esc(prev.cyl||'')}"></div></div>
+    <div class="ds-row"><div class="ds-lbl">Last Hydro Test</div><div class="ds-val"><input id="rpt-hydro" type="date" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600" value="${prev.hydro||''}"></div></div>
+    <div class="ds-row"><div class="ds-lbl">Last Recharge</div><div class="ds-val"><input id="rpt-recharge" type="date" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600" value="${prev.recharge||''}"></div></div>
+    <div class="ds-row"><div class="ds-lbl">Fusible Links</div><div class="ds-val"><input id="rpt-links" placeholder="Qty & temp ratings" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600" value="${esc(prev.links||(sys.fusible_link_count?sys.fusible_link_count+' links':''))}"></div></div>
     <div class="ds-row"><div class="ds-lbl">Fuel Shut-Off Type</div><div class="ds-val">
       <div style="display:flex;gap:6px;justify-content:flex-end">
         <button id="rpt-elec" style="padding:6px 10px;border-radius:6px;font-size:11px;font-weight:700;border:1.5px solid var(--b1);background:var(--c2);color:var(--g2)" onclick="toggleRptFuel('elec')">Electric</button>
@@ -2035,15 +2182,26 @@ function openSuppReport(jobId,sysId){
     <button class="btn-p" id="rptSaveBtn2" onclick="generateSuppReport('${jobId}','${sysId}')">📄 Generate Report PDF</button>
   </div>`
 
-  window._rptCheckState={}
-  checks.forEach((_,i)=>window._rptCheckState[i]='')
-  window._rptServiceType='semi'
-  window._rptFuelType=''
+  window._rptCheckState=prev.checks||{}
+  checks.forEach((_,i)=>{if(window._rptCheckState[i]===undefined)window._rptCheckState[i]=''})
+  window._rptServiceType=prev.serviceType||'semi'
+  window._rptFuelType=prev.fuelType||''
 
   push(h)
   setTimeout(()=>{
     initRptSig('tech','rptTechSig','rptTechSigPh')
     initRptSig('owner','rptOwnerSig','rptOwnerSigPh')
+    // restore check states from prev report
+    checks.forEach((_,i)=>{if(window._rptCheckState[i])setCheck(i,window._rptCheckState[i])})
+    // restore toggle states
+    if(window._rptServiceType)toggleRptType(window._rptServiceType)
+    if(window._rptFuelType)toggleRptFuel(window._rptFuelType)
+    // restore text fields from prev
+    if(prev.appliances&&$('rpt-appliances'))$('rpt-appliances').value=prev.appliances
+    if(prev.deficiencies&&$('rpt-deficiencies'))$('rpt-deficiencies').value=prev.deficiencies
+    if(prev.techName&&$('rpt-tech-name'))$('rpt-tech-name').value=prev.techName
+    if(prev.permit&&$('rpt-permit'))$('rpt-permit').value=prev.permit
+    if(prev.ownerName&&$('rpt-owner-name'))$('rpt-owner-name').value=prev.ownerName
   },100)
 }
 
@@ -2102,7 +2260,25 @@ function clrRptSig(key){
   if($(phId))$(phId).style.display=''
 }
 
-function saveSuppReport(jobId,sysId){pop()}
+async function saveSuppReport(jobId,sysId){
+  // save report_data to reports table for future pre-population
+  const data={
+    checks:window._rptCheckState||{},
+    serviceType:window._rptServiceType||'semi',
+    fuelType:window._rptFuelType||'',
+    mfg:$('rpt-mfg')?.value||'',model:$('rpt-model')?.value||'',
+    serial:$('rpt-serial')?.value||'',cyl:$('rpt-cyl')?.value||'',
+    hydro:$('rpt-hydro')?.value||'',recharge:$('rpt-recharge')?.value||'',
+    links:$('rpt-links')?.value||'',techName:$('rpt-tech-name')?.value||'',
+    permit:$('rpt-permit')?.value||'',ownerName:$('rpt-owner-name')?.value||'',
+    appliances:$('rpt-appliances')?.value||'',deficiencies:$('rpt-deficiencies')?.value||''
+  }
+  const j=D.jobs.find(x=>x.id===jobId)||{}
+  try{
+    await SB.from('reports').upsert({job_id:jobId,location_id:j.location_id||j.location?.id,report_type:'kitchen_suppression',report_data:data},{onConflict:'job_id'})
+  }catch(e){console.error('report save:',e)}
+  pop()
+}
 
 async function generateSuppReport(jobId,sysId){
   const b=$('rptSaveBtn2');if(b){b.innerHTML='<span class="spin"></span> Generating...';b.classList.add('loading')}
@@ -2312,6 +2488,455 @@ body{font-family:Arial,sans-serif;font-size:9pt;color:#000;background:#fff;paddi
     const blob=new Blob([html],{type:'text/html'})
     const url=URL.createObjectURL(blob)
     const a=document.createElement('a');a.href=url;a.download='suppression-report.html';a.click()
+    setTimeout(()=>URL.revokeObjectURL(url),5000)
+  }
+  if(b){b.innerHTML='📄 Generate Report PDF';b.classList.remove('loading')}
+}
+
+// ═══ CLEAN AGENT SYSTEM REPORT (NFPA 2001) ═══
+async function openCleanAgentReport(jobId,sysId){
+  const j=D.jobs.find(x=>x.id===jobId)||{}
+  const l=j.location||{}
+  const sys=l.suppression_systems?.find(s=>s.id===sysId)||l.suppression_systems?.[0]||{}
+  const a=[l.address,l.city,l.state,l.zip].filter(Boolean).join(', ')
+
+  // fetch last saved report for pre-population
+  let prev={}
+  try{
+    const locId=j.location_id||l.id
+    if(locId){
+      const{data}=await SB.from('reports').select('report_data,created_at').eq('location_id',locId).eq('report_type','clean_agent').order('created_at',{ascending:false}).limit(1)
+      if(data&&data.length)prev=data[0].report_data||{}
+    }
+  }catch(e){console.error('ca pre-pop:',e)}
+
+  const checks=[
+    'Hazard area inspected for occupancy/configuration changes',
+    'All protected boundary penetrations properly sealed',
+    'Agent container pressure within acceptable range (temp-pressure chart)',
+    'Agent container weight verified against nameplate ± tolerance',
+    'Containers secured properly in mounting brackets',
+    'Safety pins/locks removed — system operational',
+    'Actuation components accessible and unobstructed',
+    'Manual pull station(s) accessible and unobstructed',
+    'Abort station(s) functional and accessible',
+    'Pre-discharge alarm functional (horn/strobe)',
+    'Detection devices clean and operational (visual)',
+    'Control panel in normal operating condition',
+    'All supervisory/trouble indicators normal',
+    'Battery backup tested and operational',
+    'Discharge nozzles unobstructed and properly positioned',
+    'Nozzle orifice covers intact',
+    'Flexible hoses inspected for damage/corrosion',
+    'Discharge warning signs posted at all entries',
+    'Warning sign on control panel door',
+    'System configuration unchanged from design',
+    'Main/reserve selector in correct position',
+    'All isolation valves in correct open position',
+    'System restored to service — all switches set normal'
+  ]
+
+  // default 3 cylinders, expandable
+  const prevCyls=prev.cylinders||[{num:1,agent:'',tare:'',gross:'',actual:'',pressure:'',ok:''}]
+
+  let h=`<div class="ov-hdr">
+    <button class="ov-back" onclick="pop()">‹</button>
+    <div class="ov-title">Clean Agent Report</div>
+    <button class="ov-act" id="caRptSaveBtn" onclick="saveCleanAgentReport('${jobId}','${sysId}')">Done</button>
+  </div><div class="ov-body" style="padding-bottom:200px">
+
+  <!-- CUSTOMER INFO -->
+  <div class="ds"><div class="ds-t">Customer Information</div>
+    <div class="ds-row"><div class="ds-lbl">Business</div><div class="ds-val">${esc(l.name||'')}</div></div>
+    <div class="ds-row"><div class="ds-lbl">Address</div><div class="ds-val">${esc(a)}</div></div>
+    ${l.contact_phone?`<div class="ds-row"><div class="ds-lbl">Phone</div><div class="ds-val">${l.contact_phone}</div></div>`:''}
+  </div>
+
+  <!-- SERVICE INFO -->
+  <div class="ds"><div class="ds-t">Service Information</div>
+    <div class="ds-row"><div class="ds-lbl">Date</div><div class="ds-val">${j.scheduled_date||td()}</div></div>
+    <div class="ds-row"><div class="ds-lbl">Time In</div><div class="ds-val"><input id="ca-timein" type="time" value="${j.scheduled_time||'09:00'}" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600;width:100px"></div></div>
+    <div class="ds-row"><div class="ds-lbl">Time Out</div><div class="ds-val"><input id="ca-timeout" type="time" value="" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600;width:100px"></div></div>
+    <div class="ds-row"><div class="ds-lbl">Service Type</div><div class="ds-val">
+      <div style="display:flex;gap:6px;justify-content:flex-end">
+        <button id="ca-annual" style="padding:6px 10px;border-radius:6px;font-size:11px;font-weight:700;border:1.5px solid var(--b1);background:var(--c2);color:var(--g2)" onclick="toggleCaType('annual')">Annual</button>
+        <button id="ca-semi" style="padding:6px 10px;border-radius:6px;font-size:11px;font-weight:700;border:1.5px solid var(--fire);background:var(--fires);color:var(--fire)" onclick="toggleCaType('semi')">Semi-Annual</button>
+        <button id="ca-install" style="padding:6px 10px;border-radius:6px;font-size:11px;font-weight:700;border:1.5px solid var(--b1);background:var(--c2);color:var(--g2)" onclick="toggleCaType('install')">Installation</button>
+      </div>
+    </div></div>
+  </div>
+
+  <!-- SYSTEM INFO -->
+  <div class="ds"><div class="ds-t">System Information</div>
+    <div class="ds-row"><div class="ds-lbl">Agent Type</div><div class="ds-val"><input id="ca-agent-type" placeholder="FM-200, Novec 1230, CO2..." style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600" value="${esc(prev.agentType||sys.system_type||'')}"></div></div>
+    <div class="ds-row"><div class="ds-lbl">Manufacturer</div><div class="ds-val"><input id="ca-mfg" placeholder="Kidde, Fike, Ansul..." style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600" value="${esc(prev.mfg||'')}"></div></div>
+    <div class="ds-row"><div class="ds-lbl">System Model</div><div class="ds-val"><input id="ca-model" placeholder="Model #" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600" value="${esc(prev.model||'')}"></div></div>
+    <div class="ds-row"><div class="ds-lbl">Serial Number</div><div class="ds-val"><input id="ca-serial" placeholder="Serial #" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600" value="${esc(prev.serial||'')}"></div></div>
+    <div class="ds-row"><div class="ds-lbl">Protected Area</div><div class="ds-val"><input id="ca-area" placeholder="Server room, vault, etc." style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600" value="${esc(prev.area||'')}"></div></div>
+    <div class="ds-row"><div class="ds-lbl">Design Concentration</div><div class="ds-val"><input id="ca-conc" placeholder="e.g. 7.9%" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600" value="${esc(prev.concentration||'')}"></div></div>
+    <div class="ds-row"><div class="ds-lbl">Control Panel Model</div><div class="ds-val"><input id="ca-panel" placeholder="Panel model/brand" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600" value="${esc(prev.panel||'')}"></div></div>
+  </div>
+
+  <!-- CYLINDER INVENTORY -->
+  <div class="ds"><div class="ds-t" style="display:flex;align-items:center;justify-content:space-between">
+    <span>Cylinder Inventory</span>
+    <button style="font-size:11px;font-weight:800;color:var(--fire);background:none;border:none;cursor:pointer" onclick="addCaCylRow()">+ Add</button>
+  </div>
+  <div style="overflow-x:auto">
+  <table style="width:100%;border-collapse:collapse;font-size:11px" id="ca-cyl-table">
+    <thead><tr style="background:var(--c2)">
+      <th style="padding:7px 8px;text-align:left;font-weight:800;color:var(--g2);font-size:9px;text-transform:uppercase;letter-spacing:.6px">#</th>
+      <th style="padding:7px 8px;text-align:left;font-weight:800;color:var(--g2);font-size:9px;text-transform:uppercase;letter-spacing:.6px">Agent</th>
+      <th style="padding:7px 8px;text-align:right;font-weight:800;color:var(--g2);font-size:9px;text-transform:uppercase;letter-spacing:.6px">Tare (lb)</th>
+      <th style="padding:7px 8px;text-align:right;font-weight:800;color:var(--g2);font-size:9px;text-transform:uppercase;letter-spacing:.6px">Gross (lb)</th>
+      <th style="padding:7px 8px;text-align:right;font-weight:800;color:var(--g2);font-size:9px;text-transform:uppercase;letter-spacing:.6px">Actual (lb)</th>
+      <th style="padding:7px 8px;text-align:right;font-weight:800;color:var(--g2);font-size:9px;text-transform:uppercase;letter-spacing:.6px">PSI</th>
+      <th style="padding:7px 8px;text-align:center;font-weight:800;color:var(--g2);font-size:9px;text-transform:uppercase;letter-spacing:.6px">OK?</th>
+    </tr></thead>
+    <tbody id="ca-cyl-body">
+      ${prevCyls.map((c,i)=>`<tr style="border-bottom:1px solid var(--b1)" id="ca-cyl-row-${i}">
+        <td style="padding:6px 8px;color:var(--g1)">${c.num||i+1}</td>
+        <td style="padding:4px"><input value="${esc(c.agent||'')}" placeholder="FM-200" style="background:transparent;border:none;color:var(--w);font-size:12px;width:70px" oninput="window._caCyls[${i}].agent=this.value"></td>
+        <td style="padding:4px"><input value="${esc(c.tare||'')}" placeholder="0.0" type="number" step="0.1" style="background:transparent;border:none;color:var(--w);font-size:12px;width:52px;text-align:right" oninput="window._caCyls[${i}].tare=this.value;calcCaNet(${i})"></td>
+        <td style="padding:4px"><input value="${esc(c.gross||'')}" placeholder="0.0" type="number" step="0.1" style="background:transparent;border:none;color:var(--w);font-size:12px;width:52px;text-align:right" oninput="window._caCyls[${i}].gross=this.value;calcCaNet(${i})"></td>
+        <td style="padding:6px 8px;text-align:right;font-weight:700;font-variant-numeric:tabular-nums" id="ca-net-${i}">${c.actual||'—'}</td>
+        <td style="padding:4px"><input value="${esc(c.pressure||'')}" placeholder="0" type="number" style="background:transparent;border:none;color:var(--w);font-size:12px;width:48px;text-align:right" oninput="window._caCyls[${i}].pressure=this.value"></td>
+        <td style="padding:4px;text-align:center">
+          <button style="width:32px;height:32px;border-radius:6px;border:1.5px solid ${c.ok==='yes'?'var(--ok)':'var(--b1)'};background:${c.ok==='yes'?'var(--oks)':'var(--c2)'};color:${c.ok==='yes'?'var(--ok)':'var(--g2)'};font-size:13px" id="ca-cyl-ok-${i}" onclick="toggleCaCylOk(${i})">✓</button>
+        </td>
+      </tr>`).join('')}
+    </tbody>
+  </table>
+  </div></div>
+
+  <!-- SYSTEM CHECKS -->
+  <div class="ds"><div class="ds-t">Inspection Checklist (NFPA 2001)</div>
+  <div style="background:var(--c1);border:1px solid var(--b1);border-radius:var(--r);overflow:hidden">
+    <div style="display:grid;grid-template-columns:1fr auto auto;padding:8px 12px;border-bottom:1px solid var(--b1);background:var(--c2)">
+      <div style="font-size:10px;font-weight:800;color:var(--g2)">CHECK</div>
+      <div style="font-size:10px;font-weight:800;color:var(--ok);text-align:center;width:42px">YES</div>
+      <div style="font-size:10px;font-weight:800;color:var(--bad);text-align:center;width:42px">NO</div>
+    </div>
+    ${checks.map((c,i)=>`<div style="display:grid;grid-template-columns:1fr auto auto;gap:8px;padding:10px 12px;border-bottom:1px solid rgba(42,47,62,.5);align-items:center" id="ca-chk-row-${i}">
+      <div style="font-size:11px;color:var(--w2);line-height:1.4">${i+1}. ${c}</div>
+      <button style="width:36px;height:36px;border-radius:8px;border:1.5px solid var(--b1);background:var(--c2);font-size:14px;color:var(--g2)" id="ca-chk-y-${i}" onclick="setCaCheck(${i},'yes')">✓</button>
+      <button style="width:36px;height:36px;border-radius:8px;border:1.5px solid var(--b1);background:var(--c2);font-size:14px;color:var(--g2)" id="ca-chk-n-${i}" onclick="setCaCheck(${i},'no')">✕</button>
+    </div>`).join('')}
+  </div></div>
+
+  <!-- DEFICIENCIES -->
+  <div class="ds"><div class="ds-t">Deficiencies / Corrective Actions Required</div>
+    <textarea id="ca-deficiencies" placeholder="List any deficiencies, corrections needed, or follow-up required..." style="min-height:100px"></textarea>
+  </div>
+
+  <!-- SIGNATURES -->
+  <div class="ds"><div class="ds-t">Service Technician Signature</div>
+    <div class="sig-wrap" id="ca-tech-sig-wrap"><canvas id="caTechSig"></canvas><div class="sig-ph" id="caTechSigPh">Sign here</div><button class="sig-clr" onclick="clrCaSig('tech')">Clear</button></div>
+  </div>
+  <div class="fg"><label class="fg-l">Print Technician Name</label><input id="ca-tech-name" placeholder="Jon Stephens" value="${esc(prev.techName||'Jon Stephens')}"></div>
+  <div class="fg"><label class="fg-l">License / Permit No.</label><input id="ca-permit" placeholder="Optional" value="${esc(prev.permit||'')}"></div>
+
+  <div class="ds"><div class="ds-t">Owner / Manager / Authorized Agent Signature</div>
+    <div class="sig-wrap" id="ca-owner-sig-wrap"><canvas id="caOwnerSig"></canvas><div class="sig-ph" id="caOwnerSigPh">Sign here</div><button class="sig-clr" onclick="clrCaSig('owner')">Clear</button></div>
+  </div>
+  <div class="fg"><label class="fg-l">Print Owner / Manager Name</label><input id="ca-owner-name" placeholder="${esc(l.contact_name||'')}" value="${esc(prev.ownerName||l.contact_name||'')}"></div>
+
+  </div>
+  <div class="ov-foot">
+    <button class="btn-p" id="caRptSaveBtn2" onclick="generateCleanAgentReport('${jobId}','${sysId}')">📄 Generate Report PDF</button>
+  </div>`
+
+  window._caCheckState=prev.checks||{}
+  checks.forEach((_,i)=>{if(window._caCheckState[i]===undefined)window._caCheckState[i]=''})
+  window._caServiceType=prev.serviceType||'semi'
+  window._caCyls=prevCyls.map(c=>({...c}))
+
+  push(h)
+  setTimeout(()=>{
+    initRptSig('ca-tech','caTechSig','caTechSigPh')
+    initRptSig('ca-owner','caOwnerSig','caOwnerSigPh')
+    checks.forEach((_,i)=>{if(window._caCheckState[i])setCaCheck(i,window._caCheckState[i])})
+    if(window._caServiceType)toggleCaType(window._caServiceType)
+    if(prev.deficiencies&&$('ca-deficiencies'))$('ca-deficiencies').value=prev.deficiencies
+  },100)
+}
+
+function calcCaNet(i){
+  const c=window._caCyls[i]
+  const t=parseFloat(c.tare||0),g=parseFloat(c.gross||0)
+  const net=g>0&&t>0?+(g-t).toFixed(1):null
+  c.actual=net!==null?net:''
+  const el=$('ca-net-'+i)
+  if(el){el.textContent=net!==null?net+' lb':'—';el.style.color=net!==null&&net>0?'var(--ok)':'var(--warn)'}
+}
+
+function addCaCylRow(){
+  const i=window._caCyls.length
+  window._caCyls.push({num:i+1,agent:'',tare:'',gross:'',actual:'',pressure:'',ok:''})
+  const tbody=$('ca-cyl-body');if(!tbody)return
+  const tr=document.createElement('tr')
+  tr.id='ca-cyl-row-'+i
+  tr.style.borderBottom='1px solid var(--b1)'
+  tr.innerHTML=`<td style="padding:6px 8px;color:var(--g1)">${i+1}</td>
+    <td style="padding:4px"><input placeholder="FM-200" style="background:transparent;border:none;color:var(--w);font-size:12px;width:70px" oninput="window._caCyls[${i}].agent=this.value"></td>
+    <td style="padding:4px"><input placeholder="0.0" type="number" step="0.1" style="background:transparent;border:none;color:var(--w);font-size:12px;width:52px;text-align:right" oninput="window._caCyls[${i}].tare=this.value;calcCaNet(${i})"></td>
+    <td style="padding:4px"><input placeholder="0.0" type="number" step="0.1" style="background:transparent;border:none;color:var(--w);font-size:12px;width:52px;text-align:right" oninput="window._caCyls[${i}].gross=this.value;calcCaNet(${i})"></td>
+    <td style="padding:6px 8px;text-align:right;font-weight:700" id="ca-net-${i}">—</td>
+    <td style="padding:4px"><input placeholder="0" type="number" style="background:transparent;border:none;color:var(--w);font-size:12px;width:48px;text-align:right" oninput="window._caCyls[${i}].pressure=this.value"></td>
+    <td style="padding:4px;text-align:center"><button style="width:32px;height:32px;border-radius:6px;border:1.5px solid var(--b1);background:var(--c2);color:var(--g2);font-size:13px" id="ca-cyl-ok-${i}" onclick="toggleCaCylOk(${i})">✓</button></td>`
+  tbody.appendChild(tr)
+}
+
+function toggleCaCylOk(i){
+  const c=window._caCyls[i];c.ok=c.ok==='yes'?'':('yes')
+  const b=$('ca-cyl-ok-'+i);if(!b)return
+  b.style.borderColor=c.ok==='yes'?'var(--ok)':'var(--b1)'
+  b.style.background=c.ok==='yes'?'var(--oks)':'var(--c2)'
+  b.style.color=c.ok==='yes'?'var(--ok)':'var(--g2)'
+}
+
+function setCaCheck(i,val){
+  window._caCheckState[i]=window._caCheckState[i]===val?'':val
+  const y=$('ca-chk-y-'+i),n=$('ca-chk-n-'+i)
+  if(y)y.style.background=window._caCheckState[i]==='yes'?'var(--oks)':'var(--c2)',y.style.borderColor=window._caCheckState[i]==='yes'?'var(--ok)':'var(--b1)',y.style.color=window._caCheckState[i]==='yes'?'var(--ok)':'var(--g2)'
+  if(n)n.style.background=window._caCheckState[i]==='no'?'var(--bads)':'var(--c2)',n.style.borderColor=window._caCheckState[i]==='no'?'var(--bad)':'var(--b1)',n.style.color=window._caCheckState[i]==='no'?'var(--bad)':'var(--g2)'
+}
+
+function toggleCaType(t){
+  window._caServiceType=t
+  ;['annual','semi','install'].forEach(k=>{
+    const b=$('ca-'+k);if(!b)return
+    const on=k===t
+    b.style.borderColor=on?'var(--fire)':'var(--b1)'
+    b.style.background=on?'var(--fires)':'var(--c2)'
+    b.style.color=on?'var(--fire)':'var(--g2)'
+  })
+}
+
+function clrCaSig(key){
+  const canvasId=key==='tech'?'caTechSig':'caOwnerSig'
+  const phId=key==='tech'?'caTechSigPh':'caOwnerSigPh'
+  const c=$(canvasId)
+  if(c&&rptSigCtx['ca-'+key])rptSigCtx['ca-'+key].clearRect(0,0,c.width,c.height)
+  if($(phId))$(phId).style.display=''
+}
+
+async function saveCleanAgentReport(jobId,sysId){
+  const data={
+    checks:window._caCheckState||{},
+    serviceType:window._caServiceType||'semi',
+    agentType:$('ca-agent-type')?.value||'',
+    mfg:$('ca-mfg')?.value||'',model:$('ca-model')?.value||'',
+    serial:$('ca-serial')?.value||'',area:$('ca-area')?.value||'',
+    concentration:$('ca-conc')?.value||'',panel:$('ca-panel')?.value||'',
+    cylinders:window._caCyls||[],
+    techName:$('ca-tech-name')?.value||'',
+    permit:$('ca-permit')?.value||'',
+    ownerName:$('ca-owner-name')?.value||'',
+    deficiencies:$('ca-deficiencies')?.value||''
+  }
+  const j=D.jobs.find(x=>x.id===jobId)||{}
+  try{
+    await SB.from('reports').upsert({job_id:jobId,location_id:j.location_id||j.location?.id,report_type:'clean_agent',report_data:data},{onConflict:'job_id'})
+  }catch(e){console.error('ca report save:',e)}
+  pop()
+}
+
+async function generateCleanAgentReport(jobId,sysId){
+  const b=$('caRptSaveBtn2');if(b){b.innerHTML='<span class="spin"></span> Generating...';b.classList.add('loading')}
+  const j=D.jobs.find(x=>x.id===jobId)||{}
+  const l=j.location||{}
+  const a=[l.address,l.city,l.state,l.zip].filter(Boolean).join(', ')
+  const checks=[
+    'Hazard area inspected for occupancy/configuration changes',
+    'All protected boundary penetrations properly sealed',
+    'Agent container pressure within acceptable range (temp-pressure chart)',
+    'Agent container weight verified against nameplate ± tolerance',
+    'Containers secured properly in mounting brackets',
+    'Safety pins/locks removed — system operational',
+    'Actuation components accessible and unobstructed',
+    'Manual pull station(s) accessible and unobstructed',
+    'Abort station(s) functional and accessible',
+    'Pre-discharge alarm functional (horn/strobe)',
+    'Detection devices clean and operational (visual)',
+    'Control panel in normal operating condition',
+    'All supervisory/trouble indicators normal',
+    'Battery backup tested and operational',
+    'Discharge nozzles unobstructed and properly positioned',
+    'Nozzle orifice covers intact',
+    'Flexible hoses inspected for damage/corrosion',
+    'Discharge warning signs posted at all entries',
+    'Warning sign on control panel door',
+    'System configuration unchanged from design',
+    'Main/reserve selector in correct position',
+    'All isolation valves in correct open position',
+    'System restored to service — all switches set normal'
+  ]
+  const cs=window._caCheckState||{}
+  const techSig=$('caTechSig')?.toDataURL()||''
+  const ownerSig=$('caOwnerSig')?.toDataURL()||''
+  const serviceDate=j.scheduled_date?new Date(j.scheduled_date+'T12:00:00').toLocaleDateString('en-US',{month:'2-digit',day:'2-digit',year:'numeric'}):new Date().toLocaleDateString('en-US',{month:'2-digit',day:'2-digit',year:'numeric'})
+  const svcType={annual:'Annual',semi:'Semi-Annual',install:'Installation'}[window._caServiceType||'semi']
+  const cyls=window._caCyls||[]
+
+  const checkRows=checks.map((c,i)=>{
+    const st=cs[i]||''
+    return{label:`${i+1}. ${c}`,yes:st==='yes'?'✓':'',no:st==='no'?'✓':''}
+  })
+  const col1=checkRows.slice(0,12),col2=checkRows.slice(12)
+
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:Arial,sans-serif;font-size:9pt;color:#000;background:#fff;padding:12px}
+.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;border-bottom:2px solid #000;padding-bottom:8px}
+.co-name{font-size:22pt;font-weight:900;letter-spacing:-1px}
+.co-name span{color:#f05a28}
+.co-sub{font-size:8pt;color:#555;margin-top:2px}
+.co-phone{font-size:14pt;font-weight:700;color:#f05a28;margin-top:4px}
+.title{font-size:13pt;font-weight:900;text-align:right}
+.title-sub{font-size:8pt;color:#555;text-align:right;margin-top:2px}
+.cust-box{border:2px solid #000;padding:8px;margin-bottom:6px}
+.cust-title{font-weight:700;font-size:9pt;background:#333;color:#fff;padding:2px 6px;margin:-8px -8px 6px -8px}
+.row{display:flex;gap:8px;margin-bottom:4px;align-items:flex-end}
+.field{flex:1;border-bottom:1px solid #888;min-height:16px;font-size:8pt;padding:1px 2px}
+.field-label{font-size:7pt;color:#666;margin-bottom:1px}
+.section{border:2px solid #000;padding:6px;margin-bottom:6px}
+.section-title{font-weight:700;font-size:8pt;background:#333;color:#fff;padding:2px 6px;margin:-6px -6px 6px -6px}
+.checks-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px}
+.check-col{}
+.check-title{font-weight:700;font-size:8pt;background:#333;color:#fff;padding:2px 6px;margin-bottom:2px}
+.check-row{display:flex;align-items:center;border-bottom:1px solid #ddd;padding:2px 0;gap:4px}
+.check-label{flex:1;font-size:7.5pt}
+.check-box{width:14px;height:14px;border:1.5px solid #333;display:flex;align-items:center;justify-content:center;font-size:9pt;font-weight:700;flex-shrink:0}
+.check-yn{font-size:6pt;color:#666;margin-right:2px}
+.sig-box{display:flex;gap:12px;margin-top:8px;border-top:2px solid #000;padding-top:8px}
+.sig-side{flex:1}
+.sig-line{border-bottom:1px solid #000;height:40px;margin-bottom:4px;display:flex;align-items:flex-end}
+.sig-line img{max-height:38px;max-width:100%}
+.sig-label{font-size:7pt;color:#555}
+.cyl-table{width:100%;border-collapse:collapse;font-size:7.5pt;margin-bottom:6px}
+.cyl-table th{background:#333;color:#fff;padding:3px 5px;text-align:center;font-size:7pt}
+.cyl-table td{border:1px solid #ccc;padding:3px 5px;text-align:center}
+.textarea-box{border:1px solid #888;min-height:40px;padding:3px;font-size:8pt;margin-top:2px}
+@media print{body{padding:4px}button{display:none}}
+</style></head><body>
+<div class="header">
+  <div>
+    <div class="co-name">SAFE</div>
+    <div class="co-sub">STEPHENS ADVANCED FIRE EQUIPMENT</div>
+    <div class="co-phone">214-994-4799</div>
+  </div>
+  <div>
+    <div class="title">Clean Agent Fire Suppression</div>
+    <div class="title">Inspection Report</div>
+    <div class="title-sub">NFPA 2001 Standard</div>
+  </div>
+</div>
+
+<div class="cust-box">
+  <div class="cust-title">Customer Information</div>
+  <div class="row">
+    <div style="flex:2"><div class="field-label">Business Name</div><div class="field">${l.name||''}</div></div>
+    <div style="flex:1"><div class="field-label">Telephone</div><div class="field">${l.contact_phone||''}</div></div>
+  </div>
+  <div class="row"><div><div class="field-label">Address</div><div class="field">${a}</div></div></div>
+  <div class="row" style="margin-top:4px">
+    <div><div class="field-label">Date of Service</div><div class="field">${serviceDate}</div></div>
+    <div><div class="field-label">Time In</div><div class="field">${$('ca-timein')?.value||''}</div></div>
+    <div><div class="field-label">Time Out</div><div class="field">${$('ca-timeout')?.value||''}</div></div>
+    <div style="display:flex;align-items:flex-end;gap:4px">
+      ${['Annual','Semi-Annual','Installation'].map(t=>`<div style="border:1.5px solid ${svcType===t?'#333':'#ccc'};width:10px;height:10px;display:inline-flex;align-items:center;justify-content:center;font-size:7pt">${svcType===t?'✓':''}</div><span style="font-size:7pt">${t}</span>&nbsp;&nbsp;`).join('')}
+    </div>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">
+  <div class="section">
+    <div class="section-title">System Information</div>
+    <div class="row"><div><div class="field-label">Agent Type</div><div class="field">${$('ca-agent-type')?.value||''}</div></div></div>
+    <div class="row"><div><div class="field-label">Manufacturer</div><div class="field">${$('ca-mfg')?.value||''}</div></div></div>
+    <div class="row"><div><div class="field-label">System Model</div><div class="field">${$('ca-model')?.value||''}</div></div></div>
+    <div class="row"><div><div class="field-label">Serial Number</div><div class="field">${$('ca-serial')?.value||''}</div></div></div>
+    <div class="row"><div><div class="field-label">Protected Area</div><div class="field">${$('ca-area')?.value||''}</div></div></div>
+    <div class="row"><div><div class="field-label">Design Concentration</div><div class="field">${$('ca-conc')?.value||''}</div></div></div>
+    <div class="row"><div><div class="field-label">Control Panel</div><div class="field">${$('ca-panel')?.value||''}</div></div></div>
+  </div>
+  <div class="section">
+    <div class="section-title">Cylinder Inventory</div>
+    <table class="cyl-table">
+      <thead><tr><th>#</th><th>Agent</th><th>Tare</th><th>Gross</th><th>Net (lb)</th><th>PSI</th><th>OK</th></tr></thead>
+      <tbody>
+        ${cyls.map((c,i)=>`<tr>
+          <td>${c.num||i+1}</td>
+          <td>${c.agent||''}</td>
+          <td>${c.tare||''}</td>
+          <td>${c.gross||''}</td>
+          <td style="font-weight:700">${c.actual||''}</td>
+          <td>${c.pressure||''}</td>
+          <td style="font-weight:700;color:${c.ok==='yes'?'green':'#999'}">${c.ok==='yes'?'✓':''}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="checks-grid">
+  <div class="check-col">
+    <div class="check-title">Inspection Checklist (NFPA 2001)</div>
+    ${col1.map(r=>`<div class="check-row">
+      <div class="check-label">${r.label}</div>
+      <span class="check-yn">Yes</span><div class="check-box">${r.yes}</div>
+      <span class="check-yn">No</span><div class="check-box">${r.no}</div>
+    </div>`).join('')}
+  </div>
+  <div class="check-col">
+    <div class="check-title">Inspection Checklist (cont.)</div>
+    ${col2.map(r=>`<div class="check-row">
+      <div class="check-label">${r.label}</div>
+      <span class="check-yn">Yes</span><div class="check-box">${r.yes}</div>
+      <span class="check-yn">No</span><div class="check-box">${r.no}</div>
+    </div>`).join('')}
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title">Deficiencies / Corrective Actions Required</div>
+  <div class="textarea-box">${($('ca-deficiencies')?.value||'').replace(/\n/g,'<br>')}</div>
+</div>
+
+<div style="font-size:7.5pt;padding:6px;border:1px solid #ccc;margin-bottom:6px;background:#f9f9f9">
+  The service technician certifies that the system was inspected and found conditions to be as indicated on this report in accordance with NFPA 2001.
+</div>
+
+<div class="sig-box">
+  <div class="sig-side">
+    <div class="sig-line">${techSig?`<img src="${techSig}" style="max-height:38px">`:'&nbsp;'}</div>
+    <div class="sig-label">Service Technician Signature</div>
+    <div style="margin-top:8px;border-bottom:1px solid #000;padding-bottom:2px;font-size:9pt">${$('ca-tech-name')?.value||'Jon Stephens'}</div>
+    <div class="sig-label">Print Service Technician Name</div>
+    <div style="margin-top:8px;border-bottom:1px solid #000;padding-bottom:2px;font-size:9pt">${serviceDate}</div>
+    <div class="sig-label">Date</div>
+    <div style="margin-top:8px;border-bottom:1px solid #000;padding-bottom:2px;font-size:9pt">${$('ca-permit')?.value||''}</div>
+    <div class="sig-label">License / Permit No.</div>
+  </div>
+  <div class="sig-side">
+    <div class="sig-line">${ownerSig?`<img src="${ownerSig}" style="max-height:38px">`:'&nbsp;'}</div>
+    <div class="sig-label">Owner/Manager/Authorized Agent Signature</div>
+    <div style="margin-top:8px;border-bottom:1px solid #000;padding-bottom:2px;font-size:9pt">${$('ca-owner-name')?.value||''}</div>
+    <div class="sig-label">Print Owner/Manager/Authorized Agent Name</div>
+  </div>
+</div>
+
+<script>window.print()<\/script>
+</body></html>`
+
+  const w=window.open('','_blank')
+  if(w){w.document.write(html);w.document.close()}
+  else{
+    const blob=new Blob([html],{type:'text/html'})
+    const url=URL.createObjectURL(blob)
+    const a2=document.createElement('a');a2.href=url;a2.download='clean-agent-report.html';a2.click()
     setTimeout(()=>URL.revokeObjectURL(url),5000)
   }
   if(b){b.innerHTML='📄 Generate Report PDF';b.classList.remove('loading')}
