@@ -1250,8 +1250,11 @@ async function openCust(id){
       const sid=s.id
       h+=`<div class="eq">
         <div class="eq-r1">
-          <div><div class="eq-nm">${esc(s.system_type)}</div><div class="eq-sub">${s.tank_count}T · ${s.nozzle_count} nozzles · ${s.fusible_link_count} links</div></div>
-          <button class="del-eq" onclick="toggleDelConfirm('dsupp-${sid}')">Delete</button>
+          <div><div class="eq-nm">${esc(s.system_type)}</div><div class="eq-sub">${s.tank_count}T · ${s.nozzle_count} nozzles · ${s.fusible_link_count} links${s.category&&s.category!=='standard'?' · '+s.category:''}</div></div>
+          <div style="display:flex;gap:6px;flex-shrink:0">
+            <button style="font-size:11px;font-weight:700;color:var(--fire);padding:4px 8px" onclick="editSupp('${sid}','${l.id}')">Edit</button>
+            <button class="del-eq" onclick="toggleDelConfirm('dsupp-${sid}')">Delete</button>
+          </div>
         </div>
         <div class="del-confirm" id="dsupp-${sid}" style="margin-top:10px;margin-bottom:0">
           <div class="del-confirm-msg">Delete ${esc(s.system_type)}?</div>
@@ -1272,8 +1275,11 @@ async function openCust(id){
       const eid=e.id
       h+=`<div class="eq">
         <div class="eq-r1">
-          <div><div class="eq-nm">${esc(e.type)} ${esc(e.size||'')}</div><div class="eq-sub">${esc(e.location_in_building||'')}${e.serial_number?' · SN:'+e.serial_number:''}</div></div>
-          <button class="del-eq" onclick="toggleDelConfirm('dext-${eid}')">Delete</button>
+          <div><div class="eq-nm">${esc(e.type)} ${esc(e.size||'')}</div><div class="eq-sub">${esc(e.location_in_building||'')}${e.manufacture_date?' · Mfg: '+e.manufacture_date:''}</div></div>
+          <div style="display:flex;gap:6px;flex-shrink:0">
+            <button style="font-size:11px;font-weight:700;color:var(--fire);padding:4px 8px" onclick="editExt('${eid}','${l.id}')">Edit</button>
+            <button class="del-eq" onclick="toggleDelConfirm('dext-${eid}')">Delete</button>
+          </div>
         </div>
         <div class="del-confirm" id="dext-${eid}" style="margin-top:10px;margin-bottom:0">
           <div class="del-confirm-msg">Delete ${esc(e.type)} ${esc(e.size||'')}?</div>
@@ -3258,6 +3264,81 @@ async function saveExt(locId){
   await load();toast('Extinguisher added')
   pop()
   // client detail is still on stack below — refresh it
+  const slot=stk[stk.length-1]
+  if(slot){stk.pop();document.getElementById(slot).classList.remove('open');document.getElementById(slot).style.display='none';document.getElementById(slot).innerHTML=''}
+  setTimeout(()=>openCust(locId),50)
+}
+
+// EDIT EQUIPMENT
+function editSupp(sysId,locId){
+  const l=D.locs.find(x=>x.id===locId)||{}
+  const s=(l.suppression_systems||[]).find(x=>x.id===sysId);if(!s)return
+  push(`<div class="ov-hdr">
+    <button class="ov-back" onclick="pop()">‹</button>
+    <div class="ov-title">Edit System</div>
+    <button class="ov-act" id="saveSuppEditBtn" onclick="saveSuppEdit('${sysId}','${locId}')">Save</button>
+  </div><div class="ov-body">
+    <div class="fg"><label class="fg-l">System Type</label><input id="es-type" value="${esc(s.system_type||'')}"></div>
+    <div class="fg"><label class="fg-l">Category</label>
+      <select id="es-cat">
+        <option value="standard"${s.category==='standard'?' selected':''}>Standard ($250)</option>
+        <option value="captiveaire_tank"${s.category==='captiveaire_tank'?' selected':''}>Captive-Aire Tank ($450)</option>
+        <option value="captiveaire_core"${s.category==='captiveaire_core'?' selected':''}>Captive-Aire CORE ($650)</option>
+      </select>
+    </div>
+    <div class="fg"><label class="fg-l">Tanks</label><input type="number" id="es-tanks" value="${s.tank_count||1}" min="1"></div>
+    <div class="fg"><label class="fg-l">Nozzles</label><input type="number" id="es-nozzles" value="${s.nozzle_count||0}" min="0"></div>
+    <div class="fg"><label class="fg-l">Fusible Links</label><input type="number" id="es-links" value="${s.fusible_link_count||0}" min="0"></div>
+    <div class="err" id="es-err"></div>
+  </div>`)
+}
+
+async function saveSuppEdit(sysId,locId){
+  const b=$('saveSuppEditBtn');if(b){b.textContent='Saving...';b.style.opacity='.5'}
+  const{error}=await SB.from('suppression_systems').update({
+    system_type:$('es-type')?.value?.trim()||'Suppression System',
+    category:$('es-cat')?.value||'standard',
+    tank_count:parseInt($('es-tanks')?.value)||1,
+    nozzle_count:parseInt($('es-nozzles')?.value)||0,
+    fusible_link_count:parseInt($('es-links')?.value)||0
+  }).eq('id',sysId)
+  if(error){if($('es-err'))$('es-err').textContent='Error: '+error.message;if(b){b.textContent='Save';b.style.opacity=''}return}
+  await load();toast('System updated')
+  pop()
+  const slot=stk[stk.length-1]
+  if(slot){stk.pop();document.getElementById(slot).classList.remove('open');document.getElementById(slot).style.display='none';document.getElementById(slot).innerHTML=''}
+  setTimeout(()=>openCust(locId),50)
+}
+
+function editExt(extId,locId){
+  const l=D.locs.find(x=>x.id===locId)||{}
+  const e=(l.extinguishers||[]).find(x=>x.id===extId);if(!e)return
+  const EXT_TYPES=['ABC Dry Chemical','Class K','CO2','Water','Halotron','Halon','Class D','Purple K','Clean Agent']
+  const typeOpts=EXT_TYPES.map(t=>`<option${t===e.type?' selected':''}>${t}</option>`).join('')+(EXT_TYPES.includes(e.type)?'':`<option selected>${esc(e.type)}</option>`)
+  push(`<div class="ov-hdr">
+    <button class="ov-back" onclick="pop()">‹</button>
+    <div class="ov-title">Edit Extinguisher</div>
+    <button class="ov-act" id="saveExtEditBtn" onclick="saveExtEdit('${extId}','${locId}')">Save</button>
+  </div><div class="ov-body">
+    <div class="fg"><label class="fg-l">Type</label><select id="ee-type">${typeOpts}</select></div>
+    <div class="fg"><label class="fg-l">Size</label><input id="ee-size" value="${esc(e.size||'')}"></div>
+    <div class="fg"><label class="fg-l">Location in Building</label><input id="ee-loc" value="${esc(e.location_in_building||'')}"></div>
+    <div class="fg"><label class="fg-l">Manufacture Date</label><input type="month" id="ee-mfg" value="${e.manufacture_date||''}"></div>
+    <div class="err" id="ee-err"></div>
+  </div>`)
+}
+
+async function saveExtEdit(extId,locId){
+  const b=$('saveExtEditBtn');if(b){b.textContent='Saving...';b.style.opacity='.5'}
+  const{error}=await SB.from('extinguishers').update({
+    type:$('ee-type')?.value||'ABC Dry Chemical',
+    size:$('ee-size')?.value?.trim()||null,
+    location_in_building:$('ee-loc')?.value?.trim()||null,
+    manufacture_date:$('ee-mfg')?.value||null
+  }).eq('id',extId)
+  if(error){if($('ee-err'))$('ee-err').textContent='Error: '+error.message;if(b){b.textContent='Save';b.style.opacity=''}return}
+  await load();toast('Extinguisher updated')
+  pop()
   const slot=stk[stk.length-1]
   if(slot){stk.pop();document.getElementById(slot).classList.remove('open');document.getElementById(slot).style.display='none';document.getElementById(slot).innerHTML=''}
   setTimeout(()=>openCust(locId),50)
