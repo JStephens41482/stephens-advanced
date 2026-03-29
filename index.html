@@ -693,9 +693,10 @@ async function compJ(id){
   const notes=($('job-notes')?.value||jobNotes||'').trim()
   const sig=$('sigC')?.toDataURL()||null
 
+  const invNum='INV-'+Date.now().toString().slice(-6)
   const{data:inv,error}=await SB.from('invoices').insert({
     job_id:id,location_id:l.id,billing_account_id:l.billing_account_id,
-    subtotal:sub,total:sub,status:'draft',date:td(),
+    invoice_number:invNum,subtotal:sub,total:sub,status:'draft',date:td(),
     notes:notes||null
   }).select().single()
   if(error){toast('Error generating invoice',false);setLoad('compBtn',false,'✓ Complete Job — Generate Invoice');return}
@@ -1189,7 +1190,7 @@ async function runPhotoAI(b64,mtype){
     const res=await fetch('/api/claude',{
       method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
-        model:'claude-sonnet-4-20250514',max_tokens:2000,
+        model:'claude-sonnet-4-6',max_tokens:2000,
         messages:[{role:'user',content:[
           {type:'image',source:{type:'base64',media_type:mtype,data:b64}},
           {type:'text',text:`You are the AI assistant for Stephens Advanced LLC, a fire suppression contractor in DFW Texas. Extract ALL invoice and job details from this image. Scan the ENTIRE image top to bottom.
@@ -1532,9 +1533,20 @@ function nSrch(q){
   const f=D.locs.filter(l=>l.name.toLowerCase().includes(q.toLowerCase())||(l.city||'').toLowerCase().includes(q.toLowerCase()))
   const canMk=q.length>=2&&!f.some(l=>l.name.toLowerCase()===q.toLowerCase())
   let h=''
-  f.forEach(l=>h+=`<div class="ac-it" onclick="nSt={loc:{id:'${l.id}',name:'${esc(l.name)}',address:'${esc(l.address||'')}',city:'${esc(l.city||'')}',ba:'${l.billing_account_id||''}'},mk:false};pop();openSchedJob()"><div class="ac-n">${esc(l.name)}</div><div class="ac-d">${esc([l.address,l.city].filter(Boolean).join(', '))}</div></div>`)
-  if(canMk)h+=`<div class="ac-it ac-new" onclick="nSt.mk=true;pop();rNewJob();setTimeout(()=>{const e=$('nn');if(e)e.value='${esc(q)}'},30)"><div class="ac-n">+ Create "${esc(q)}"</div><div class="ac-d">Add new customer</div></div>`
+  f.forEach(l=>{
+    window._nSrchLocs=window._nSrchLocs||{}
+    window._nSrchLocs[l.id]=l
+    h+=`<div class="ac-it" onclick="selectSchedLoc('${l.id}')"><div class="ac-n">${esc(l.name)}</div><div class="ac-d">${esc([l.address,l.city].filter(Boolean).join(', '))}</div></div>`
+  })
+  if(canMk)h+=`<div class="ac-it ac-new" onclick="nSt.mk=true;window._nSrchQ='${esc(q)}';pop();rNewJob();setTimeout(()=>{const e=$('nn');if(e)e.value=window._nSrchQ||''},30)"><div class="ac-n">+ Create "${esc(q)}"</div><div class="ac-d">Add new customer</div></div>`
   dd.innerHTML=h;dd.classList.add('vis')
+}
+
+function selectSchedLoc(id){
+  const l=(window._nSrchLocs||{})[id]||D.locs.find(x=>x.id===id)
+  if(!l)return
+  nSt={loc:{id:l.id,name:l.name,address:l.address||'',city:l.city||'',ba:l.billing_account_id||''},mk:false}
+  pop();openSchedJob()
 }
 
 async function saveJob(){
