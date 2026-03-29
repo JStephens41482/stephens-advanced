@@ -5873,10 +5873,36 @@ function renderChat(){
   const wrap=$('chatMsgs');if(!wrap)return
   wrap.innerHTML=_chatMsgs.map(m=>{
     const cls=m.role==='user'?'user':'ai'
+    if(m.content==='_confirm_'){
+      return`<div class="chat-msg ai"><div class="chat-bubble" style="padding:0;overflow:hidden">
+        <div style="padding:10px 14px;font-size:13px;font-weight:600">Ready?</div>
+        <div style="display:flex;border-top:1px solid var(--b1)">
+          <button onclick="confirmChatActions(true)" style="flex:1;padding:12px;font-size:14px;font-weight:800;background:var(--ok);color:#fff;border:none;cursor:pointer;min-height:44px">Yes, do it</button>
+          <button onclick="confirmChatActions(false)" style="flex:1;padding:12px;font-size:14px;font-weight:700;background:var(--c2);color:var(--g1);border:none;border-left:1px solid var(--b1);cursor:pointer;min-height:44px">Cancel</button>
+        </div>
+      </div></div>`
+    }
     const content=(m.content||'').replace(/\n/g,'<br>').replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/`(.+?)`/g,'<code style="background:var(--c3);padding:2px 5px;border-radius:4px;font-size:12px">$1</code>')
     return`<div class="chat-msg ${cls}"><div class="chat-bubble">${content}</div></div>`
   }).join('')
   wrap.scrollTop=wrap.scrollHeight
+}
+
+async function confirmChatActions(yes){
+  // remove the confirm message
+  _chatMsgs=_chatMsgs.filter(m=>m.content!=='_confirm_')
+  if(!yes){
+    window._pendingActions=null
+    _chatMsgs.push({role:'assistant',content:'Cancelled.'})
+    renderChat()
+    return
+  }
+  const actions=window._pendingActions||[]
+  window._pendingActions=null
+  for(const act of actions){
+    await execChatAction(act)
+  }
+  renderChat()
 }
 
 async function sendChat(){
@@ -5937,7 +5963,12 @@ AVAILABLE ACTIONS:
 - {"type":"send_sms","to":"phone","body":"message"} — sends a text message
 - {"type":"toast","message":"..."} — shows a notification
 
-You can chain multiple actions. Always confirm what you did after. Be concise. If you need info to complete the request, ask for it.`
+IMPORTANT RULES:
+1. ALWAYS describe what you're about to do BEFORE the action block. Example: "I'll add Dave's Hot Chicken as a new client in McKinney, TX." then the action block.
+2. You can chain multiple actions in one response.
+3. The user will see Yes/No buttons to confirm before anything executes.
+4. Be concise. If you need more info to complete the request, ask — don't guess.
+5. When looking up data, use lookup actions — don't just recite from the context above, because it may be truncated.`
 
   // build messages for API — keep last 10 exchanges for context
   const apiMsgs=[{role:'user',content:ctx},..._chatMsgs.slice(-20).map(m=>({role:m.role==='user'?'user':'assistant',content:m.content}))]
@@ -5964,12 +5995,16 @@ You can chain multiple actions. Always confirm what you did after. Be concise. I
     const cleanReply=reply.replace(/```action\s*[\s\S]*?```/g,'').trim()
     if(cleanReply)_chatMsgs.push({role:'assistant',content:cleanReply})
     if(actionMatch){
+      // parse all actions but don't execute yet — queue for confirmation
+      const actions=[]
       for(const block of actionMatch){
         const json=block.replace(/```action\s*/,'').replace(/```/,'').trim()
-        try{
-          const act=JSON.parse(json)
-          await execChatAction(act)
-        }catch(e){console.error('action parse:',e,json)}
+        try{actions.push(JSON.parse(json))}catch(e){console.error('action parse:',e)}
+      }
+      if(actions.length){
+        window._pendingActions=actions
+        // show confirm buttons
+        _chatMsgs.push({role:'assistant',content:'_confirm_'})
       }
     }
     if(!cleanReply&&!actionMatch)_chatMsgs.push({role:'assistant',content:'Done.'})
