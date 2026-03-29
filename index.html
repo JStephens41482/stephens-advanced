@@ -329,10 +329,48 @@ select{-webkit-appearance:none;appearance:none}
 <div class="ov" id="ov4"></div>
 <div class="inv-ov" id="invOv"></div>
 <div class="toast" id="toast"></div>
+<div id="lockScreen" style="position:fixed;inset:0;z-index:9999;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px">
+  <svg width="48" height="56" viewBox="0 0 32 38" fill="none" style="margin-bottom:16px"><path d="M16 2C16 2 6 10 6 20C6 26 10 30 16 30C22 30 26 26 26 20C26 10 16 2 16 2Z" fill="#f05a28"/><path d="M16 8C16 8 10 14 10 20C10 23 12 25 14 26C13 23 14 20 16 18C18 20 19 23 18 26C20 25 22 23 22 20C22 14 16 8 16 8Z" fill="#ff7847"/><ellipse cx="16" cy="30" rx="5" ry="6" fill="#3498db"/><ellipse cx="16" cy="29" rx="3" ry="3.5" fill="#5dade2"/></svg>
+  <div style="font-size:20px;font-weight:900;margin-bottom:4px">Stephens <span style="color:var(--fire)">Advanced</span></div>
+  <div style="font-size:12px;color:var(--g1);margin-bottom:32px">Enter PIN to continue</div>
+  <input id="pinInput" type="password" inputmode="numeric" maxlength="7" placeholder="•••••••" autocomplete="off" style="width:200px;text-align:center;font-size:24px;letter-spacing:8px;padding:14px;border-radius:12px;background:var(--c1);border:2px solid var(--b1);color:var(--w);margin-bottom:12px" onkeydown="if(event.key==='Enter')checkPin()">
+  <button onclick="checkPin()" style="width:200px;padding:14px;border-radius:12px;background:var(--fire);color:#fff;font-size:15px;font-weight:800;border:none;cursor:pointer;min-height:50px">Unlock</button>
+  <div id="pinErr" style="color:var(--bad);font-size:13px;margin-top:12px;min-height:20px"></div>
+</div>
 <input type="file" id="camInput" accept="image/*" capture="environment" style="display:none" onchange="handlePhoto(event)">
 <script>
 const SB=supabase.createClient('https://motjasdokoxwiodwzyps.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1vdGphc2Rva294d2lvZHd6eXBzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzNDI2NTcsImV4cCI6MjA4ODkxODY1N30.IMf0plnDRhVgts9LjJr219Tax4J175iuWN1u6ZKTZ-I',{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}})
 document.getElementById('hdrDate').textContent=new Date().toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric'})
+
+// PIN LOCK — hash of 2645268
+const PIN_HASH='a3f5b8c2d1e9f7604b2a1c8d3e5f7a9b' // simple hash, not crypto-grade
+function simpleHash(s){let h=0;for(let i=0;i<s.length;i++){h=((h<<5)-h)+s.charCodeAt(i);h|=0}return Math.abs(h).toString(16).padStart(8,'0')}
+const CORRECT_HASH=simpleHash('2645268')
+
+function checkPin(){
+  const pin=$('pinInput')?.value||''
+  if(simpleHash(pin)===CORRECT_HASH){
+    localStorage.setItem('sa_auth',Date.now().toString())
+    $('lockScreen').style.display='none'
+    $('app').style.display='flex'
+    startApp()
+  }else{
+    $('pinErr').textContent='Wrong PIN'
+    $('pinInput').value=''
+    $('pinInput').focus()
+    setTimeout(()=>{if($('pinErr'))$('pinErr').textContent=''},2000)
+  }
+}
+
+// check if already authenticated (session lasts 7 days)
+const lastAuth=parseInt(localStorage.getItem('sa_auth')||'0')
+if(Date.now()-lastAuth<7*24*60*60*1000){
+  $('lockScreen').style.display='none'
+  $('app').style.display='flex'
+}else{
+  $('app').style.display='none'
+  setTimeout(()=>$('pinInput')?.focus(),100)
+}
 let D={jobs:[],locs:[],invs:[],bas:[],rc:{}},extR={},manLines=[],recOnly=false,_aiN=0
 
 // NAV STACK
@@ -6399,15 +6437,19 @@ async function execChatAction(act){
 }
 
 // STARTUP
-load().then(()=>{
-  rDash()
-  if(!D.locs.length&&!D.jobs.length){
-    setTimeout(()=>load().then(rDash),1200)
-  }
-}).catch(err=>{
-  document.getElementById('dashC').innerHTML='<div style="padding:24px;color:#ef4444;font-size:13px;font-weight:600">Load error: '+err.message+'</div>'
-  console.error('Startup load error:',err)
-})
+function startApp(){
+  load().then(()=>{
+    rDash()
+    if(!D.locs.length&&!D.jobs.length){
+      setTimeout(()=>load().then(rDash),1200)
+    }
+  }).catch(err=>{
+    document.getElementById('dashC').innerHTML='<div style="padding:24px;color:#ef4444;font-size:13px;font-weight:600">Load error: '+err.message+'</div>'
+    console.error('Startup load error:',err)
+  })
+}
+// auto-start if already authenticated
+if(Date.now()-lastAuth<7*24*60*60*1000)startApp()
 </script>
 </body>
 </html>
