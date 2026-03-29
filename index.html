@@ -5858,7 +5858,7 @@ function openChat(){
   _chatOpen=true
   $('chatOv').classList.add('open')
   if(!_chatMsgs.length){
-    _chatMsgs.push({role:'assistant',content:"Hey Jon. I'm your AI assistant — I have access to all your business data. Ask me anything.\n\nExamples:\n• \"How much did I collect this month?\"\n• \"What jobs are overdue?\"\n• \"Look up Primo Brothers Pizza\"\n• \"What's the NFPA 10 hydro interval for CO2?\"\n• \"Draft an email to a customer about their upcoming inspection\""})
+    _chatMsgs.push({role:'assistant',content:"Hey Jon. I can do things in the app for you — just tell me what you need.\n\n• \"Add a client called Dave's Hot Chicken in McKinney\"\n• \"Schedule a job at Primo Brothers for next Tuesday at 9\"\n• \"Look up Look Cinemas\"\n• \"Add a to-do: order fusible links\"\n• \"Mark invoice INV-649577 as paid by check\"\n• \"Show me my overdue jobs\"\n• \"Text 469-324-6503 saying I'm running late\""})
     renderChat()
   }
   setTimeout(()=>$('chatInput')?.focus(),100)
@@ -5904,117 +5904,40 @@ async function sendChat(){
   const collectedThisMonth=paidThisMonth.reduce((s,i)=>s+(+i.total||0),0)
   const totalOutstanding=unpaidInvs.reduce((s,i)=>s+(+i.total||0),0)
 
-  const ctx=`You are the AI assistant for Stephens Advanced LLC, a fire suppression contractor in DFW Texas owned by Jon Stephens (license FEL-A-2593933). You have full access to the business data below. Answer questions directly and concisely. You can help with: looking up customers, checking schedules, NFPA code questions, drafting emails/texts, calculating pricing, business advice, anything Jon needs.
+  const ctx=`You are the AI assistant built into the Stephens Advanced field service app. You can TAKE ACTIONS by returning JSON commands. When Jon asks you to do something, DO IT — don't tell him where to tap.
 
 CURRENT DATE: ${t}
-TODAY'S JOBS (${todayJobs.length}): ${todayJobs.slice(0,10).map(j=>`${j.location?.name||'?'} @ ${j.scheduled_time||'?'} (${(j.scope||[]).join(',')})`).join('; ')}
-OVERDUE JOBS (${overdueJobs.length}): ${overdueJobs.slice(0,10).map(j=>`${j.location?.name||'?'} — ${j.scheduled_date}`).join('; ')}
-TOTAL CLIENTS: ${D.locs.length}
-CLIENTS: ${D.locs.slice(0,30).map(l=>`${l.name}${l.city?' ('+l.city+')':''}[${l.extinguishers?.length||0}ext,${l.suppression_systems?.length||0}sys]`).join('; ')}
+TODAY'S JOBS: ${todayJobs.slice(0,10).map(j=>`${j.location?.name||'?'} @ ${j.scheduled_time||'?'} [id:${j.id}]`).join('; ')}
+OVERDUE: ${overdueJobs.slice(0,5).map(j=>`${j.location?.name||'?'} ${j.scheduled_date} [id:${j.id}]`).join('; ')}
+CLIENTS (${D.locs.length}): ${D.locs.slice(0,40).map(l=>`${l.name}${l.city?' ('+l.city+')':''} [id:${l.id}]`).join('; ')}
 COLLECTED THIS MONTH: $${collectedThisMonth.toFixed(2)}
-OUTSTANDING: $${totalOutstanding.toFixed(2)} across ${unpaidInvs.length} invoices
-UNPAID INVOICES: ${unpaidInvs.slice(0,15).map(i=>{const loc=D.locs.find(l=>l.id===i.location_id);return`${i.invoice_number||'?'} ${loc?.name||'?'} $${(+i.total).toFixed(2)}`}).join('; ')}
-TOTAL JOBS: ${D.jobs.length} (${D.jobs.filter(j=>j.status==='completed').length} completed)
-TECHS: ${(D.techs||[]).map(t2=>t2.name).join(', ')||'None'}
-PENDING SERVICE REQUESTS: ${(D.serviceRequests||[]).length}
-BRYCER QUEUE: ${(D.brycerQueue||[]).length} pending
-
+OUTSTANDING: $${totalOutstanding.toFixed(2)} (${unpaidInvs.length} invoices)
+UNPAID: ${unpaidInvs.slice(0,10).map(i=>{const loc2=D.locs.find(l=>l.id===i.location_id);return`${loc2?.name||'?'} ${i.invoice_number||''} $${(+i.total).toFixed(2)} [id:${i.id}]`}).join('; ')}
+TECHS: ${(D.techs||[]).map(t2=>`${t2.name} [id:${t2.id}]`).join(', ')||'None'}
 RATE CARD: ${Object.entries(D.rc||{}).map(([k,v])=>`${k}=$${v}`).join(', ')}
 
-NFPA 10 — PORTABLE FIRE EXTINGUISHERS:
-Monthly visual inspection. Annual maintenance by certified tech. 6-year internal exam for stored-pressure dry chem/clean agent/Class D (empty, inspect shell, replace parts, recharge, install verification collar). Hydro intervals: ABC/BC/PurpleK/Halon/Halotron/ClassD=12yr. CO2/Water/ClassK/AFFF=5yr. Dry chem stainless steel=5yr. Condemn criteria: soldered/welded repairs, damaged threads, pitting under nameplate, fire exposure, dent>1/10 dimension, wall reduced>10%.
+TO TAKE AN ACTION, include a JSON block in your response wrapped in \`\`\`action tags:
+\`\`\`action
+{"type":"...", ...params}
+\`\`\`
 
-NFPA 17 — DRY CHEMICAL SYSTEMS:
-Monthly owner inspection (location, manual actuators, seals, gauge). Semi-annual maintenance (detectors, containers, piping, nozzles, agent check for caking). Pressurized containers: examine agent every 6yr. Hydro test every 12yr. Expellant gas: nitrogen (industrial grade, -52°C dew point) or CO2 (99.5% min).
+AVAILABLE ACTIONS:
+- {"type":"add_client","name":"...","address":"...","city":"...","state":"TX","zip":"...","phone":"...","email":"...","contact":"..."} — creates a new client/location
+- {"type":"schedule_job","location_id":"...","date":"YYYY-MM-DD","time":"HH:MM","scope":["extinguishers","suppression"],"notes":"..."} — schedules a job
+- {"type":"add_todo","text":"..."} — adds to the to-do list
+- {"type":"mark_paid","invoice_id":"...","method":"check|cash|card","note":"..."} — marks invoice paid
+- {"type":"lookup_client","name":"..."} — returns full client details with equipment
+- {"type":"lookup_invoice","invoice_number":"..."} — returns invoice details
+- {"type":"open_screen","screen":"dashboard|jobs|clients|money|techs|reports"} — navigates to a screen
+- {"type":"open_client","location_id":"..."} — opens a specific client
+- {"type":"open_job","job_id":"..."} — opens a specific job
+- {"type":"delete_job","job_id":"..."} — deletes a job (with confirmation)
+- {"type":"add_extinguisher","location_id":"...","type":"ABC Dry Chemical","size":"5lb","location_in_building":"..."} — adds extinguisher to location
+- {"type":"add_suppression","location_id":"...","system_type":"...","category":"standard","tank_count":1,"nozzle_count":0,"fusible_link_count":0} — adds suppression system
+- {"type":"send_sms","to":"phone","body":"message"} — sends a text message
+- {"type":"toast","message":"..."} — shows a notification
 
-NFPA 17A — WET CHEMICAL SYSTEMS:
-Semi-annual inspection by certified tech per manufacturer manual. Check detectors, cylinders, piping, nozzles for grease/obstruction, manual pulls, pressure, caps. Fusible links replaced annually (NFPA 96 §11.2.4). Hydro test every 12yr. UL 300 listing required. Agent recharge if corrosion/damage found.
-
-NFPA 96 — KITCHEN HOODS: Semi-annual suppression system inspection. Monthly filter cleaning. Fusible link replacement annually.
-NFPA 2001 — CLEAN AGENT SYSTEMS: Semi-annual inspection per manufacturer.
-
-ANSUL R-102: Wet chemical, cartridge-operated. ANSULEX agent (potassium carbonate/acetate). Tanks: 1.5gal (P/N 429864), 3.0gal (P/N 429862). Working pressure 100psi. Cartridges: LT-30-R (P/N 5373) for single tank, LT-20-R (P/N 7032), Double-tank (P/N 73022). Regulator deadset 110psi. Nozzle flow numbers: 1/2N, 1N, 1W, 2W, 3N, 230, 245, 290. 3gal tank=max 11 flow points. Metal or rubber blow-off caps required. 12yr hydro on tanks and cartridges.
-
-ANSUL PIRANHA: Dual agent — PRX wet chemical + building water supply through same nozzles. Cools grease 15x faster than single-agent. Uses 60% less chemical. Nozzles mount higher (up to 84in). AP Nozzle (P/N 423480). Compatible with R-102 components. Can actuate up to 2 additional R-102 or Piranha units.
-
-AMEREX KP: Stored-pressure wet chemical. Potassium acetate agent. Pressurized 240psi nitrogen. Tanks: KP275 (2.75gal, 8 flow), KP375 (3.75gal, 11 flow), KP475 (4.8gal, 14 flow), KP600 (6.14gal, 18 flow). Hydro every 12yr. MRM (Mechanical Release Module) with nitrogen cylinder. Zone Defense nozzle=2 flow points. Recharge pails: CH547, CH544, CH656, CH664.
-
-KIDDE WHDR: Stored-pressure wet chemical. APC agent (potassium salt). Pressurized 175psi nitrogen. Tanks: WHDR-125 (1.25gal), WHDR-260 (2.6gal, 8 flow), WHDR-400S (4gal short, 12 flow), WHDR-400M (4gal med, 12 flow), WHDR-600 (6gal). XV Control System (P/N 87-120099-002) with nitrogen cartridge (P/N 87-120043-001). Actuates up to 20 cylinders. Hydro every 5yr (DOT requirement). 7 nozzle types with foil seal caps.
-
-PROTEX II L-SERIES (Heiser): Pre-engineered wet chemical. Models: L1600, L3000, L4600, L6000. Integral cylinder control unit — no separate release pressure cylinder. Wire cable activation for fusible link and remote pull. Chrome nozzle covers. Semi-annual maintenance. Manual P/N 10053.
-
-CAPTIVE-AIRE TANK: Wet chemical with electronic firestat detection (not fusible links). Solid-state, 360°F or rate-of-rise. Cloud monitoring, battery backup. Cylinders replaced every 12yr (not hydroed). Actuation hoses: hydro at 500psi or replace every 12yr. Overlapping nozzles 36in apart, 35-50in above surface. Metal blow-off caps.
-
-CAPTIVE-AIRE CORE: Water-based (Water+). Connects to potable water supply — unlimited agent. SC-5 surfactant injection (1gal=~15min protection). Self-cleaning wash cycle (3min hot water+surfactant). Firestat detection with battery backup. No cylinders to replace. ETL listed UL 300. For solid fuel cooking. Semi-annual inspection, 2yr battery replacement. $650 per 6-month service.
-
-PYRO-CHEM KITCHEN KNIGHT II: Wet chemical, cartridge-operated (16g CO2). Tanks: PCL-160 (1.6gal, 5 flow), PCL-300 (3.0gal, 10 flow), PCL-460 (4.6gal, 15 flow), PCL-600 (6.0gal, 20 flow). Pressurized 225psi nitrogen. Up to 5 cylinders per control head.
-
-BUCKEYE BFR KITCHEN MISTER: Wet chemical, nitrogen cartridge actuated. Sized by flow points: BFR-5, BFR-10, BFR-15, BFR-20. Pressurized 195psi. Stainless steel nozzle caps.
-
-BADGER RANGE GUARD: Stored-pressure wet chemical. Tanks: RG-1.25G, RG-2.5G, RG-4GS (short), RG-4GM (med), RG-6G. Similar to Kidde WHDR in operation.
-
-LEHAVOT WCK: Wet chemical. Tanks in liters: WCK6 (6L), WCK9 (9L), WCK16 (16L), WCK20 (20L), WCK26 (26L). Operates at 15bar (220psi). Up to 6 cylinders combined.
-
-RANGE SIZING: Techs refer to ranges by burner count. Each pair of burners (one "module") = 12"W x 24"D of cooking surface. So: 2 burner=12"x24" (288 sq in), 4 burner=24"x24" (576 sq in), 6 burner=36"x24" (864 sq in), 8 burner=48"x24" (1152 sq in), 10 burner=60"x24" (1440 sq in). The stove literally has that many small burners/grates — the slang is accurate for identifying the appliance. BUT for suppression system design and nozzle placement, what actually matters per the book is the square inches of cooking surface, not the burner count. Techs don't design systems — they verify the right nozzle is in the right place. When they say "4 burner" they mean the 24"x24" module. Translate accordingly.
-
-NOZZLE PLACEMENT GUIDE:
-
-ANSUL R-102 NOZZLES (11 types total):
-- 1/2N (P/N 443321, was 419334): 0.5 flow pt. Precipitator/electrostatic filter protection. Mount 10-26in below precipitator, aim at center of each cell.
-- 1F (P/N 419333): 1 flow pt. Fryer-specific (low position) & upright broiler/salamander. For Henny Penny-type fryers: mount 2in from back of fry vat, 8in from left side. Also used for salamander/upright broiler protection.
-- 1N (P/N 443317, was 419335): 1 flow pt. Plenum & general appliance. 1 nozzle per 4 linear ft of plenum. Position between filter height, aim down length, 0-6in from end. SS version P/N 439865.
-- 1W (P/N 443323, was 419336): 1 flow pt. Plenum (wide spray) & chain broiler overhead. Same plenum placement as 1N. Two 1W nozzles for chain broiler protection. SS version P/N 439864.
-- 2W (P/N 419337): 2 flow pts. Wide spray appliance coverage.
-- 230 (P/N 443329, was 419339): 2 flow pts. High proximity fryer/appliance. Mount 27-47in above cooking surface. Locate within perimeter, aim at midpoint. Height 20in, 6.5in from edge, 15in spacing.
-- 245 (P/N 419340): 2 flow pts. Standard proximity fryer/appliance. Mount 8-15in (low) or 20-27in (standard). 6.5in from front/back edge, 15in between nozzles. Aim at center.
-- 260 (P/N 443333, was 419341): 2 flow pts. Extended appliance coverage.
-- 290 (P/N 439845, was 419342): 2 flow pts. Extended coverage appliance nozzle. UL 300 component.
-- 2120 (P/N 419343): 2 flow pts. Low proximity griddle protection.
-- 3N (P/N 443327, was 419338): 3 flow pts. Large appliance/high-volume coverage.
-- Max 11 flow points per 3gal tank (proportionally less for 1.5gal). Max 4 flow points per appliance branch. Supply pipe 3/8in, max 40ft, max 9 elbows, max 1 tee.
-- All nozzles chrome-plated body. All shipped with metal blow-off caps. Nozzle tip stamped with type. SS versions available for 1N and 1W.
-
-PYRO-CHEM KITCHEN KNIGHT II NOZZLES:
-- 1H (P/N 551029): 1 flow pt. High proximity griddle. Mount 24-48in above cooking surface, locate above any corner, aim 12in over and 12in in from corner.
-- 1L (P/N 551026): 1 flow pt. Low proximity griddle. Mount 10-24in above cooking surface, above any corner.
-- 1L (P/N 551066): 1 flow pt. Low proximity small range. Mount 13-24in above surface, 22in from either end, centered left to right.
-- 2L (P/N 551027): 2 flow pts. High proximity large range. Mount 34-48in above cooking surface, aimed directly down. Range CANNOT be under a backshelf.
-- 2H: 2 flow pts. High proximity appliance nozzle.
-- Wok nozzle: Mount 13-24in above top edge of wok, anywhere on perimeter, aim at center.
-- Small griddle max coverage: 1080 sq in x 36in.
-- Max fryer size for modular: 864 sq in.
-- Plenum: V-bank=center of width at 1/3 height. Single bank=2in from back at 1/3 down. Within 6in of end, aim down length. Max 10ft per nozzle.
-- Nozzles have swivel adaptor allowing ~30° rotation in all directions.
-- Flow points: PCL-160=5, PCL-300=10, PCL-460=15, PCL-600=20.
-
-AMEREX KP NOZZLES:
-- Appliance Nozzle (P/N 11982): 1 flow pt. Individual appliance protection. Also used as plenum nozzle (1 per 10ft of plenum).
-- Zone Defense Nozzle (P/N 14178): 2 flow pts. Overlapping coverage zone. Mount 46-51in above cooking surface. Zone depth: 34in. End nozzles 6in from outside edges. Spacing: up to 20in between nozzles. Link brackets every 24in for detection.
-- Duct Nozzle (P/N 16416): 1 flow pt.
-- 1.5 Flow Duct Nozzle (P/N 11984): 1.5 flow pts.
-- 7 total nozzle types. Chrome-plated brass, one-piece tip/body with strainer and blow-off cap.
-- Zone Defense: appliances can be moved/exchanged without piping changes. Split zones possible.
-- Appliance Specific: lower initial cost, fixed appliance locations. Each appliance gets dedicated nozzle(s).
-- System supports up to 110 flow points without additional nitrogen.
-
-BUCKEYE BFR KITCHEN MISTER NOZZLES:
-- Stainless steel nozzle caps (not rubber). Nitrogen cartridge actuated. Sized by flow points (BFR-5/10/15/20). Nozzle placement per Buckeye design manual — heights and aim points similar to other wet chemical systems (10-48in above surface depending on proximity type). Consult Buckeye BFR Design Manual for exact appliance coverage tables.
-
-PROTEX II (HEISER) NOZZLES:
-- Chrome nozzle covers to prevent grease blockage. Wire cable activation. Nozzle placement per Protex II Technical Manual P/N 10053. Similar placement principles to other UL 300 wet chemical systems. Consult Heiser distributor portal for detailed design tables.
-
-GENERAL NOZZLE RULES (all UL 300 wet chem systems):
-- Low proximity: 8-24in above cooking surface. Best for fixed appliances.
-- High proximity: 24-51in above cooking surface. Allows more flexibility.
-- Fryers: nozzle aimed at center of oil surface.
-- Ranges/griddles: nozzle coverage based on square inches of cooking surface, not burner count.
-- Broilers: nozzle aimed at grease collection area.
-- Woks: nozzle on perimeter aimed at center.
-- Plenum: nozzle aimed down length, covers 4-10ft depending on system.
-- Duct: typically 1 nozzle at duct collar.
-- All nozzles need blow-off caps (metal or rubber depending on system) to prevent grease clogging.
-
-Be helpful, direct, and professional. You are a fire suppression industry expert. If Jon asks you to do something in the app, tell him exactly what to tap. You can answer any NFPA code question, troubleshoot any system, calculate pricing, draft emails, look up customers, or advise on business decisions.`
+You can chain multiple actions. Always confirm what you did after. Be concise. If you need info to complete the request, ask for it.`
 
   // build messages for API — keep last 10 exchanges for context
   const apiMsgs=[{role:'user',content:ctx},..._chatMsgs.slice(-20).map(m=>({role:m.role==='user'?'user':'assistant',content:m.content}))]
@@ -6030,13 +5953,26 @@ Be helpful, direct, and professional. You are a fire suppression industry expert
       body:JSON.stringify({
         model:'claude-sonnet-4-6',
         max_tokens:1500,
-        system:'You are the AI assistant for Stephens Advanced LLC. Be concise, helpful, and direct.',
+        system:'You are an action-taking assistant for a fire suppression field service app. Execute requests by returning action JSON blocks. Be concise.',
         messages:sendMsgs
       })
     })
     const data=await res.json()
     const reply=data.content?.[0]?.text||'Sorry, I couldn\'t process that. Try again.'
-    _chatMsgs.push({role:'assistant',content:reply})
+    // extract and execute action blocks
+    const actionMatch=reply.match(/```action\s*([\s\S]*?)```/g)
+    const cleanReply=reply.replace(/```action\s*[\s\S]*?```/g,'').trim()
+    if(cleanReply)_chatMsgs.push({role:'assistant',content:cleanReply})
+    if(actionMatch){
+      for(const block of actionMatch){
+        const json=block.replace(/```action\s*/,'').replace(/```/,'').trim()
+        try{
+          const act=JSON.parse(json)
+          await execChatAction(act)
+        }catch(e){console.error('action parse:',e,json)}
+      }
+    }
+    if(!cleanReply&&!actionMatch)_chatMsgs.push({role:'assistant',content:'Done.'})
   }catch(e){
     console.error('chat error:',e)
     _chatMsgs.push({role:'assistant',content:'Connection error — check your internet and try again.'})
@@ -6044,6 +5980,93 @@ Be helpful, direct, and professional. You are a fire suppression industry expert
 
   renderChat()
   if(btn)btn.disabled=false
+}
+
+async function execChatAction(act){
+  const t=act.type
+  try{
+    if(t==='add_client'){
+      const{data,error}=await SB.from('locations').insert({
+        name:act.name,address:act.address||null,city:act.city||null,state:act.state||'TX',
+        zip:act.zip||null,contact_name:act.contact||null,contact_phone:act.phone||null,
+        contact_email:act.email||null
+      }).select().single()
+      if(error)throw error
+      await load()
+      _chatMsgs.push({role:'assistant',content:`✓ Added client: **${act.name}**`})
+    }
+    else if(t==='schedule_job'){
+      const{error}=await SB.from('jobs').insert({
+        location_id:act.location_id,scheduled_date:act.date,scheduled_time:act.time||'09:00',
+        scope:act.scope||['extinguishers','suppression'],status:'scheduled',notes:act.notes||null,
+        assigned_to:act.assigned_to||null
+      })
+      if(error)throw error
+      await load();rDash();rJobs()
+      const loc=D.locs.find(l=>l.id===act.location_id)
+      _chatMsgs.push({role:'assistant',content:`✓ Job scheduled: **${loc?.name||''}** on ${act.date} at ${act.time||'09:00'}`})
+    }
+    else if(t==='add_todo'){
+      await SB.from('todos').insert({text:act.text,done:false})
+      await load();rDash()
+      _chatMsgs.push({role:'assistant',content:`✓ Added to to-do: "${act.text}"`})
+    }
+    else if(t==='mark_paid'){
+      await SB.from('invoices').update({status:'paid',payment_method:act.method||'cash',payment_note:act.note||null,paid_at:new Date().toISOString()}).eq('id',act.invoice_id)
+      await load()
+      _chatMsgs.push({role:'assistant',content:`✓ Invoice marked as paid (${act.method||'cash'})`})
+    }
+    else if(t==='lookup_client'){
+      const match=D.locs.find(l=>l.name.toLowerCase().includes((act.name||'').toLowerCase()))
+      if(match){
+        const jobs2=D.jobs.filter(j=>j.location_id===match.id)
+        const invs2=D.invs.filter(i=>i.location_id===match.id)
+        const owed=invs2.filter(i=>!['paid','void','record'].includes(i.status)).reduce((s,i)=>s+(+i.total||0),0)
+        _chatMsgs.push({role:'assistant',content:`**${match.name}**\n${[match.address,match.city].filter(Boolean).join(', ')}\n${match.contact_name||''} ${match.contact_phone||''}\n${match.extinguishers?.length||0} extinguishers · ${match.suppression_systems?.length||0} systems\n${jobs2.length} jobs · ${invs2.length} invoices · ${owed?'$'+owed+' owed':'Paid up'}`})
+      }else{_chatMsgs.push({role:'assistant',content:`No client found matching "${act.name}"`})}
+    }
+    else if(t==='lookup_invoice'){
+      const inv=D.invs.find(i=>(i.invoice_number||'').toLowerCase().includes((act.invoice_number||'').toLowerCase()))
+      if(inv){
+        const loc=D.locs.find(l=>l.id===inv.location_id)
+        _chatMsgs.push({role:'assistant',content:`**${inv.invoice_number}** — ${loc?.name||'?'}\nStatus: ${inv.status} · $${(+inv.total).toFixed(2)}\nDate: ${inv.date}${inv.paid_at?' · Paid '+inv.paid_at.split('T')[0]:''}`})
+      }else{_chatMsgs.push({role:'assistant',content:`No invoice found matching "${act.invoice_number}"`})}
+    }
+    else if(t==='open_screen'){
+      closeChat()
+      const map={dashboard:'vDash',jobs:'vJobs',clients:'vCust',money:'vMoney',techs:'vTechs'}
+      const v=map[act.screen]
+      if(v){const btn2=document.querySelector(`[data-v="${v}"]`);if(btn2)go(btn2)}
+      if(act.screen==='reports')openReports()
+    }
+    else if(t==='open_client'){closeChat();openCust(act.location_id)}
+    else if(t==='open_job'){closeChat();openJob(act.job_id)}
+    else if(t==='delete_job'){
+      if(confirm('Delete this job?')){
+        await SB.from('jobs').delete().eq('id',act.job_id)
+        await load();rDash();rJobs()
+        _chatMsgs.push({role:'assistant',content:'✓ Job deleted'})
+      }else{_chatMsgs.push({role:'assistant',content:'Cancelled.'})}
+    }
+    else if(t==='add_extinguisher'){
+      await SB.from('extinguishers').insert({location_id:act.location_id,type:act.type||'ABC Dry Chemical',size:act.size||null,location_in_building:act.location_in_building||null})
+      await load()
+      _chatMsgs.push({role:'assistant',content:`✓ Added ${act.type||'extinguisher'} ${act.size||''} to location`})
+    }
+    else if(t==='add_suppression'){
+      await SB.from('suppression_systems').insert({location_id:act.location_id,system_type:act.system_type,category:act.category||'standard',tank_count:act.tank_count||1,nozzle_count:act.nozzle_count||0,fusible_link_count:act.fusible_link_count||0})
+      await load()
+      _chatMsgs.push({role:'assistant',content:`✓ Added ${act.system_type} to location`})
+    }
+    else if(t==='send_sms'){
+      await fetch('/api/send-sms',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to:act.to,body:act.body})})
+      _chatMsgs.push({role:'assistant',content:`✓ Text sent to ${act.to}`})
+    }
+    else if(t==='toast'){toast(act.message)}
+  }catch(e){
+    console.error('action exec:',e)
+    _chatMsgs.push({role:'assistant',content:`Error: ${e.message||'Action failed'}`})
+  }
 }
 
 // STARTUP
