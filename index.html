@@ -719,14 +719,11 @@ function distBetween(a,b){
 // travel charge calculation origin (do not expose in UI)
 const TRAVEL_ORIGIN={lat:32.837,lng:-97.082}
 function calcTravelCharge(loc){
-  console.log('calcTravelCharge called with loc:',loc?.name,loc?.city,loc?.address)
-  if(!loc){console.log('travel: no loc, returning 0');return{charge:0,desc:''}}
+  if(!loc)return{charge:0,desc:''}
   const dest=cityCoords(loc.city)
-  console.log('travel: city=',loc.city,'dest coords=',dest,'origin=',TRAVEL_ORIGIN)
   const straightMi=distBetween(TRAVEL_ORIGIN,dest)
   const driveMi=Math.round(straightMi*1.25)
-  console.log('travel: straightMi=',straightMi.toFixed(1),'driveMi=',driveMi)
-  if(driveMi<=50){console.log('travel: under 50mi, no charge');return{charge:0,desc:''}}
+  if(driveMi<=50)return{charge:0,desc:''}
   const excessMi=driveMi-50
   const rtMi=excessMi*2
   const rtHrs=rtMi/55
@@ -734,7 +731,6 @@ function calcTravelCharge(loc){
   const mileageCharge=rtMi*0.67
   const total=Math.round(timeCharge+mileageCharge)
   const desc=`Travel — ${excessMi} mi over 50-mile radius, ${rtHrs.toFixed(1)} hrs round trip`
-  console.log('travel: CHARGE=',total,'desc=',desc)
   return{charge:total,desc}
 }
 
@@ -1861,14 +1857,9 @@ async function compJ(id){
   if(!lines.length){toast('Add at least one line item',false);setLoad('compBtn',false,'✓ Complete Job — Generate Invoice');return}
 
   // auto-add travel charge if over 50 miles
-  console.log('compJ: calling calcTravelCharge with l=',l?.name,l?.city)
   const travel=calcTravelCharge(l)
-  console.log('compJ: travel result=',travel)
   if(travel.charge>0){
-    console.log('compJ: ADDING travel line item, charge=',travel.charge)
     lines.push({description:travel.desc,quantity:1,unit_price:travel.charge,total:travel.charge})
-  }else{
-    console.log('compJ: no travel charge (under 50mi or $0)')
   }
 
   const sub=lines.reduce((s,l2)=>s+l2.total,0)
