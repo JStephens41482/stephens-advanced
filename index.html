@@ -282,6 +282,11 @@ async function load(){
     SB.from('billing_accounts').select('*').order('name'),
     SB.from('rate_card').select('key,price')
   ])
+  if(j.error)console.error('jobs error:',j.error)
+  if(l.error)console.error('locations error:',l.error)
+  if(i.error)console.error('invoices error:',i.error)
+  if(r.error)console.error('rate_card error:',r.error)
+  console.log('loaded:',j.data?.length,'jobs,',l.data?.length,'locs,',i.data?.length,'invs')
   D.jobs=j.data||[];D.locs=l.data||[];D.invs=i.data||[];D.bas=b.data||[]
   const rc={};(r.data||[]).forEach(x=>rc[x.key]=+x.price);D.rc=rc
 }
@@ -2305,6 +2310,9 @@ load().then(()=>{
   if(!D.locs.length&&!D.jobs.length){
     setTimeout(()=>load().then(rDash),1200)
   }
+}).catch(err=>{
+  document.getElementById('dashC').innerHTML='<div style="padding:24px;color:#ef4444;font-size:13px;font-weight:600">Load error: '+err.message+'</div>'
+  console.error('Startup load error:',err)
 })
 </script>
 </body>
