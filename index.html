@@ -666,13 +666,17 @@ async function openJob(id){
     </div>
   </div>`
 
-  // EXTINGUISHER STATUS (only when active)
+  // SUPPRESSION REPORT — required before completing job
   if(isActive&&sc.includes('suppression')&&l.suppression_systems?.length){
-    h+=`<div class="qa" style="margin-bottom:12px">`
+    h+=`<div style="background:var(--warns);border:1.5px solid var(--warn);border-radius:var(--r);padding:12px 14px;margin-bottom:12px">
+      <div style="font-size:11px;font-weight:800;color:var(--warn);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">⚠️ Report Required Before Invoicing</div>
+      <div style="display:flex;flex-direction:column;gap:6px">`
     l.suppression_systems.forEach(s=>{
-      h+=`<button class="qa-btn" style="flex:1" onclick="openSuppReport('${j.id}','${s.id}')">📋 Fill Report — ${esc(s.system_type)}</button>`
+      const t=(s.system_type||'').toLowerCase()
+      const isCA=t.includes('fm-200')||t.includes('fm200')||t.includes('novec')||t.includes('co2')||t.includes('clean agent')||t.includes('halon')||t.includes('inergen')||t.includes('sapphire')
+      h+=`<button class="qa-btn" style="flex:1;border-color:var(--warn);color:var(--warn)" onclick="${isCA?`openCleanAgentReport('${j.id}','${s.id}')`:`openSuppReport('${j.id}','${s.id}')`}">📋 Fill ${isCA?'Clean Agent':'Hood'} Report — ${esc(s.system_type)}</button>`
     })
-    h+=`</div>`
+    h+=`</div></div>`
   }
   if(isActive&&sc.includes('extinguishers')&&l.extinguishers?.length){
     h+=`<div class="ds"><div class="ds-t">Extinguisher Status</div>`
@@ -801,6 +805,21 @@ async function compJ(id){
   setLoad('compBtn',true)
   const j=D.jobs.find(x=>x.id===id);if(!j)return
   const l=j.location||{}
+  const sc=j.scope||[]
+
+  // GATE: suppression jobs require a report before invoice can be generated
+  if(sc.includes('suppression')&&l.suppression_systems?.length){
+    const{data:rpts}=await SB.from('reports').select('id').eq('job_id',id).limit(1)
+    if(!rpts||!rpts.length){
+      setLoad('compBtn',false,'✓ Complete Job — Generate Invoice')
+      const syss2=l.suppression_systems
+      const hasCA=syss2.some(s=>{const t=(s.system_type||'').toLowerCase();return t.includes('fm-200')||t.includes('fm200')||t.includes('novec')||t.includes('co2')||t.includes('clean agent')||t.includes('halon')||t.includes('inergen')||t.includes('sapphire')})
+      const sysId=syss2[0].id
+      toast('Fill out the suppression report first',false)
+      setTimeout(()=>{hasCA?openCleanAgentReport(id,sysId):openSuppReport(id,sysId)},300)
+      return
+    }
+  }
 
   // read lines from jobLines state
   const lines=jobLines.filter(l2=>(l2.desc||'').trim()).map(l2=>({
@@ -840,14 +859,6 @@ async function compJ(id){
   await load()
   pop()
   showInv({num:inv?.invoice_number||'—',nm:l.name||'',addr:[l.address,l.city].filter(Boolean).join(', '),lines,total:sub,ro:false,iid:inv?.id,locId:l.id,jobId:id,scope:j.scope||[],syss:l.suppression_systems||[]})
-
-  // auto-open suppression report when job involves suppression systems
-  if(inv&&sc.includes('suppression')&&l.suppression_systems?.length){
-    const syss2=l.suppression_systems
-    const hasCA=syss2.some(s=>{const t=(s.system_type||'').toLowerCase();return t.includes('fm-200')||t.includes('fm200')||t.includes('novec')||t.includes('co2')||t.includes('clean agent')||t.includes('halon')||t.includes('inergen')||t.includes('sapphire')})
-    const sysId=syss2[0].id
-    setTimeout(()=>{hasCA?openCleanAgentReport(id,sysId):openSuppReport(id,sysId)},400)
-  }
 }
 
 function setSt(btn,eid,st){
