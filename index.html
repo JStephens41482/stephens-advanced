@@ -235,12 +235,14 @@ select{-webkit-appearance:none;appearance:none}
   <div class="vw" id="vJobs"><div class="vw-pad" id="jobsC"></div></div>
   <div class="vw" id="vCust"><div class="vw-pad" id="custC"></div></div>
   <div class="vw" id="vMoney"><div class="vw-pad" id="moneyC"></div></div>
+  <div class="vw" id="vTechs"><div class="vw-pad" id="techsC"></div></div>
   <button class="fab" onclick="openNew()">+</button>
   <div class="nav">
     <button class="on" data-v="vDash" onclick="go(this)"><span class="ni">⚡</span><span class="nt">Today</span></button>
     <button data-v="vJobs" onclick="go(this)"><span class="ni">📋</span><span class="nt">Jobs</span></button>
     <button data-v="vCust" onclick="go(this)"><span class="ni">👤</span><span class="nt">Clients</span></button>
     <button data-v="vMoney" onclick="go(this)"><span class="ni">💰</span><span class="nt">Money</span></button>
+    <button data-v="vTechs" onclick="go(this)"><span class="ni">👥</span><span class="nt">Techs</span></button>
   </div>
 </div>
 <div class="ov" id="ov1"></div>
@@ -518,7 +520,7 @@ function go(btn){
   const v=btn.dataset.v
   document.querySelectorAll('.vw').forEach(e=>e.classList.remove('on'));$(v).classList.add('on')
   document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('on'));btn.classList.add('on')
-  if(v==='vDash')rDash();else if(v==='vJobs')rJobs();else if(v==='vCust')rCust();else rMoney()
+  if(v==='vDash')rDash();else if(v==='vJobs')rJobs();else if(v==='vCust')rCust();else if(v==='vTechs')rTechs();else rMoney()
 }
 
 function toast(m,ok=true){
@@ -1067,6 +1069,10 @@ td{padding:5px 8px;border-bottom:1px solid #ddd}
 ${body}
 <script>window.print()<\/script>
 </body></html>`
+}
+
+function rTechs(){
+  $('techsC').innerHTML=`<div class="ey" style="padding:80px 24px"><div class="ey-i">👥</div><div class="ey-t" style="font-size:15px;font-weight:700;color:var(--w);margin-bottom:8px">Techs — Coming Soon</div><div class="ey-t">Multi-tech management will go here.</div></div>`
 }
 
 function rDash(){
