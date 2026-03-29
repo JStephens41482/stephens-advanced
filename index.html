@@ -1966,6 +1966,15 @@ async function delInvoice(id){
 }
 
 async function delJob(id){
+  // cascade: invoice_lines → invoices → reports → extinguisher_results → job
+  try{
+    const{data:invs}=await SB.from('invoices').select('id').eq('job_id',id)
+    const invIds=(invs||[]).map(i=>i.id)
+    if(invIds.length)await SB.from('invoice_lines').delete().in('invoice_id',invIds)
+    if(invIds.length)await SB.from('invoices').delete().in('id',invIds)
+    await SB.from('reports').delete().eq('job_id',id)
+    await SB.from('extinguisher_results').delete().eq('job_id',id)
+  }catch(e){console.error('delJob cascade:',e)}
   const{error}=await SB.from('jobs').delete().eq('id',id)
   if(error){toast('Error deleting job',false);return}
   await load();toast('Job deleted')
