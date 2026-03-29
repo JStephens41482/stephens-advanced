@@ -569,7 +569,7 @@ function rDash(){
     <div class="st" style="cursor:pointer;active:opacity:.7" onclick="showStatDrill('today')"><div class="sn o">${tj.length}</div><div class="sl">Today ›</div></div>
     <div class="st" style="cursor:pointer" onclick="showStatDrill('estimated')"><div class="sn g">${fmt(ev)}</div><div class="sl">Estimated ›</div></div>
     <div class="st" style="cursor:pointer" onclick="showStatDrill('overdue')"><div class="sn ${ov.length?'r':'g'}">${ov.length}</div><div class="sl">Overdue ›</div></div>
-  </div>
+  </div>`
   const todos=D.todos||[]
   h+=`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px">
     <button onclick="openRouteView()" style="padding:14px 8px;border-radius:var(--r);background:var(--c1);border:1px solid var(--b1);display:flex;flex-direction:column;align-items:center;gap:4px;min-height:70px;cursor:pointer">
