@@ -563,6 +563,7 @@ function rJobs(){
 // JOB WORK ORDER — live editable invoice during the job
 let jobLines=[] // [{desc,qty,price,id}]
 let jobNotes=''
+let invLines=[] // for editing existing invoices in openInvDetail
 
 function buildJobLines(j){
   const l=j.location||{},rc=D.rc,sc=j.scope||[]
@@ -712,7 +713,16 @@ async function openJob(id){
     h+=`<div class="ds"><div class="ds-t">Customer Signature</div><div class="sig-wrap"><canvas id="sigC"></canvas><div class="sig-ph" id="sigPh">Sign here</div><button class="sig-clr" onclick="clrSig()">Clear</button></div></div>`
 
   }else{
-    // COMPLETED — show read-only summary
+    // COMPLETED — invoices (editable via openInvDetail) + reports
+    if(sc.includes('suppression')&&l.suppression_systems?.length){
+      h+=`<div class="qa" style="margin-bottom:12px">`
+      l.suppression_systems.forEach(s=>{
+        const t=(s.system_type||'').toLowerCase()
+        const isCA=t.includes('fm-200')||t.includes('fm200')||t.includes('novec')||t.includes('co2')||t.includes('clean agent')||t.includes('halon')||t.includes('inergen')
+        h+=`<button class="qa-btn" style="flex:1" onclick="${isCA?`openCleanAgentReport('${j.id}','${s.id}')`:`openSuppReport('${j.id}','${s.id}')`}">📋 ${isCA?'Clean Agent':'Hood'} Report — ${esc(s.system_type)}</button>`
+      })
+      h+=`</div>`
+    }
     if(locInvs.length){
       h+=`<div class="ds"><div class="ds-t">Invoices</div>`
       locInvs.forEach(i=>{
@@ -830,6 +840,14 @@ async function compJ(id){
   await load()
   pop()
   showInv({num:inv?.invoice_number||'—',nm:l.name||'',addr:[l.address,l.city].filter(Boolean).join(', '),lines,total:sub,ro:false,iid:inv?.id,locId:l.id,jobId:id,scope:j.scope||[],syss:l.suppression_systems||[]})
+
+  // auto-open suppression report when job involves suppression systems
+  if(inv&&sc.includes('suppression')&&l.suppression_systems?.length){
+    const syss2=l.suppression_systems
+    const hasCA=syss2.some(s=>{const t=(s.system_type||'').toLowerCase();return t.includes('fm-200')||t.includes('fm200')||t.includes('novec')||t.includes('co2')||t.includes('clean agent')||t.includes('halon')||t.includes('inergen')||t.includes('sapphire')})
+    const sysId=syss2[0].id
+    setTimeout(()=>{hasCA?openCleanAgentReport(id,sysId):openSuppReport(id,sysId)},400)
+  }
 }
 
 function setSt(btn,eid,st){
@@ -1022,6 +1040,41 @@ async function openInvDetail(id){
   const ls=lines||[]
   const total=ls.reduce((s,l)=>s+(+l.total||0),0)||+inv.total||0
   const bc=inv.status==='paid'?'bpaid':inv.status==='sent'?'bsent':inv.status==='record'?'brec':inv.status==='factored'?'bfact':'bdraft'
+  const isPaid=inv.status==='paid'
+
+  // load into editable state
+  invLines=ls.map((l2,i)=>({id:l2.id,desc:l2.description||'',qty:+(l2.quantity||1),price:+(l2.unit_price||0),total:+(l2.total||0),dbId:l2.id}))
+
+  const rc=D.rc||{}
+  const PARTS=[
+    {label:'— Quick Add —',value:''},
+    {label:'Extinguisher Inspection',value:`Extinguisher Inspection|1|${rc.extinguisher_inspection||20}`},
+    {label:'Suppression Semi-Annual (Standard)',value:`Suppression Semi-Annual|1|${rc.suppression_standard||250}`},
+    {label:'Suppression Semi-Annual (CA Tank)',value:`Suppression CA Tank|1|${rc.suppression_captiveaire_tank||450}`},
+    {label:'Suppression Semi-Annual (CA CORE)',value:`Suppression CA CORE|1|${rc.suppression_captiveaire_core||650}`},
+    {label:'Fusible Link',value:`Fusible Link|1|${rc.fusible_link||25}`},
+    {label:'Metal Blow-Off Cap',value:`Blow-Off Cap|1|${rc.metal_blowoff_cap||25}`},
+    {label:'Silicone Cap',value:`Silicone Cap|1|9`},
+    {label:'Nozzle',value:`Nozzle|1|${rc.nozzle||92.5}`},
+    {label:'Ansul LT-10 Cartridge',value:`Ansul LT-10 Cartridge|1|0`},
+    {label:'Ansul LT-30 Cartridge',value:`Ansul LT-30 Cartridge|1|0`},
+    {label:'16g CO2 Cartridge',value:`16g CO2 Cartridge|1|0`},
+    {label:'New 5lb ABC Extinguisher',value:`New 5lb ABC Extinguisher|1|${rc.new_5lb_ext||102.5}`},
+    {label:'New 10lb ABC Extinguisher',value:`New 10lb ABC Extinguisher|1|${rc.new_10lb_ext||141.5}`},
+    {label:'New Class K Extinguisher',value:`New Class K Extinguisher|1|0`},
+    {label:'E-Light Annual Test',value:`E-Light Annual Test|1|${rc.emergency_light||20}`},
+    {label:'Hydro — Class K',value:`Hydrostatic Test Class K|1|275`},
+    {label:'Hydro — CO2',value:`Hydrostatic Test CO2|1|72`},
+    {label:'Hydro — H2O',value:`Hydrostatic Test H2O|1|57`},
+    {label:'Hydro — ABC',value:`Hydrostatic Test ABC|1|68`},
+    {label:'Dry Chem Internal Inspection',value:`Dry Chem Internal Inspection|1|68`},
+    {label:'Labor (per hour)',value:`Labor|1|${rc.labor||200}`},
+    {label:'Emergency Call',value:`Emergency Call|1|500`},
+    {label:'After-Hours Call',value:`After-Hours Call|1|750`},
+    {label:'Holiday/Weekend Call',value:`Holiday Weekend Call|1|1000`},
+    {label:'Custom item...',value:'CUSTOM'},
+  ]
+  const partsOpts=PARTS.map(p=>`<option value="${esc(p.value)}">${esc(p.label)}</option>`).join('')
 
   let h=`<div class="ov-hdr">
     <button class="ov-back" onclick="pop()">‹</button>
@@ -1035,9 +1088,10 @@ async function openInvDetail(id){
       <button class="del-yes" onclick="delInvoice('${id}')">Delete Invoice</button>
     </div>
   </div>
+
   <div style="background:var(--c1);border:1px solid var(--b1);border-radius:var(--r);padding:14px;margin-bottom:16px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-      <div style="font-size:24px;font-weight:800;font-variant-numeric:tabular-nums">${fmtD(total)}</div>
+      <div style="font-size:24px;font-weight:800;font-variant-numeric:tabular-nums" id="inv-det-total">${fmtD(total)}</div>
       <span class="badge ${bc}">${inv.status}</span>
     </div>
     <div style="font-size:11px;color:var(--g1)">${inv.date?'Issued '+new Date(inv.date).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):''} ${inv.due_date?' · Due '+new Date(inv.due_date).toLocaleDateString('en-US',{month:'short',day:'numeric'}):''}</div>
@@ -1051,17 +1105,42 @@ async function openInvDetail(id){
     </div>`
   }
 
-  if(ls.length){
-    h+=`<div class="ds"><div class="ds-t">Line Items</div>`
-    ls.forEach(l2=>h+=`<div class="ds-row"><div class="ds-lbl" style="flex:1;font-size:12px;color:var(--w2)">${esc(l2.description)}${l2.quantity>1?' ×'+l2.quantity:''}</div><div class="ds-val" style="font-variant-numeric:tabular-nums;flex-shrink:0">${fmtD(+l2.total)}</div></div>`)
-    h+=`<div class="ds-row" style="padding-top:12px;border-top:2px solid var(--b1)"><div class="ds-lbl" style="font-weight:800;color:var(--w)">Total</div><div class="ds-val" style="font-size:18px;font-weight:800;color:var(--fire)">${fmtD(total)}</div></div>`
-    h+=`</div>`
+  // LINE ITEMS — always editable (locked only if paid)
+  h+=`<div class="ds"><div class="ds-t" style="display:flex;justify-content:space-between;align-items:center">
+    <span>Line Items</span>
+    <span id="inv-det-total-sm" style="font-size:13px;font-weight:800;color:var(--ok)">${fmtD(total)}</span>
+  </div>`
+  if(!isPaid){
+    h+=`<div style="margin-bottom:10px">
+      <select id="inv-parts-dd" style="background:var(--c2);border-color:var(--fire);color:var(--fire);font-weight:700" onchange="addInvLine(this,'${id}')">
+        ${partsOpts}
+      </select>
+    </div>`
   }
-  if(inv.notes)h+=`<div class="ds"><div class="ds-t">Notes</div><div class="ds-info">${esc(inv.notes)}</div></div>`
+  h+=`<div id="inv-det-lines"></div>`
+  if(inv.notes)h+=`<div style="margin-top:10px"><label class="fg-l">Notes</label><div class="ds-info" style="font-size:12px">${esc(inv.notes)}</div></div>`
   h+=`</div>`
 
-  if(!['paid','record'].includes(inv.status)){
+  // LINKED REPORTS
+  const jobId=inv.job_id
+  if(jobId){
+    const j2=D.jobs.find(x=>x.id===jobId)||{}
+    const sc2=j2.scope||[]
+    const syss2=loc.suppression_systems||[]
+    if(sc2.includes('suppression')&&syss2.length){
+      const sysId=syss2[0].id
+      const hasCA=syss2.some(s=>{const t=(s.system_type||'').toLowerCase();return t.includes('fm-200')||t.includes('fm200')||t.includes('novec')||t.includes('co2')||t.includes('clean agent')||t.includes('halon')||t.includes('inergen')})
+      h+=`<div class="qa" style="margin-bottom:16px">
+        <button class="qa-btn" style="flex:1" onclick="${hasCA?`openCleanAgentReport('${jobId}','${sysId}')`:`openSuppReport('${jobId}','${sysId}')`}">📋 ${hasCA?'Clean Agent':'Kitchen Hood'} Inspection Report</button>
+      </div>`
+    }
+  }
+
+  h+=`</div>`
+
+  if(!isPaid){
     h+=`<div class="ov-foot" style="display:flex;flex-direction:column;gap:8px">
+      <button class="btn-p" id="inv-save-lines-btn" onclick="saveInvLines('${id}')">💾 Save Changes</button>
       <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:var(--g2);margin-bottom:2px">Collect Payment</div>
       <div style="display:flex;gap:6px">
         <button class="qa-btn ok2" style="flex:1;font-size:11px" onclick="markPaid('${id}','check')">✓ Check</button>
@@ -1087,6 +1166,81 @@ async function openInvDetail(id){
     </div>`
   }
   push(h)
+  setTimeout(()=>renderInvLines(isPaid),60)
+}
+
+function renderInvLines(locked){
+  const wrap=$('inv-det-lines');if(!wrap)return
+  if(!invLines.length){wrap.innerHTML=`<div style="color:var(--g2);font-size:12px;padding:8px 0">No line items</div>`;return}
+  wrap.innerHTML=invLines.map((l2,i)=>locked
+    ?`<div class="ds-row"><div class="ds-lbl" style="flex:1;font-size:12px;color:var(--w2)">${esc(l2.desc)}${l2.qty>1?' ×'+l2.qty:''}</div><div class="ds-val" style="font-variant-numeric:tabular-nums;flex-shrink:0">${fmtD(l2.qty*l2.price)}</div></div>`
+    :`<div class="li-row" data-ili="${i}">
+      <input placeholder="Description" value="${esc(l2.desc||'')}" oninput="ilEdit(${i},'desc',this.value)" style="flex:2">
+      <input class="li-qty" type="number" value="${l2.qty||1}" min="0.5" step="0.5" oninput="ilEdit(${i},'qty',this.value)">
+      <input class="li-price" type="number" value="${+(l2.price||0)}" step="0.01" oninput="ilEdit(${i},'price',this.value)">
+      <button class="li-del" onclick="ilDel(${i})">✕</button>
+    </div>`
+  ).join('')
+  if(!locked){
+    const t=invLines.reduce((s,l2)=>s+(+(l2.qty||1))*(+(l2.price||0)),0)
+    wrap.innerHTML+=`<div class="ds-row" style="padding-top:10px;border-top:1.5px solid var(--b1)"><div class="ds-lbl" style="font-weight:800;color:var(--w)">Total</div><div class="ds-val" style="font-size:17px;font-weight:800;color:var(--fire)" id="inv-lines-total">${fmtD(t)}</div></div>`
+  }
+}
+
+function ilEdit(i,field,val){
+  if(!invLines[i])return
+  if(field==='desc')invLines[i].desc=val
+  else if(field==='qty')invLines[i].qty=parseFloat(val)||1
+  else if(field==='price')invLines[i].price=parseFloat(val)||0
+  // update totals
+  const t=invLines.reduce((s,l2)=>s+(+(l2.qty||1))*(+(l2.price||0)),0)
+  const el=$('inv-lines-total');if(el)el.textContent=fmtD(t)
+  const el2=$('inv-det-total-sm');if(el2)el2.textContent=fmtD(t)
+}
+
+function ilDel(i){
+  invLines.splice(i,1)
+  renderInvLines(false)
+}
+
+function addInvLine(sel,invId){
+  const v=sel.value;if(!v)return
+  sel.value=''
+  if(v==='CUSTOM'){
+    invLines.push({desc:'',qty:1,price:0})
+    renderInvLines(false)
+    setTimeout(()=>{const inputs=$('inv-det-lines')?.querySelectorAll('input[placeholder="Description"]');if(inputs?.length)inputs[inputs.length-1].focus()},50)
+    return
+  }
+  const parts=v.split('|')
+  const desc=parts[0]||'',qty=parseFloat(parts[1])||1,price=parseFloat(parts[2])||0
+  const existing=invLines.find(l2=>l2.desc===desc)
+  if(existing){existing.qty=(+existing.qty||1)+1;renderInvLines(false);return}
+  invLines.push({desc,qty,price})
+  renderInvLines(false)
+}
+
+async function saveInvLines(invId){
+  const btn=$('inv-save-lines-btn');if(btn){btn.textContent='Saving...';btn.disabled=true}
+  const lines=invLines.filter(l2=>(l2.desc||'').trim())
+  const newTotal=lines.reduce((s,l2)=>s+(+(l2.qty||1))*(+(l2.price||0)),0)
+  try{
+    // delete existing lines and reinsert
+    await SB.from('invoice_lines').delete().eq('invoice_id',invId)
+    if(lines.length)await SB.from('invoice_lines').insert(lines.map((l2,i)=>({
+      invoice_id:invId,
+      description:l2.desc.trim(),
+      quantity:+(l2.qty)||1,
+      unit_price:+(l2.price)||0,
+      total:(+(l2.qty)||1)*(+(l2.price)||0),
+      sort_order:i
+    })))
+    await SB.from('invoices').update({total:newTotal,subtotal:newTotal}).eq('id',invId)
+    await load()
+    toast('Invoice updated ✓')
+    const el=$('inv-det-total');if(el)el.textContent=fmtD(newTotal)
+  }catch(e){toast('Save failed',false);console.error(e)}
+  if(btn){btn.textContent='💾 Save Changes';btn.disabled=false}
 }
 
 async function markPaid(id,method){
