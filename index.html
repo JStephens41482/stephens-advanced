@@ -233,7 +233,7 @@ select{-webkit-appearance:none;appearance:none}
 <div class="toast" id="toast"></div>
 <input type="file" id="camInput" accept="image/*" capture="environment" style="display:none" onchange="handlePhoto(event)">
 <script>
-const SB=supabase.createClient('https://motjasdokoxwiodwzyps.supabase.co','sb_publishable_9lsQtlPsnPjeODdys7EKMw_cpXeppYb',{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}})
+const SB=supabase.createClient('https://motjasdokoxwiodwzyps.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1vdGphc2Rva294d2lvZHd6eXBzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzNDI2NTcsImV4cCI6MjA4ODkxODY1N30.IMf0plnDRhVgts9LjJr219Tax4J175iuWN1u6ZKTZ-I',{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}})
 document.getElementById('hdrDate').textContent=new Date().toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric'})
 let D={jobs:[],locs:[],invs:[],bas:[],rc:{}},extR={},manLines=[],recOnly=false,_aiN=0
 
