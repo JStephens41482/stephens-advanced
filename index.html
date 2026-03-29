@@ -1518,19 +1518,16 @@ async function openJob(id){
     </div>`:''}
   </div>
 
-  <!-- SUPPRESSION REPORTS — always visible at top when suppression is in scope -->
-  ${sc.includes('suppression')?`<div style="margin-bottom:16px">
+  <!-- INSPECTION REPORTS — always visible -->
+  <div style="margin-bottom:16px">
     <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:var(--g2);margin-bottom:8px">Inspection Reports</div>
-    ${(l.suppression_systems&&l.suppression_systems.length?l.suppression_systems:[{id:'',system_type:'Suppression System'}]).map(s=>{
+    ${sc.includes('suppression')&&(l.suppression_systems&&l.suppression_systems.length)?l.suppression_systems.map(s=>{
       const t=(s.system_type||'').toLowerCase()
       const isCA=t.includes('fm-200')||t.includes('fm200')||t.includes('novec')||t.includes('co2')||t.includes('clean agent')||t.includes('halon')||t.includes('inergen')||t.includes('sapphire')
-      return`<button class="trk-btn trk-go" style="margin-bottom:6px" onclick="${isCA?`openCleanAgentReport('${j.id}','${s.id}')`:`openSuppReport('${j.id}','${s.id}')`}">📋 ${isCA?'Clean Agent':'Kitchen Hood'} Inspection Report${s.system_type&&s.system_type!=='Suppression System'?' — '+s.system_type.replace(/'/g,'&#39;'):''}</button>`
-    }).join('')}
-  </div>`:''}
-
-  ${isActive&&sc.includes('extinguishers')?`<div style="margin-bottom:16px">
-    <button class="trk-btn" style="background:var(--ok);color:#fff" onclick="openExtReport('${j.id}')">🧯 Extinguisher Inspection Report</button>
-  </div>`:''}
+      return`<button class="trk-btn trk-go" style="margin-bottom:6px" onclick="${isCA?`openCleanAgentReport('${j.id}','${s.id}')`:`openSuppReport('${j.id}','${s.id}')`}">📋 ${isCA?'Clean Agent':'Kitchen Hood'} Report${s.system_type&&s.system_type!=='Suppression System'?' — '+s.system_type.replace(/'/g,'&#39;'):''}</button>`
+    }).join(''):''}
+    <button class="trk-btn" style="background:var(--ok);color:#fff;margin-bottom:6px" onclick="openExtReport('${j.id}')">🧯 Extinguisher Inspection Report</button>
+  </div>
 
   <!-- LOCATION -->
   <div class="ds"><div class="ds-t">Location</div>
