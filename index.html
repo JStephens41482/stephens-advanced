@@ -342,34 +342,29 @@ select{-webkit-appearance:none;appearance:none}
 const SB=supabase.createClient('https://motjasdokoxwiodwzyps.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1vdGphc2Rva294d2lvZHd6eXBzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzNDI2NTcsImV4cCI6MjA4ODkxODY1N30.IMf0plnDRhVgts9LjJr219Tax4J175iuWN1u6ZKTZ-I',{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}})
 document.getElementById('hdrDate').textContent=new Date().toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric'})
 
-// PIN LOCK — hash of 2645268
-const PIN_HASH='a3f5b8c2d1e9f7604b2a1c8d3e5f7a9b' // simple hash, not crypto-grade
+// PIN LOCK
 function simpleHash(s){let h=0;for(let i=0;i<s.length;i++){h=((h<<5)-h)+s.charCodeAt(i);h|=0}return Math.abs(h).toString(16).padStart(8,'0')}
 const CORRECT_HASH=simpleHash('2645268')
+const _ls=document.getElementById('lockScreen')
+const _ap=document.getElementById('app')
+const _lastAuth=parseInt(localStorage.getItem('sa_auth')||'0')
+let _unlocked=Date.now()-_lastAuth<7*24*60*60*1000
+if(_unlocked){_ls.style.display='none'}else{_ap.style.display='none';setTimeout(()=>document.getElementById('pinInput')?.focus(),100)}
 
 function checkPin(){
-  const pin=$('pinInput')?.value||''
+  const pin=document.getElementById('pinInput')?.value||''
   if(simpleHash(pin)===CORRECT_HASH){
     localStorage.setItem('sa_auth',Date.now().toString())
-    $('lockScreen').style.display='none'
-    $('app').style.display='flex'
+    _unlocked=true
+    document.getElementById('lockScreen').style.display='none'
+    document.getElementById('app').style.display='flex'
     startApp()
   }else{
-    $('pinErr').textContent='Wrong PIN'
-    $('pinInput').value=''
-    $('pinInput').focus()
-    setTimeout(()=>{if($('pinErr'))$('pinErr').textContent=''},2000)
+    document.getElementById('pinErr').textContent='Wrong PIN'
+    document.getElementById('pinInput').value=''
+    document.getElementById('pinInput').focus()
+    setTimeout(()=>{const e=document.getElementById('pinErr');if(e)e.textContent=''},2000)
   }
-}
-
-// check if already authenticated (session lasts 7 days)
-const lastAuth=parseInt(localStorage.getItem('sa_auth')||'0')
-if(Date.now()-lastAuth<7*24*60*60*1000){
-  $('lockScreen').style.display='none'
-  $('app').style.display='flex'
-}else{
-  $('app').style.display='none'
-  setTimeout(()=>$('pinInput')?.focus(),100)
 }
 let D={jobs:[],locs:[],invs:[],bas:[],rc:{}},extR={},manLines=[],recOnly=false,_aiN=0
 
@@ -6449,7 +6444,7 @@ function startApp(){
   })
 }
 // auto-start if already authenticated
-if(Date.now()-lastAuth<7*24*60*60*1000)startApp()
+if(_unlocked)startApp()
 </script>
 </body>
 </html>
