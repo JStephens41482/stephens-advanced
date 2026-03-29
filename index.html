@@ -271,6 +271,21 @@ select{-webkit-appearance:none;appearance:none}
 .swipe-wrap{position:relative;overflow:hidden;border-radius:var(--r);margin-bottom:8px}
 .swipe-inner{transition:transform .2s ease;position:relative;z-index:1}
 .swipe-del{position:absolute;right:0;top:0;bottom:0;width:90px;background:var(--bad);display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:800;z-index:0}
+.chat-fab{position:fixed;bottom:140px;right:16px;width:48px;height:48px;border-radius:50%;background:var(--info);color:#fff;font-size:22px;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 20px rgba(99,102,241,.4);z-index:90;cursor:pointer;border:none;transition:transform .1s}
+.chat-fab:active{transform:scale(.9)}
+.chat-ov{display:none;position:fixed;inset:0;z-index:300;background:var(--bg);flex-direction:column}
+.chat-ov.open{display:flex}
+.chat-hdr{display:flex;align-items:center;gap:8px;padding:max(env(safe-area-inset-top),10px) 16px 10px;border-bottom:1px solid var(--b1);flex-shrink:0;background:var(--bg)}
+.chat-msgs{flex:1;overflow-y:auto;padding:16px;-webkit-overflow-scrolling:touch}
+.chat-msg{margin-bottom:14px;max-width:85%}
+.chat-msg.user{margin-left:auto;text-align:right}
+.chat-bubble{display:inline-block;padding:10px 14px;border-radius:16px;font-size:14px;line-height:1.5;text-align:left;word-wrap:break-word}
+.chat-msg.ai .chat-bubble{background:var(--c2);color:var(--w);border-bottom-left-radius:4px}
+.chat-msg.user .chat-bubble{background:var(--info);color:#fff;border-bottom-right-radius:4px}
+.chat-input-wrap{display:flex;gap:8px;padding:10px 16px max(env(safe-area-inset-bottom),16px);border-top:1px solid var(--b1);background:var(--c1);flex-shrink:0}
+.chat-input{flex:1;min-height:44px;border-radius:22px;padding:10px 16px;font-size:14px;background:var(--c2);border:1px solid var(--b1);color:var(--w);resize:none;max-height:120px}
+.chat-send{width:44px;height:44px;border-radius:50%;background:var(--info);color:#fff;font-size:18px;display:flex;align-items:center;justify-content:center;flex-shrink:0;border:none;cursor:pointer}
+.chat-send:disabled{opacity:.4}
 </style>
 </head>
 <body>
@@ -294,6 +309,18 @@ select{-webkit-appearance:none;appearance:none}
     <button data-v="vCust" onclick="go(this)"><span class="ni">👤</span><span class="nt">Clients</span></button>
     <button data-v="vMoney" onclick="go(this)"><span class="ni">💰</span><span class="nt">Money</span></button>
     <button data-v="vTechs" onclick="go(this)"><span class="ni">👥</span><span class="nt">Techs</span></button>
+  </div>
+</div>
+<button class="chat-fab" onclick="openChat()">💬</button>
+<div class="chat-ov" id="chatOv">
+  <div class="chat-hdr">
+    <button style="font-size:26px;color:var(--info);padding:4px 8px 4px 0;min-width:44px;min-height:44px;display:flex;align-items:center;background:none;border:none;cursor:pointer" onclick="closeChat()">‹</button>
+    <div style="flex:1"><div style="font-size:17px;font-weight:700">AI Assistant</div><div style="font-size:11px;color:var(--g1)">Ask me anything about your business</div></div>
+  </div>
+  <div class="chat-msgs" id="chatMsgs"></div>
+  <div class="chat-input-wrap">
+    <textarea class="chat-input" id="chatInput" placeholder="Ask anything..." rows="1" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChat()}"></textarea>
+    <button class="chat-send" id="chatSendBtn" onclick="sendChat()">↑</button>
   </div>
 </div>
 <div class="ov" id="ov1"></div>
@@ -5821,6 +5848,113 @@ ${returnHtml?'':'<script>window.print()<\\/script>'}
     setTimeout(()=>URL.revokeObjectURL(url),5000)
   }
   if(b){b.innerHTML='📄 Generate Report PDF';b.classList.remove('loading')}
+}
+
+// ═══ AI CHAT ═══
+let _chatMsgs=[]
+let _chatOpen=false
+
+function openChat(){
+  _chatOpen=true
+  $('chatOv').classList.add('open')
+  if(!_chatMsgs.length){
+    _chatMsgs.push({role:'assistant',content:"Hey Jon. I'm your AI assistant — I have access to all your business data. Ask me anything.\n\nExamples:\n• \"How much did I collect this month?\"\n• \"What jobs are overdue?\"\n• \"Look up Primo Brothers Pizza\"\n• \"What's the NFPA 10 hydro interval for CO2?\"\n• \"Draft an email to a customer about their upcoming inspection\""})
+    renderChat()
+  }
+  setTimeout(()=>$('chatInput')?.focus(),100)
+}
+
+function closeChat(){
+  _chatOpen=false
+  $('chatOv').classList.remove('open')
+}
+
+function renderChat(){
+  const wrap=$('chatMsgs');if(!wrap)return
+  wrap.innerHTML=_chatMsgs.map(m=>{
+    const cls=m.role==='user'?'user':'ai'
+    const content=(m.content||'').replace(/\n/g,'<br>').replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/`(.+?)`/g,'<code style="background:var(--c3);padding:2px 5px;border-radius:4px;font-size:12px">$1</code>')
+    return`<div class="chat-msg ${cls}"><div class="chat-bubble">${content}</div></div>`
+  }).join('')
+  wrap.scrollTop=wrap.scrollHeight
+}
+
+async function sendChat(){
+  const input=$('chatInput')
+  const msg=input?.value?.trim()
+  if(!msg)return
+  input.value=''
+  input.style.height='44px'
+
+  _chatMsgs.push({role:'user',content:msg})
+  renderChat()
+
+  const btn=$('chatSendBtn');if(btn)btn.disabled=true
+
+  // build business context
+  const t=td()
+  const todayJobs=D.jobs.filter(j=>j.scheduled_date===t)
+  const overdueJobs=D.jobs.filter(j=>j.status==='scheduled'&&j.scheduled_date<t)
+  const unpaidInvs=D.invs.filter(i=>!['paid','void','record'].includes(i.status))
+  const paidThisMonth=D.invs.filter(i=>{
+    if(i.status!=='paid'||!i.date)return false
+    const now=new Date(),ms=new Date(now.getFullYear(),now.getMonth(),1).toISOString().split('T')[0]
+    return i.date>=ms
+  })
+  const collectedThisMonth=paidThisMonth.reduce((s,i)=>s+(+i.total||0),0)
+  const totalOutstanding=unpaidInvs.reduce((s,i)=>s+(+i.total||0),0)
+
+  const ctx=`You are the AI assistant for Stephens Advanced LLC, a fire suppression contractor in DFW Texas owned by Jon Stephens (license FEL-A-2593933). You have full access to the business data below. Answer questions directly and concisely. You can help with: looking up customers, checking schedules, NFPA code questions, drafting emails/texts, calculating pricing, business advice, anything Jon needs.
+
+CURRENT DATE: ${t}
+TODAY'S JOBS (${todayJobs.length}): ${todayJobs.slice(0,10).map(j=>`${j.location?.name||'?'} @ ${j.scheduled_time||'?'} (${(j.scope||[]).join(',')})`).join('; ')}
+OVERDUE JOBS (${overdueJobs.length}): ${overdueJobs.slice(0,10).map(j=>`${j.location?.name||'?'} — ${j.scheduled_date}`).join('; ')}
+TOTAL CLIENTS: ${D.locs.length}
+CLIENTS: ${D.locs.slice(0,30).map(l=>`${l.name}${l.city?' ('+l.city+')':''}[${l.extinguishers?.length||0}ext,${l.suppression_systems?.length||0}sys]`).join('; ')}
+COLLECTED THIS MONTH: $${collectedThisMonth.toFixed(2)}
+OUTSTANDING: $${totalOutstanding.toFixed(2)} across ${unpaidInvs.length} invoices
+UNPAID INVOICES: ${unpaidInvs.slice(0,15).map(i=>{const loc=D.locs.find(l=>l.id===i.location_id);return`${i.invoice_number||'?'} ${loc?.name||'?'} $${(+i.total).toFixed(2)}`}).join('; ')}
+TOTAL JOBS: ${D.jobs.length} (${D.jobs.filter(j=>j.status==='completed').length} completed)
+TECHS: ${(D.techs||[]).map(t2=>t2.name).join(', ')||'None'}
+PENDING SERVICE REQUESTS: ${(D.serviceRequests||[]).length}
+BRYCER QUEUE: ${(D.brycerQueue||[]).length} pending
+
+RATE CARD: ${Object.entries(D.rc||{}).map(([k,v])=>`${k}=$${v}`).join(', ')}
+
+NFPA 10 INTERVALS: ABC/BC/PurpleK/Halon/Halotron/ClassD = 12yr hydro + 6yr internal. CO2 = 5yr hydro. Water = 5yr hydro. Class K = 5yr hydro.
+NFPA 96: Kitchen hood suppression semi-annual inspection.
+NFPA 2001: Clean agent system inspection.
+
+Be helpful, direct, and professional. If Jon asks you to do something in the app (schedule a job, send an email, etc.), tell him exactly what to tap to do it — you can't perform actions directly, but you can guide him step by step.`
+
+  // build messages for API — keep last 10 exchanges for context
+  const apiMsgs=[{role:'user',content:ctx},..._chatMsgs.slice(-20).map(m=>({role:m.role==='user'?'user':'assistant',content:m.content}))]
+  // remove the system context from being shown — it's the first message
+  apiMsgs[0]={role:'user',content:ctx+'\n\nUser question: '+msg}
+  // simplify: just send the system context + conversation
+  const sendMsgs=_chatMsgs.slice(-20).map(m=>({role:m.role==='user'?'user':'assistant',content:m.content}))
+  // prepend system as first user message
+  sendMsgs[0]={role:'user',content:ctx+'\n\n'+sendMsgs[0].content}
+
+  try{
+    const res=await fetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        model:'claude-sonnet-4-6',
+        max_tokens:1500,
+        system:'You are the AI assistant for Stephens Advanced LLC. Be concise, helpful, and direct.',
+        messages:sendMsgs
+      })
+    })
+    const data=await res.json()
+    const reply=data.content?.[0]?.text||'Sorry, I couldn\'t process that. Try again.'
+    _chatMsgs.push({role:'assistant',content:reply})
+  }catch(e){
+    console.error('chat error:',e)
+    _chatMsgs.push({role:'assistant',content:'Connection error — check your internet and try again.'})
+  }
+
+  renderChat()
+  if(btn)btn.disabled=false
 }
 
 // STARTUP
