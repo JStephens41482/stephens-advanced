@@ -1998,8 +1998,19 @@ function renderAIResult(p){
       <button class="btn-dim" style="margin-top:6px;width:auto;padding:10px 16px;font-size:13px" onclick="addAILine()">+ Add Line</button>
     </div>
     <div class="fg"><label class="fg-l">Notes</label><textarea id="ai-notes" placeholder="Optional...">${esc(p.notes||'')}</textarea></div>
+    <div class="fg"><label class="fg-l">How was it paid?</label>
+      <div style="display:flex;gap:6px;flex-wrap:wrap" id="ai-pay">
+        <button class="tg" style="padding:8px 14px;font-size:11px;cursor:pointer;background:var(--fires);color:var(--fire)" data-m="old_system" onclick="aiSetPay(this)">Paid</button>
+        <button class="tg" style="padding:8px 14px;font-size:11px;cursor:pointer;background:var(--c2);color:var(--g1)" data-m="unpaid" onclick="aiSetPay(this)">Unpaid</button>
+        <button class="tg" style="padding:8px 14px;font-size:11px;cursor:pointer;background:var(--c2);color:var(--g1)" data-m="check" onclick="aiSetPay(this)">Check</button>
+        <button class="tg" style="padding:8px 14px;font-size:11px;cursor:pointer;background:var(--c2);color:var(--g1)" data-m="cash" onclick="aiSetPay(this)">Cash</button>
+        <button class="tg" style="padding:8px 14px;font-size:11px;cursor:pointer;background:var(--c2);color:var(--g1)" data-m="card" onclick="aiSetPay(this)">Card</button>
+      </div>
+      <input id="ai-check-num" placeholder="Check number" style="display:none;margin-top:6px">
+    </div>
     <button class="btn-p" id="aiSaveBtn" onclick="saveAIInv(false)">Save Invoice</button>
-    <button class="btn-dim" onclick="saveAIInv(true)">Record Only — Don't Send</button>`
+    <button class="btn-dim" onclick="saveAIInv(true)">Record Only — Don't Send</button>
+    <button style="width:100%;padding:12px;border-radius:var(--rs);font-size:13px;font-weight:800;background:var(--bads);color:var(--bad);border:1.5px solid var(--bad);margin-top:6px;cursor:pointer" onclick="_aiPayMethod='unpaid';saveAIInv(true)">Record as Unpaid</button>`
 
   // if AI read a name but no match, pre-fill the search
   if(!matchedLoc&&p.customer_name){
@@ -2019,6 +2030,16 @@ function renderAIResult(p){
         if(nc.email){const e=$('ai-nc-email');if(e)e.value=nc.email}
       },30)
     },60)
+  }
+  // auto-detect payment from AI
+  if(p.payment_method){
+    const pm=p.payment_method.toLowerCase()
+    let mKey='old_system'
+    if(pm.includes('check'))mKey='check'
+    else if(pm.includes('cash'))mKey='cash'
+    else if(pm.includes('card')||pm.includes('credit')||pm.includes('debit'))mKey='card'
+    else if(pm.includes('unpaid')||pm.includes('due'))mKey='unpaid'
+    setTimeout(()=>{const btn=document.querySelector(`#ai-pay button[data-m="${mKey}"]`);if(btn)aiSetPay(btn)},80)
   }
 }
 
@@ -2257,6 +2278,14 @@ function addAILine(){
   wrap.appendChild(d)
 }
 
+let _aiPayMethod='old_system'
+function aiSetPay(btn){
+  _aiPayMethod=btn.dataset.m
+  document.querySelectorAll('#ai-pay button').forEach(b=>{b.style.background='var(--c2)';b.style.color='var(--g1)'})
+  btn.style.background='var(--fires)';btn.style.color='var(--fire)'
+  const ck=$('ai-check-num');if(ck)ck.style.display=_aiPayMethod==='check'?'block':'none'
+}
+
 async function saveAIInv(ro){
   setLoad('aiSaveBtn',true)
   const locId=$('ai-loc').value
@@ -2285,16 +2314,21 @@ async function saveAIInv(ro){
   if(!lines.length){toast('Add at least one line item',false);setLoad('aiSaveBtn',false,'Save Invoice');return}
   const total=lines.reduce((s,l2)=>s+l2.total,0)
   const invNum='INV-'+Date.now().toString().slice(-6)
+  const aiPaid=_aiPayMethod&&_aiPayMethod!=='unpaid'
+  const aiPayNote=_aiPayMethod==='old_system'?'Old system file — paid':_aiPayMethod==='check'?'Check #'+($('ai-check-num')?.value?.trim()||'?'):_aiPayMethod==='cash'?'Cash — paid in full':_aiPayMethod==='card'?'Card — paid in full':null
+  const invStatus=aiPaid?'paid':ro?'record':'draft'
   const{data:inv,error}=await SB.from('invoices').insert({
     location_id:finalLocId,invoice_number:invNum,date:$('ai-date')?.value||td(),
-    due_date:ro?null:($('ai-due')?.value||null),status:ro?'record':'sent',subtotal:total,total,
-    notes:$('ai-notes')?.value?.trim()||null
+    due_date:ro?null:($('ai-due')?.value||null),status:invStatus,subtotal:total,total,
+    notes:$('ai-notes')?.value?.trim()||null,
+    ...(aiPaid?{payment_method:_aiPayMethod,payment_note:aiPayNote,paid_at:new Date().toISOString()}:{})
   }).select().single()
   if(error){toast('Error saving invoice',false);setLoad('aiSaveBtn',false,'Save Invoice');return}
   await SB.from('invoice_lines').insert(lines.map((l2,i)=>({invoice_id:inv.id,description:l2.description,quantity:l2.quantity,unit_price:l2.unit_price,total:l2.total,sort_order:i})))
+  _aiPayMethod='old_system'
   await load();popAll()
   const loc=D.locs.find(x=>x.id===finalLocId)||{name:'Customer',address:'',city:''}
-  showInv({num:invNum,nm:loc.name,addr:[loc.address,loc.city].filter(Boolean).join(', '),lines,total,ro,iid:inv.id,locId:finalLocId})
+  openInvDetail(inv.id)
 }
 
 // MANUAL INVOICE
