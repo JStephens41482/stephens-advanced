@@ -1588,6 +1588,26 @@ async function openJob(id){
       })
       h+=`</div>`
     }
+    // show saved reports for this job
+    h+=`<div id="job-rpts-${j.id}"></div>`
+    setTimeout(async()=>{
+      const{data:rpts}=await SB.from('reports').select('id,report_type,report_data,created_at').eq('job_id',j.id).order('created_at')
+      if(!rpts?.length)return
+      const wrap=$('job-rpts-'+j.id);if(!wrap)return
+      let rh=`<div class="ds"><div class="ds-t">Reports · ${rpts.length}</div>`
+      rpts.forEach(r=>{
+        const icon=r.report_type==='extinguisher'?'🧯':r.report_type==='clean_agent'?'🔵':'📋'
+        const label=r.report_type==='extinguisher'?'Extinguisher Report':r.report_type==='clean_agent'?'Clean Agent Report':'Kitchen Hood Report'
+        const loc2=r.report_data?.sysLocation||''
+        const date2=r.created_at?new Date(r.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric'}):''
+        rh+=`<div class="ic" style="margin-bottom:6px" onclick="${r.report_type==='extinguisher'?`openExtReport('${j.id}')`:`open${r.report_type==='clean_agent'?'CleanAgentReport':'SuppReport'}('${j.id}','${r.report_data?.sysId||''}')`}">
+          <div class="ic-r1"><div class="ic-nm">${icon} ${label}${loc2?' — '+esc(loc2):''}</div><span class="badge bpaid">Saved</span></div>
+          <div class="ic-sub">${date2}</div>
+        </div>`
+      })
+      rh+=`</div>`
+      wrap.innerHTML=rh
+    },100)
     if(j.notes)h+=`<div class="ds"><div class="ds-t">Notes</div><div class="ds-info">${esc(j.notes)}</div></div>`
   }
 
@@ -3620,11 +3640,15 @@ async function sendInvoiceEmailFromDetail(invId,custName,invNum){
       const{data:rpts}=await SB.from('reports').select('report_data,report_type').eq('job_id',inv.job_id).order('created_at')
       if(rpts?.length){
         rpts.forEach((rpt,ri)=>{
-          if(!rpt.report_data?.reportHtml)return
-          const rHtml=rpt.report_data.reportHtml
-          const loc=rpt.report_data.sysLocation||''
-          const rType=rpt.report_type==='clean_agent'?'clean-agent-report':'suppression-report'
-          const suffix=rpts.length>1?'-'+(loc||ri+1):''
+          let rHtml=rpt.report_data?.reportHtml||''
+          // generate HTML for extinguisher reports (they don't have reportHtml)
+          if(!rHtml&&rpt.report_type==='extinguisher'&&rpt.report_data?.units){
+            rHtml=buildExtReportHtml(rpt.report_data,loc)
+          }
+          if(!rHtml)return
+          const sysLoc=rpt.report_data?.sysLocation||''
+          const rType=rpt.report_type==='extinguisher'?'extinguisher-report':rpt.report_type==='clean_agent'?'clean-agent-report':'suppression-report'
+          const suffix=rpts.length>1?'-'+(sysLoc||ri+1):''
           const bytes=new TextEncoder().encode(rHtml)
           let bin='';bytes.forEach(b2=>bin+=String.fromCharCode(b2))
           attachments.push({filename:rType+suffix+'.html',content:btoa(bin)})
@@ -4035,6 +4059,44 @@ async function handleExtPhoto(ev){
   }
   reader.readAsDataURL(file)
   ev.target.value=''
+}
+
+function buildExtReportHtml(data,loc){
+  const units=data.units||[]
+  const today=new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})
+  let rows=units.map((u,i)=>{
+    const nfpa=NFPA10[u.type]||NFPA10['ABC Dry Chemical']
+    return`<tr>
+      <td style="padding:6px;border:1px solid #ddd">${i+1}</td>
+      <td style="padding:6px;border:1px solid #ddd">${u.type||''} ${u.size||''}</td>
+      <td style="padding:6px;border:1px solid #ddd">${u.location||''}</td>
+      <td style="padding:6px;border:1px solid #ddd">${u.mfgDate||''}</td>
+      <td style="padding:6px;border:1px solid #ddd;text-align:center;font-weight:700;color:${u.condition==='pass'?'#10b981':'#ef4444'}">${(u.condition||'').toUpperCase()}</td>
+      <td style="padding:6px;border:1px solid #ddd">${u.lastInternal||'N/A'}</td>
+      <td style="padding:6px;border:1px solid #ddd">${u.lastHydro||'N/A'}</td>
+      <td style="padding:6px;border:1px solid #ddd;font-size:9px">${nfpa.internal?nfpa.internal+'yr':'N/A'} / ${nfpa.hydro}yr</td>
+      <td style="padding:6px;border:1px solid #ddd;font-size:9px">${u.notes||''}</td>
+    </tr>`
+  }).join('')
+  return`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:10pt;padding:20px;max-width:900px;margin:0 auto}
+.hdr{display:flex;justify-content:space-between;border-bottom:3px solid #f05a28;padding-bottom:10px;margin-bottom:16px}
+.co{font-size:20pt;font-weight:900}.co span{color:#f05a28}.sub{font-size:9pt;color:#888;margin-top:2px}
+table{width:100%;border-collapse:collapse;font-size:8.5pt}th{background:#333;color:#fff;padding:6px;text-align:left;font-size:8pt}
+@media print{body{padding:8px}}
+</style></head><body>
+<div class="hdr"><div><div class="co">Stephens <span>Advanced</span> LLC</div><div class="sub">Fire Suppression & Safety · (214) 994-4799</div></div><div style="text-align:right;font-size:9pt;color:#888">${today}</div></div>
+<h2 style="font-size:14pt;margin-bottom:4px">Extinguisher Inspection Report</h2>
+<p style="font-size:10pt;color:#555;margin-bottom:16px">${loc?.name||''} · ${[loc?.address,loc?.city].filter(Boolean).join(', ')}</p>
+<table>
+<tr><th>#</th><th>Type / Size</th><th>Location</th><th>Mfg Date</th><th>Condition</th><th>Last Internal</th><th>Last Hydro</th><th>Interval (Int/Hyd)</th><th>Notes</th></tr>
+${rows}
+</table>
+<div style="margin-top:20px;font-size:8pt;color:#888;border-top:1px solid #ddd;padding-top:8px">
+Inspected per NFPA 10 · Stephens Advanced LLC · FEL-A-2593933 · Jon Stephens
+</div>
+<script>window.print()<\/script>
+</body></html>`
 }
 
 async function saveExtReport(jobId){
