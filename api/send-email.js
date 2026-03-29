@@ -4,7 +4,7 @@
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end()
 
-  const { to, subject, html, invoiceNumber, customerName } = req.body
+  const { to, subject, html, invoiceNumber, customerName, attachments } = req.body
   if (!to || !subject || !html) return res.status(400).json({ error: 'Missing required fields' })
 
   const apiKey = process.env.RESEND_API_KEY
@@ -21,7 +21,8 @@ module.exports = async function handler(req, res) {
         from: 'Stephens Advanced <jonathan@stephensadvanced.com>',
         to: [to],
         subject,
-        html
+        html,
+        ...(attachments && attachments.length ? { attachments } : {})
       })
     })
 

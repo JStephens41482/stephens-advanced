@@ -1908,17 +1908,31 @@ async function sendInvoiceEmailFromDetail(invId,custName,invNum){
     dueDate:inv.due_date?new Date(inv.due_date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'',
     lines:ls,total
   })
+  // attach inspection report if one exists for this job
+  let attachments=[]
+  if(inv.job_id){
+    try{
+      const{data:rpts}=await SB.from('reports').select('report_data,report_type').eq('job_id',inv.job_id).order('created_at',{ascending:false}).limit(1)
+      if(rpts?.[0]?.report_data?.reportHtml){
+        const rHtml=rpts[0].report_data.reportHtml
+        const rType=rpts[0].report_type==='clean_agent'?'clean-agent-report':'suppression-report'
+        const bytes=new TextEncoder().encode(rHtml)
+        let bin='';bytes.forEach(b2=>bin+=String.fromCharCode(b2))
+        attachments=[{filename:rType+'.html',content:btoa(bin)}]
+      }
+    }catch(e){console.error('report attach:',e)}
+  }
   try{
     const res=await fetch('/api/send-email',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({to,subject:`Invoice ${inv.invoice_number||invNum} — Stephens Advanced LLC`,html,invoiceNumber:inv.invoice_number||invNum,customerName:custName||loc.name||''})
+      body:JSON.stringify({to,subject:`Invoice ${inv.invoice_number||invNum} — Stephens Advanced LLC`,html,invoiceNumber:inv.invoice_number||invNum,customerName:custName||loc.name||'',attachments})
     })
     const data=await res.json()
     if(data.success){
       await SB.from('invoices').update({status:'sent'}).eq('id',invId)
       await load()
-      if(st){st.textContent='✓ Sent to '+to;st.style.color='var(--ok)'}
+      if(st){st.textContent=`✓ Sent to ${to}${attachments.length?' + report':''}`; st.style.color='var(--ok)'}
       if(btn){btn.innerHTML='✓ Sent';btn.style.background='var(--ok)'}
-      toast('Invoice emailed ✓')
+      toast('Invoice emailed ✓'+(attachments.length?' with report':''))
     }else{throw new Error(data.error||'Send failed')}
   }catch(err){
     if(st){st.textContent='Error: '+err.message;st.style.color='var(--bad)'}
@@ -2416,6 +2430,7 @@ function clrRptSig(key){
 
 async function saveSuppReport(jobId,sysId){
   const ownerSigData=$('rptOwnerSig')?.toDataURL()||null
+  const reportHtml=await generateSuppReport(jobId,sysId,true) // capture while form is open
   const data={
     checks:window._rptCheckState||{},
     serviceType:window._rptServiceType||'semi',
@@ -2425,20 +2440,20 @@ async function saveSuppReport(jobId,sysId){
     hydro:$('rpt-hydro')?.value||'',recharge:$('rpt-recharge')?.value||'',
     links:$('rpt-links')?.value||'',techName:$('rpt-tech-name')?.value||'',
     permit:$('rpt-permit')?.value||'',ownerName:$('rpt-owner-name')?.value||'',
-    appliances:$('rpt-appliances')?.value||'',deficiencies:$('rpt-deficiencies')?.value||''
+    appliances:$('rpt-appliances')?.value||'',deficiencies:$('rpt-deficiencies')?.value||'',
+    reportHtml:reportHtml||''
   }
   const j=D.jobs.find(x=>x.id===jobId)||{}
   try{
     await SB.from('reports').upsert({job_id:jobId,location_id:j.location_id||j.location?.id,report_type:'kitchen_suppression',report_data:data},{onConflict:'job_id'})
-    // owner sig on report also signs the job/invoice
     if(ownerSigData)await SB.from('jobs').update({signature_data:ownerSigData,notes:($('rpt-deficiencies')?.value||j.notes||null)}).eq('id',jobId)
   }catch(e){console.error('report save:',e)}
   toast('Report saved ✓')
   pop()
 }
 
-async function generateSuppReport(jobId,sysId){
-  const b=$('rptSaveBtn2');if(b){b.innerHTML='<span class="spin"></span> Generating...';b.classList.add('loading')}
+async function generateSuppReport(jobId,sysId,returnHtml=false){
+  const b=returnHtml?null:$('rptSaveBtn2');if(b){b.innerHTML='<span class="spin"></span> Generating...';b.classList.add('loading')}
   
   const j=D.jobs.find(x=>x.id===jobId)||{}
   const l=j.location||{}
@@ -2536,8 +2551,8 @@ body{font-family:Arial,sans-serif;font-size:9pt;color:#000;background:#fff;paddi
 </style></head><body>
 <div class="header">
   <div>
-    <div class="co-name">SAFE</div>
-    <div class="co-sub">STEPHENS ADVANCED FIRE EQUIPMENT</div>
+    <div class="co-name">Stephens Advanced LLC</div>
+    <div class="co-sub">3801 Alder Trail · Euless, Texas 76040</div>
     <div class="co-phone">214-994-4799</div>
   </div>
   <div style="text-align:right">
@@ -2634,17 +2649,16 @@ body{font-family:Arial,sans-serif;font-size:9pt;color:#000;background:#fff;paddi
   </div>
 </div>
 
-<script>window.print()<\/script>
+${returnHtml?'':'<script>window.print()<\\/script>'}
 </body></html>`
 
-  // open in new window for printing/saving as PDF
+  if(returnHtml)return html
   const w=window.open('','_blank')
   if(w){w.document.write(html);w.document.close()}
   else{
-    // fallback: download as HTML file
     const blob=new Blob([html],{type:'text/html'})
     const url=URL.createObjectURL(blob)
-    const a=document.createElement('a');a.href=url;a.download='suppression-report.html';a.click()
+    const a2=document.createElement('a');a2.href=url;a2.download='suppression-report.html';a2.click()
     setTimeout(()=>URL.revokeObjectURL(url),5000)
   }
   if(b){b.innerHTML='📄 Generate Report PDF';b.classList.remove('loading')}
@@ -2882,6 +2896,7 @@ function clrCaSig(key){
 
 async function saveCleanAgentReport(jobId,sysId){
   const ownerSigData=$('caOwnerSig')?.toDataURL()||null
+  const reportHtml=await generateCleanAgentReport(jobId,sysId,true) // capture while form is open
   const data={
     checks:window._caCheckState||{},
     serviceType:window._caServiceType||'semi',
@@ -2893,7 +2908,8 @@ async function saveCleanAgentReport(jobId,sysId){
     techName:$('ca-tech-name')?.value||'',
     permit:$('ca-permit')?.value||'',
     ownerName:$('ca-owner-name')?.value||'',
-    deficiencies:$('ca-deficiencies')?.value||''
+    deficiencies:$('ca-deficiencies')?.value||'',
+    reportHtml:reportHtml||''
   }
   const j=D.jobs.find(x=>x.id===jobId)||{}
   try{
@@ -2904,8 +2920,8 @@ async function saveCleanAgentReport(jobId,sysId){
   pop()
 }
 
-async function generateCleanAgentReport(jobId,sysId){
-  const b=$('caRptSaveBtn2');if(b){b.innerHTML='<span class="spin"></span> Generating...';b.classList.add('loading')}
+async function generateCleanAgentReport(jobId,sysId,returnHtml=false){
+  const b=returnHtml?null:$('caRptSaveBtn2');if(b){b.innerHTML='<span class="spin"></span> Generating...';b.classList.add('loading')}
   const j=D.jobs.find(x=>x.id===jobId)||{}
   const l=j.location||{}
   const a=[l.address,l.city,l.state,l.zip].filter(Boolean).join(', ')
@@ -2985,8 +3001,8 @@ body{font-family:Arial,sans-serif;font-size:9pt;color:#000;background:#fff;paddi
 </style></head><body>
 <div class="header">
   <div>
-    <div class="co-name">SAFE</div>
-    <div class="co-sub">STEPHENS ADVANCED FIRE EQUIPMENT</div>
+    <div class="co-name">Stephens Advanced LLC</div>
+    <div class="co-sub">3801 Alder Trail · Euless, Texas 76040</div>
     <div class="co-phone">214-994-4799</div>
   </div>
   <div>
@@ -3090,9 +3106,10 @@ body{font-family:Arial,sans-serif;font-size:9pt;color:#000;background:#fff;paddi
   </div>
 </div>
 
-<script>window.print()<\/script>
+${returnHtml?'':'<script>window.print()<\\/script>'}
 </body></html>`
 
+  if(returnHtml)return html
   const w=window.open('','_blank')
   if(w){w.document.write(html);w.document.close()}
   else{
