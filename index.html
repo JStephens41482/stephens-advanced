@@ -595,7 +595,8 @@ async function openJob(id){
   await load()
   const j=D.jobs.find(x=>x.id===id);if(!j)return
   extR={}
-  const l=j.location||{},sc=j.scope||[],rc=D.rc,a=[l.address,l.city,l.state,l.zip].filter(Boolean).join(', ')
+  // use full location from D.locs (includes suppression_systems, extinguishers, etc.)
+  const l=D.locs.find(x=>x.id===(j.location_id||j.location?.id))||j.location||{},sc=j.scope||[],rc=D.rc,a=[l.address,l.city,l.state,l.zip].filter(Boolean).join(', ')
   const locInvs=D.invs.filter(i=>i.location_id===l.id).slice(0,3)
   const statC={scheduled:'var(--info)',active:'var(--ok)',completed:'var(--g1)'}[j.status]||'var(--g1)'
   const isActive=j.status!=='completed'
@@ -657,6 +658,16 @@ async function openJob(id){
     <span style="font-size:11px;font-weight:800;text-transform:uppercase;color:${statC}">${j.status}</span>
   </div>
 
+  <!-- SUPPRESSION REPORTS — always visible at top when suppression is in scope -->
+  ${sc.includes('suppression')?`<div style="margin-bottom:16px">
+    <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:var(--g2);margin-bottom:8px">Inspection Reports</div>
+    ${(l.suppression_systems&&l.suppression_systems.length?l.suppression_systems:[{id:'',system_type:'Suppression System'}]).map(s=>{
+      const t=(s.system_type||'').toLowerCase()
+      const isCA=t.includes('fm-200')||t.includes('fm200')||t.includes('novec')||t.includes('co2')||t.includes('clean agent')||t.includes('halon')||t.includes('inergen')||t.includes('sapphire')
+      return`<button class="trk-btn trk-go" style="margin-bottom:6px" onclick="${isCA?`openCleanAgentReport('${j.id}','${s.id}')`:`openSuppReport('${j.id}','${s.id}')`}">📋 ${isCA?'Clean Agent':'Kitchen Hood'} Inspection Report${s.system_type&&s.system_type!=='Suppression System'?' — '+s.system_type.replace(/'/g,'&#39;'):''}</button>`
+    }).join('')}
+  </div>`:''}
+
   <!-- LOCATION -->
   <div class="ds"><div class="ds-t">Location</div>
     <div class="ds-info">${esc(a)||'No address'}${l.contact_name?'<br>'+esc(l.contact_name)+(l.contact_phone?' · '+l.contact_phone:''):''}${l.is_brycer_jurisdiction?'<br><span style="color:var(--warn);font-weight:700">⚡ Brycer — '+esc(l.brycer_ahj_name||'Fort Worth FD')+'</span>':''}</div>
@@ -701,35 +712,11 @@ async function openJob(id){
     </div>
     </div>`
 
-    // SUPPRESSION REPORT BUTTONS — shown for any suppression job, opt-in
-    if(sc.includes('suppression')&&l.suppression_systems?.length){
-      h+=`<div class="ds"><div class="ds-t" style="display:flex;justify-content:space-between;align-items:center">
-        <span>Inspection Report</span>
-        <span style="font-size:10px;font-weight:600;color:var(--g2)">Send with invoice</span>
-      </div>
-      <div style="display:flex;flex-direction:column;gap:8px">`
-      l.suppression_systems.forEach(s=>{
-        const t=(s.system_type||'').toLowerCase()
-        const isCA=t.includes('fm-200')||t.includes('fm200')||t.includes('novec')||t.includes('co2')||t.includes('clean agent')||t.includes('halon')||t.includes('inergen')||t.includes('sapphire')
-        h+=`<button class="trk-btn trk-go" onclick="${isCA?`openCleanAgentReport('${j.id}','${s.id}')`:`openSuppReport('${j.id}','${s.id}')`}">📋 Fill ${isCA?'Clean Agent System':'Kitchen Hood'} Report — ${esc(s.system_type)}</button>`
-      })
-      h+=`</div></div>`
-    }
-
     // SIGNATURE
     h+=`<div class="ds"><div class="ds-t">Customer Signature</div><div class="sig-wrap"><canvas id="sigC"></canvas><div class="sig-ph" id="sigPh">Sign here</div><button class="sig-clr" onclick="clrSig()">Clear</button></div></div>`
 
   }else{
-    // COMPLETED — invoices (editable via openInvDetail) + reports
-    if(sc.includes('suppression')&&l.suppression_systems?.length){
-      h+=`<div class="qa" style="margin-bottom:12px">`
-      l.suppression_systems.forEach(s=>{
-        const t=(s.system_type||'').toLowerCase()
-        const isCA=t.includes('fm-200')||t.includes('fm200')||t.includes('novec')||t.includes('co2')||t.includes('clean agent')||t.includes('halon')||t.includes('inergen')
-        h+=`<button class="qa-btn" style="flex:1" onclick="${isCA?`openCleanAgentReport('${j.id}','${s.id}')`:`openSuppReport('${j.id}','${s.id}')`}">📋 ${isCA?'Clean Agent':'Hood'} Report — ${esc(s.system_type)}</button>`
-      })
-      h+=`</div>`
-    }
+    // COMPLETED — invoices (editable via openInvDetail)
     if(locInvs.length){
       h+=`<div class="ds"><div class="ds-t">Invoices</div>`
       locInvs.forEach(i=>{
