@@ -2255,14 +2255,12 @@ body{font-family:Arial,sans-serif;font-size:9pt;color:#000;background:#fff;paddi
 
 <div class="section">
   <div class="section-title">Cooking Appliance Locations: Left To Right</div>
-  <div class="textarea-box">${($('rpt-appliances')?.value||'').replace(/
-/g,'<br>')}</div>
+  <div class="textarea-box">${($('rpt-appliances')?.value||'').replace(/\n/g,'<br>')}</div>
 </div>
 
 <div class="section">
   <div class="section-title">Comments / Discrepancies / Deficiencies</div>
-  <div class="textarea-box">${($('rpt-deficiencies')?.value||'').replace(/
-/g,'<br>')}</div>
+  <div class="textarea-box">${($('rpt-deficiencies')?.value||'').replace(/\n/g,'<br>')}</div>
 </div>
 
 <div style="font-size:7.5pt;padding:6px;border:1px solid #ccc;margin-bottom:6px;background:#f9f9f9">
