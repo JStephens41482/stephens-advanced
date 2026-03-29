@@ -32,6 +32,10 @@
 
   -- Add assigned_to column to jobs
   alter table jobs add column if not exists assigned_to uuid references techs(id);
+
+  -- Add service date tracking to extinguishers
+  alter table extinguishers add column if not exists last_internal text;
+  alter table extinguishers add column if not exists last_hydro text;
 -->
 <!DOCTYPE html>
 <html lang="en">
@@ -317,7 +321,7 @@ document.getElementById('invOv').addEventListener('click',function(e){if(e.targe
 async function load(){
   const[j,l,i,b,r,ci,td2,mz,bq,tk]=await Promise.all([
     SB.from('jobs').select('*,location:locations(*)').order('scheduled_date').order('scheduled_time'),
-    SB.from('locations').select('*,extinguishers(id,type,size,serial_number,location_in_building,manufacture_date),suppression_systems(id,system_type,category,tank_count,nozzle_count,fusible_link_count),emergency_lights(id,fixture_count),billing_account:billing_accounts(*)').order('name'),
+    SB.from('locations').select('*,extinguishers(id,type,size,serial_number,location_in_building,manufacture_date,last_internal,last_hydro),suppression_systems(id,system_type,category,tank_count,nozzle_count,fusible_link_count),emergency_lights(id,fixture_count),billing_account:billing_accounts(*)').order('name'),
     SB.from('invoices').select('*').order('date',{ascending:false}).limit(100),
     SB.from('billing_accounts').select('*').order('name'),
     SB.from('rate_card').select('key,price'),
@@ -1431,6 +1435,28 @@ function buildJobLines(j){
   // extinguishers
   if(sc.includes('extinguishers')&&l.extinguishers?.length){
     lines.push({desc:`Extinguisher Inspection`,qty:l.extinguishers.length,price:rc.extinguisher_inspection||20})
+    // check for due internals and hydros based on NFPA 10 intervals
+    const now=new Date()
+    let internalDueCount=0,hydroDueCount=0
+    const hydroByType={}
+    l.extinguishers.forEach(e=>{
+      const nfpa=NFPA10?.[e.type]||{hydro:12,internal:6}
+      // 6-year internal check
+      if(nfpa.internal){
+        const base=e.last_internal?new Date(e.last_internal+'-01'):e.manufacture_date?new Date(e.manufacture_date+'-01'):null
+        if(base){const due=new Date(base);due.setFullYear(due.getFullYear()+nfpa.internal);if(due<=now)internalDueCount++}
+      }
+      // hydro check
+      const hBase=e.last_hydro?new Date(e.last_hydro+'-01'):e.manufacture_date?new Date(e.manufacture_date+'-01'):null
+      if(hBase){const due=new Date(hBase);due.setFullYear(due.getFullYear()+nfpa.hydro);if(due<=now){
+        const key=`Hydrostatic Test ${e.type}`;hydroByType[key]=(hydroByType[key]||0)+1
+      }}
+    })
+    if(internalDueCount)lines.push({desc:`Dry Chem Internal Inspection (6-yr due)`,qty:internalDueCount,price:68})
+    Object.entries(hydroByType).forEach(([desc,qty])=>{
+      const hPrice=desc.includes('Class K')?275:desc.includes('CO2')?72:desc.includes('Water')?57:68
+      lines.push({desc:`${desc} (hydro due)`,qty,price:hPrice})
+    })
   }
   // elights
   if(sc.includes('elights')&&l.emergency_lights?.[0]?.fixture_count){
@@ -3966,7 +3992,10 @@ async function openExtReport(jobId){
     <button class="trk-btn" style="flex:1;background:var(--c2);border:1.5px solid var(--b1);color:var(--w2);font-size:12px" onclick="manualAddExt('${l.id}','${jobId}')">✏️ Add Manually</button>
   </div>
   </div>
-  <div class="ov-foot"><button class="btn-p" onclick="saveExtReport('${jobId}')">Save Extinguisher Report</button></div>`
+  <div class="ov-foot" style="display:flex;gap:8px">
+    <button class="btn-p" style="flex:1;background:var(--ok)" onclick="saveExtReportAndAdd('${jobId}','${l.id}')">+ Add Next Extinguisher</button>
+    <button class="btn-p" style="flex:1" onclick="saveExtReport('${jobId}')">Save Report</button>
+  </div>`
   push(h)
 }
 
@@ -4160,6 +4189,28 @@ async function saveExtReport(jobId){
   toast('Extinguisher report saved ✓')
   if(btn){btn.textContent='Save';btn.style.opacity=''}
   pop()
+}
+
+async function saveExtReportAndAdd(jobId,locId){
+  // save current report first
+  const j=D.jobs.find(x=>x.id===jobId)||{}
+  const lid=locId||j.location_id||j.location?.id
+  const data={units:_extRptData,savedAt:new Date().toISOString()}
+  try{
+    const{data:existing}=await SB.from('reports').select('id').eq('job_id',jobId).eq('report_type','extinguisher').limit(1)
+    if(existing?.length){await SB.from('reports').update({report_data:data}).eq('id',existing[0].id)}
+    else{await SB.from('reports').insert({job_id:jobId,location_id:lid,report_type:'extinguisher',report_data:data})}
+  }catch(e){}
+  for(const d of _extRptData){
+    if(!d.id)continue
+    const upd={};if(d.lastInternal)upd.last_internal=d.lastInternal;if(d.lastHydro)upd.last_hydro=d.lastHydro
+    if(Object.keys(upd).length){try{await SB.from('extinguishers').update(upd).eq('id',d.id)}catch(e){}}
+  }
+  toast('Saved — add next')
+  await load()
+  // go to manual add, which will return to the report
+  pop()
+  manualAddExt(lid,jobId)
 }
 
 // EDIT EQUIPMENT
