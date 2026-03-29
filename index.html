@@ -5995,16 +5995,23 @@ IMPORTANT RULES:
     const cleanReply=reply.replace(/```action\s*[\s\S]*?```/g,'').trim()
     if(cleanReply)_chatMsgs.push({role:'assistant',content:cleanReply})
     if(actionMatch){
-      // parse all actions but don't execute yet — queue for confirmation
       const actions=[]
       for(const block of actionMatch){
         const json=block.replace(/```action\s*/,'').replace(/```/,'').trim()
         try{actions.push(JSON.parse(json))}catch(e){console.error('action parse:',e)}
       }
       if(actions.length){
-        window._pendingActions=actions
-        // show confirm buttons
-        _chatMsgs.push({role:'assistant',content:'_confirm_'})
+        // split into lookups (execute immediately) and writes (need confirmation)
+        const readTypes=['lookup_client','lookup_invoice','open_screen','open_client','open_job','toast']
+        const reads=actions.filter(a=>readTypes.includes(a.type))
+        const writes=actions.filter(a=>!readTypes.includes(a.type))
+        // execute reads immediately
+        for(const act of reads)await execChatAction(act)
+        // queue writes for confirmation
+        if(writes.length){
+          window._pendingActions=writes
+          _chatMsgs.push({role:'assistant',content:'_confirm_'})
+        }
       }
     }
     if(!cleanReply&&!actionMatch)_chatMsgs.push({role:'assistant',content:'Done.'})
