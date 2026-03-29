@@ -5921,11 +5921,41 @@ BRYCER QUEUE: ${(D.brycerQueue||[]).length} pending
 
 RATE CARD: ${Object.entries(D.rc||{}).map(([k,v])=>`${k}=$${v}`).join(', ')}
 
-NFPA 10 INTERVALS: ABC/BC/PurpleK/Halon/Halotron/ClassD = 12yr hydro + 6yr internal. CO2 = 5yr hydro. Water = 5yr hydro. Class K = 5yr hydro.
-NFPA 96: Kitchen hood suppression semi-annual inspection.
-NFPA 2001: Clean agent system inspection.
+NFPA 10 — PORTABLE FIRE EXTINGUISHERS:
+Monthly visual inspection. Annual maintenance by certified tech. 6-year internal exam for stored-pressure dry chem/clean agent/Class D (empty, inspect shell, replace parts, recharge, install verification collar). Hydro intervals: ABC/BC/PurpleK/Halon/Halotron/ClassD=12yr. CO2/Water/ClassK/AFFF=5yr. Dry chem stainless steel=5yr. Condemn criteria: soldered/welded repairs, damaged threads, pitting under nameplate, fire exposure, dent>1/10 dimension, wall reduced>10%.
 
-Be helpful, direct, and professional. If Jon asks you to do something in the app (schedule a job, send an email, etc.), tell him exactly what to tap to do it — you can't perform actions directly, but you can guide him step by step.`
+NFPA 17 — DRY CHEMICAL SYSTEMS:
+Monthly owner inspection (location, manual actuators, seals, gauge). Semi-annual maintenance (detectors, containers, piping, nozzles, agent check for caking). Pressurized containers: examine agent every 6yr. Hydro test every 12yr. Expellant gas: nitrogen (industrial grade, -52°C dew point) or CO2 (99.5% min).
+
+NFPA 17A — WET CHEMICAL SYSTEMS:
+Semi-annual inspection by certified tech per manufacturer manual. Check detectors, cylinders, piping, nozzles for grease/obstruction, manual pulls, pressure, caps. Fusible links replaced annually (NFPA 96 §11.2.4). Hydro test every 12yr. UL 300 listing required. Agent recharge if corrosion/damage found.
+
+NFPA 96 — KITCHEN HOODS: Semi-annual suppression system inspection. Monthly filter cleaning. Fusible link replacement annually.
+NFPA 2001 — CLEAN AGENT SYSTEMS: Semi-annual inspection per manufacturer.
+
+ANSUL R-102: Wet chemical, cartridge-operated. ANSULEX agent (potassium carbonate/acetate). Tanks: 1.5gal (P/N 429864), 3.0gal (P/N 429862). Working pressure 100psi. Cartridges: LT-30-R (P/N 5373) for single tank, LT-20-R (P/N 7032), Double-tank (P/N 73022). Regulator deadset 110psi. Nozzle flow numbers: 1/2N, 1N, 1W, 2W, 3N, 230, 245, 290. 3gal tank=max 11 flow points. Metal or rubber blow-off caps required. 12yr hydro on tanks and cartridges.
+
+ANSUL PIRANHA: Dual agent — PRX wet chemical + building water supply through same nozzles. Cools grease 15x faster than single-agent. Uses 60% less chemical. Nozzles mount higher (up to 84in). AP Nozzle (P/N 423480). Compatible with R-102 components. Can actuate up to 2 additional R-102 or Piranha units.
+
+AMEREX KP: Stored-pressure wet chemical. Potassium acetate agent. Pressurized 240psi nitrogen. Tanks: KP275 (2.75gal, 8 flow), KP375 (3.75gal, 11 flow), KP475 (4.8gal, 14 flow), KP600 (6.14gal, 18 flow). Hydro every 12yr. MRM (Mechanical Release Module) with nitrogen cylinder. Zone Defense nozzle=2 flow points. Recharge pails: CH547, CH544, CH656, CH664.
+
+KIDDE WHDR: Stored-pressure wet chemical. APC agent (potassium salt). Pressurized 175psi nitrogen. Tanks: WHDR-125 (1.25gal), WHDR-260 (2.6gal, 8 flow), WHDR-400S (4gal short, 12 flow), WHDR-400M (4gal med, 12 flow), WHDR-600 (6gal). XV Control System (P/N 87-120099-002) with nitrogen cartridge (P/N 87-120043-001). Actuates up to 20 cylinders. Hydro every 5yr (DOT requirement). 7 nozzle types with foil seal caps.
+
+PROTEX II L-SERIES (Heiser): Pre-engineered wet chemical. Models: L1600, L3000, L4600, L6000. Integral cylinder control unit — no separate release pressure cylinder. Wire cable activation for fusible link and remote pull. Chrome nozzle covers. Semi-annual maintenance. Manual P/N 10053.
+
+CAPTIVE-AIRE TANK: Wet chemical with electronic firestat detection (not fusible links). Solid-state, 360°F or rate-of-rise. Cloud monitoring, battery backup. Cylinders replaced every 12yr (not hydroed). Actuation hoses: hydro at 500psi or replace every 12yr. Overlapping nozzles 36in apart, 35-50in above surface. Metal blow-off caps.
+
+CAPTIVE-AIRE CORE: Water-based (Water+). Connects to potable water supply — unlimited agent. SC-5 surfactant injection (1gal=~15min protection). Self-cleaning wash cycle (3min hot water+surfactant). Firestat detection with battery backup. No cylinders to replace. ETL listed UL 300. For solid fuel cooking. Semi-annual inspection, 2yr battery replacement. $650 per 6-month service.
+
+PYRO-CHEM KITCHEN KNIGHT II: Wet chemical, cartridge-operated (16g CO2). Tanks: PCL-160 (1.6gal, 5 flow), PCL-300 (3.0gal, 10 flow), PCL-460 (4.6gal, 15 flow), PCL-600 (6.0gal, 20 flow). Pressurized 225psi nitrogen. Up to 5 cylinders per control head.
+
+BUCKEYE BFR KITCHEN MISTER: Wet chemical, nitrogen cartridge actuated. Sized by flow points: BFR-5, BFR-10, BFR-15, BFR-20. Pressurized 195psi. Stainless steel nozzle caps.
+
+BADGER RANGE GUARD: Stored-pressure wet chemical. Tanks: RG-1.25G, RG-2.5G, RG-4GS (short), RG-4GM (med), RG-6G. Similar to Kidde WHDR in operation.
+
+LEHAVOT WCK: Wet chemical. Tanks in liters: WCK6 (6L), WCK9 (9L), WCK16 (16L), WCK20 (20L), WCK26 (26L). Operates at 15bar (220psi). Up to 6 cylinders combined.
+
+Be helpful, direct, and professional. You are a fire suppression industry expert. If Jon asks you to do something in the app, tell him exactly what to tap. You can answer any NFPA code question, troubleshoot any system, calculate pricing, draft emails, look up customers, or advise on business decisions.`
 
   // build messages for API — keep last 10 exchanges for context
   const apiMsgs=[{role:'user',content:ctx},..._chatMsgs.slice(-20).map(m=>({role:m.role==='user'?'user':'assistant',content:m.content}))]
