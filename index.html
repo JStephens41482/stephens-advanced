@@ -64,7 +64,7 @@ select{-webkit-appearance:none;appearance:none}
 .jc-addr{font-size:11px;color:var(--g1);margin-bottom:8px}
 .jc-tags{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px}
 .tg{font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;padding:3.5px 8px;border-radius:4px}
-.ts{background:var(--fires);color:var(--fire)}.te{background:var(--oks);color:var(--ok)}.tl{background:var(--warns);color:var(--warn)}.th{background:var(--infos);color:var(--info)}.to2{background:var(--bads);color:var(--bad)}.tb{background:rgba(168,85,247,.08);color:#a78bfa}
+.ts{background:var(--fires);color:var(--fire)}.te{background:var(--oks);color:var(--ok)}.tl{background:var(--warns);color:var(--warn)}.th{background:var(--infos);color:var(--info)}.to2{background:var(--bads);color:var(--bad)}.tb{background:rgba(168,85,247,.08);color:#a78bfa}.tg-off{background:var(--c2)!important;color:var(--g2)!important}
 .jc-val{font-size:15px;font-weight:800;color:var(--ok);font-variant-numeric:tabular-nums;margin-bottom:10px}
 .jc-btns{display:flex;gap:8px}
 .jb{flex:1;padding:12px 8px;border-radius:var(--rs);font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;min-height:44px;display:flex;align-items:center;justify-content:center;transition:opacity .1s}
@@ -278,25 +278,42 @@ document.addEventListener('touchend',e=>{
 document.getElementById('invOv').addEventListener('click',function(e){if(e.target===this)this.classList.remove('open')})
 
 async function load(){
-  const[j,l,i,b,r]=await Promise.all([
+  const[j,l,i,b,r,ci,td2,mz]=await Promise.all([
     SB.from('jobs').select('*,location:locations(*)').order('scheduled_date').order('scheduled_time'),
     SB.from('locations').select('*,extinguishers(id,type,size,serial_number,location_in_building,manufacture_date),suppression_systems(id,system_type,category,tank_count,nozzle_count,fusible_link_count),emergency_lights(id,fixture_count),billing_account:billing_accounts(*)').order('name'),
     SB.from('invoices').select('*').order('date',{ascending:false}).limit(100),
     SB.from('billing_accounts').select('*').order('name'),
-    SB.from('rate_card').select('key,price')
+    SB.from('rate_card').select('key,price'),
+    SB.from('custom_items').select('description,unit_price').order('description'),
+    SB.from('todos').select('*').eq('done',false).order('created_at'),
+    SB.from('mazon_queue').select('*').order('created_at',{ascending:false})
   ])
   if(j.error)console.error('jobs error:',j.error)
   if(l.error)console.error('locations error:',l.error)
   if(i.error)console.error('invoices error:',i.error)
   if(r.error)console.error('rate_card error:',r.error)
-  console.log('loaded:',j.data?.length,'jobs,',l.data?.length,'locs,',i.data?.length,'invs')
+  if(td2.error)console.error('todos error:',td2.error)
+  if(mz.error)console.error('mazon_queue error:',mz.error)
+  if(ci.error)console.error('custom_items error:',ci.error)
+  console.log('loaded:',j.data?.length,'jobs,',l.data?.length,'locs,',i.data?.length,'invs,',td2.data?.length,'todos')
   D.jobs=j.data||[];D.locs=l.data||[];D.invs=i.data||[];D.bas=b.data||[]
   const rc={};(r.data||[]).forEach(x=>rc[x.key]=+x.price);D.rc=rc
+  D.customItems=ci.data||[]
+  D.todos=td2.data||[]
+  D.mazonQueue=mz.data||[]
 }
 
 const td=()=>new Date().toISOString().split('T')[0]
 const $=id=>document.getElementById(id)
 const fmt=n=>'$'+Math.round(n||0).toLocaleString()
+// normalize description for fuzzy matching — strip punctuation/spaces/case
+const norm=s=>(s||'').toLowerCase().replace(/[^a-z0-9]/g,'')
+// known standard catalog keys — custom items outside this set get saved for reuse
+const KNOWN_KEYS=new Set(['extinguisherinspection','suppressionsemiannual','suppressioncatank','suppressioncacore','fusiblelink','blowoffcap','siliconecap','nozzle','ansullt10cartridge','ansullt30cartridge','16gco2cartridge','new5lbabcextinguisher','new10lbabcextinguisher','newclasskextinguisher','elightannualtest','hydrostatictestclassk','hydrostatictestco2','hydrostatictesth2o','hydrostatictestabс','drycheminalinternalinspection','labor','emergencycall','afterhourscall','holidayweekendcall'])
+async function saveCustomItem(desc,price){
+  const nk=norm(desc);if(!nk||KNOWN_KEYS.has(nk))return
+  try{await SB.from('custom_items').upsert({normalized_key:nk,description:desc,unit_price:+(price)||0},{onConflict:'normalized_key'})}catch(e){}
+}
 const fmtD=n=>isNaN(+n)?'$0.00':('$'+(+n).toFixed(2))
 const esc=s=>(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')
 const unesc=s=>(s||'').replace(/&#39;/g,"'").replace(/&quot;/g,'"').replace(/&amp;/g,'&')
@@ -323,6 +340,101 @@ function trkLoad(jobs){
     if(sc.includes('suppression'))for(const s of(l.suppression_systems||[])){lk+=s.fusible_link_count||0;cp+=s.nozzle_count||0;ct.push(cart(s))}
   })
   return{tg,lk,cp,ct}
+}
+
+function showItemsNeeded(){
+  const t=td(),tj=D.jobs.filter(j=>j.scheduled_date===t)
+  const items={}
+  const addItem=(name,qty)=>{items[name]=(items[name]||0)+qty}
+  tj.forEach(j=>{
+    const l=D.locs.find(x=>x.id===(j.location_id||j.location?.id))||j.location||{}
+    const sc=j.scope||[]
+    if(sc.includes('extinguishers')){
+      const exts=l.extinguishers||[]
+      addItem('Inspection Tags',exts.length)
+      addItem('Tamper Seals',exts.length)
+    }
+    if(sc.includes('suppression')){
+      for(const s of(l.suppression_systems||[])){
+        addItem('Fusible Links',s.fusible_link_count||0)
+        addItem('Blow-Off Caps / Nozzle Caps',s.nozzle_count||0)
+        const c=cart(s)
+        addItem(c+' Cartridge',1)
+      }
+    }
+    if(sc.includes('emergency_lights')){
+      for(const el of(l.emergency_lights||[]))addItem('E-Light Batteries (spare)',1)
+    }
+  })
+  const entries=Object.entries(items).filter(([,q])=>q>0).sort((a,b)=>b[1]-a[1])
+  let h=`<div class="ov-hdr"><button class="ov-back" onclick="pop()">‹</button><div class="ov-title">Items Needed Today</div></div><div class="ov-body">`
+  if(!entries.length)h+=`<div class="ey"><div class="ey-t">No items needed — no jobs today.</div></div>`
+  else{
+    h+=`<div style="font-size:11px;color:var(--g1);margin-bottom:12px">${tj.length} job${tj.length>1?'s':''} today</div>`
+    entries.forEach(([name,qty])=>{
+      h+=`<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 14px;background:var(--c1);border:1px solid var(--b1);border-radius:var(--rs);margin-bottom:6px">
+        <span style="font-size:14px;font-weight:600">${esc(name)}</span>
+        <span style="font-size:16px;font-weight:800;color:var(--fire)">${qty}</span>
+      </div>`
+    })
+    h+=`<div style="margin-top:16px;padding:12px;background:var(--c2);border-radius:var(--rs);font-size:12px;color:var(--g1);text-align:center">Double-check quantities against work orders</div>`
+  }
+  h+=`</div>`
+  push(h)
+}
+
+function openTruckLoad(){
+  const t=td(),tj=D.jobs.filter(j=>j.scheduled_date===t)
+  const ld=trkLoad(tj)
+  let h=`<div class="ov-hdr"><button class="ov-back" onclick="pop()">‹</button><div class="ov-title">Truck Load</div></div><div class="ov-body">
+    <div class="chips" style="margin-bottom:12px">`
+  if(!tj.length)h+=`<span class="chip">No jobs today</span>`
+  else{if(ld.tg)h+=`<span class="chip"><b>${ld.tg}</b> Tags</span>`;if(ld.lk)h+=`<span class="chip"><b>${ld.lk}</b> Links</span>`;if(ld.cp)h+=`<span class="chip"><b>${ld.cp}</b> Caps</span>`;ld.ct.forEach(c=>h+=`<span class="chip"><b>1</b> ${c}</span>`)}
+  h+=`</div>
+    <button class="trk-btn trk-go" onclick="this.textContent='Ready ✓';this.className='trk-btn trk-ok';toast('Truck confirmed')">I have everything</button>
+    <button class="trk-btn" style="margin-top:8px;background:var(--c2);border:1.5px solid var(--b1);color:var(--w2);font-size:12px" onclick="pop();showItemsNeeded()">+ Items Needed</button>
+  </div>`
+  push(h)
+}
+
+function openTodoList(){
+  const todos=D.todos||[]
+  let h=`<div class="ov-hdr"><button class="ov-back" onclick="pop()">‹</button><div class="ov-title">To-Do List</div></div><div class="ov-body">
+    <div style="display:flex;gap:6px;margin-bottom:16px">
+      <input id="todo-input" placeholder="Add something..." style="flex:1;min-height:44px;font-size:14px" onkeydown="if(event.key==='Enter'){addTodo();return}">
+      <button style="background:var(--fire);color:#fff;padding:0 20px;border-radius:var(--rs);font-size:14px;font-weight:800;min-height:44px" onclick="addTodo()">Add</button>
+    </div>
+    <div id="todo-list">`
+  if(!todos.length)h+=`<div style="text-align:center;padding:40px 20px;color:var(--g2)"><div style="font-size:32px;margin-bottom:8px;opacity:.3">✓</div><div style="font-size:13px">Nothing on the list</div></div>`
+  else todos.forEach(t2=>{
+    h+=`<div style="display:flex;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid var(--b1)" id="todo-${t2.id}">
+      <span style="flex:1;font-size:14px;color:var(--w)">${esc(t2.text)}</span>
+      <button style="font-size:12px;font-weight:800;color:var(--ok);background:var(--oks);padding:8px 16px;border-radius:var(--rs);min-height:36px" onclick="doneTodo('${t2.id}')">Done</button>
+    </div>`
+  })
+  h+=`</div></div>`
+  push(h)
+}
+
+async function addTodo(){
+  const inp=$('todo-input');if(!inp)return
+  const text=inp.value.trim();if(!text)return
+  inp.value=''
+  try{
+    await SB.from('todos').insert({text,done:false})
+    await load();rDash()
+    // refresh overlay if open
+    if(stk.length){pop();openTodoList()}
+  }catch(e){toast('Error adding',false)}
+}
+async function doneTodo(id){
+  const el=$('todo-'+id)
+  if(el)el.style.opacity='.3'
+  try{
+    await SB.from('todos').delete().eq('id',id)
+    await load();rDash()
+    if(stk.length){pop();openTodoList()}
+  }catch(e){toast('Error',false)}
 }
 
 function go(btn){
@@ -458,14 +570,18 @@ function rDash(){
     <div class="st" style="cursor:pointer" onclick="showStatDrill('estimated')"><div class="sn g">${fmt(ev)}</div><div class="sl">Estimated ›</div></div>
     <div class="st" style="cursor:pointer" onclick="showStatDrill('overdue')"><div class="sn ${ov.length?'r':'g'}">${ov.length}</div><div class="sl">Overdue ›</div></div>
   </div>
-  <div style="display:flex;gap:8px;margin-bottom:12px">
-    <button onclick="openRouteView()" style="flex:1;padding:11px;border-radius:var(--r);background:var(--c2);border:1.5px solid var(--info);color:var(--info);font-size:12px;font-weight:800;min-height:44px">🗺 Route My Day</button>
-  </div>
-  <div class="trk"><div class="trk-top"><div class="trk-t">🔧 Truck Load</div><span class="pill pchk" id="trkP">Check</span></div>
-  <div class="chips">`
-  if(!tj.length)h+=`<span class="chip">No jobs today</span>`
-  else{if(ld.tg)h+=`<span class="chip"><b>${ld.tg}</b> Tags</span>`;if(ld.lk)h+=`<span class="chip"><b>${ld.lk}</b> Links</span>`;if(ld.cp)h+=`<span class="chip"><b>${ld.cp}</b> Caps</span>`;ld.ct.forEach(c=>h+=`<span class="chip"><b>1</b> ${c}</span>`)}
-  h+=`</div><button class="trk-btn trk-go" onclick="this.textContent='Ready';this.className='trk-btn trk-ok';$('trkP').className='pill pok';$('trkP').textContent='Ready';toast('Truck confirmed')">I have everything</button></div>`
+  const todos=D.todos||[]
+  h+=`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px">
+    <button onclick="openRouteView()" style="padding:14px 8px;border-radius:var(--r);background:var(--c1);border:1px solid var(--b1);display:flex;flex-direction:column;align-items:center;gap:4px;min-height:70px;cursor:pointer">
+      <span style="font-size:20px">🗺</span><span style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--info)">Route</span>
+    </button>
+    <button onclick="openTruckLoad()" style="padding:14px 8px;border-radius:var(--r);background:var(--c1);border:1px solid var(--b1);display:flex;flex-direction:column;align-items:center;gap:4px;min-height:70px;cursor:pointer">
+      <span style="font-size:20px">🔧</span><span style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--warn)">Truck</span>
+    </button>
+    <button onclick="openTodoList()" style="padding:14px 8px;border-radius:var(--r);background:var(--c1);border:1px solid ${todos.length?'var(--fire)':'var(--b1)'};display:flex;flex-direction:column;align-items:center;gap:4px;min-height:70px;cursor:pointer">
+      <span style="font-size:20px">📝</span><span style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:${todos.length?'var(--fire)':'var(--g1)'}">To-Do${todos.length?' · '+todos.length:''}</span>
+    </button>
+  </div>`
   if(tj.length){h+=`<div class="sec"><div class="sec-t">Today</div></div>`;tj.forEach(j=>h+=jCard(j))}
   if(ov.length){h+=`<div class="sec"><div class="sec-t" style="color:var(--bad)">Overdue · ${ov.length}</div></div>`;ov.slice(0,5).forEach(j=>h+=jCard(j,true))}
   if(!tj.length&&!ov.length)h+=`<div class="ey"><div class="ey-i">⚡</div><div class="ey-t">No jobs today. Tap + to schedule one.</div></div>`
@@ -506,6 +622,12 @@ function filterMoney(type){
   if(type==='paid'){
     title='Collected This Month'
     invs=D.invs.filter(i=>i.status==='paid'&&i.date>=monthStart&&i.date<=monthEnd)
+  }else if(type==='unpaid'){
+    title='Unpaid'
+    invs=D.invs.filter(i=>['draft','sent'].includes(i.status))
+  }else if(type==='outstanding'){
+    title='Outstanding (All)'
+    invs=D.invs.filter(i=>!['paid','void','record','factored'].includes(i.status))
   }else{
     title='Outstanding'
     invs=D.invs.filter(i=>!['paid','void','record'].includes(i.status))
@@ -547,16 +669,26 @@ function jCard(j,isOv=false){
 }
 
 // JOBS LIST
-function rJobs(){
+function rJobs(q){
   const t=td(),all=D.jobs.filter(j=>j.status!=='cancelled')
-  const ov=all.filter(j=>j.status==='scheduled'&&j.scheduled_date<t)
-  const up=all.filter(j=>j.status==='scheduled'&&j.scheduled_date>=t)
-  const done=all.filter(j=>j.status==='completed').slice(0,20)
-  let h=`<div class="sec" style="margin-top:8px"><div class="sec-t">Jobs</div></div>`
+  let filtered=all
+  if(q){
+    const ql=q.toLowerCase()
+    filtered=all.filter(j=>{
+      const l=j.location||{}
+      return(l.name||'').toLowerCase().includes(ql)||(l.address||'').toLowerCase().includes(ql)||(l.city||'').toLowerCase().includes(ql)||(j.scheduled_date||'').includes(ql)
+    })
+  }
+  const ov=filtered.filter(j=>j.status==='scheduled'&&j.scheduled_date<t)
+  const up=filtered.filter(j=>j.status==='scheduled'&&j.scheduled_date>=t)
+  const done=filtered.filter(j=>j.status==='completed').slice(0,20)
+  let h=`<div class="sec" style="margin-top:8px"><div class="sec-t">Jobs · ${all.length}</div></div>
+    <input class="srch" placeholder="Search by customer, city, or date..." oninput="rJobs(this.value)" value="${esc(q||'')}">`
   if(ov.length){h+=`<div class="sec"><div class="sec-t" style="color:var(--bad)">Overdue · ${ov.length}</div></div>`;ov.forEach(j=>h+=jCard(j,true))}
   if(up.length){h+=`<div class="sec"><div class="sec-t">Scheduled · ${up.length}</div></div>`;up.forEach(j=>h+=jCard(j))}
   if(done.length){h+=`<div class="sec"><div class="sec-t">Completed</div></div>`;done.forEach(j=>h+=jCard(j))}
-  if(!all.length)h=`<div class="ey"><div class="ey-i">📋</div><div class="ey-t">No jobs yet. Tap + to create one.</div></div>`
+  if(!filtered.length&&q)h+=`<div class="ey"><div class="ey-t">No jobs matching "${esc(q)}"</div></div>`
+  else if(!all.length)h=`<div class="ey"><div class="ey-i">📋</div><div class="ey-t">No jobs yet. Tap + to create one.</div></div>`
   $('jobsC').innerHTML=h
 }
 
@@ -634,6 +766,7 @@ async function openJob(id){
     {label:'Emergency Call',value:`Emergency Call|1|500`},
     {label:'After-Hours Call',value:`After-Hours Call|1|750`},
     {label:'Holiday/Weekend Call',value:`Holiday Weekend Call|1|1000`},
+    ...(D.customItems||[]).map(ci=>({label:'★ '+ci.description,value:`${ci.description}|1|${ci.unit_price||0}`})),
     {label:'Custom item...',value:'CUSTOM'},
   ]
   const partsOpts=PARTS.map(p=>`<option value="${esc(p.value)}">${esc(p.label)}</option>`).join('')
@@ -786,8 +919,9 @@ function addPartLine(sel){
   }
   const parts=v.split('|')
   const desc=parts[0]||'',qty=parseFloat(parts[1])||1,price=parseFloat(parts[2])||0
-  // check if same item already exists — increment qty instead
-  const existing=jobLines.find(l2=>l2.desc===desc)
+  // fuzzy match — normalize to catch "Ansul LT-10" vs "ansul lt10" etc.
+  const nd=norm(desc)
+  const existing=jobLines.find(l2=>norm(l2.desc)===nd)
   if(existing){existing.qty=(+existing.qty||1)+1;renderJobLines();return}
   jobLines.push({desc,qty,price,id:'jl'+Date.now()})
   renderJobLines()
@@ -796,7 +930,7 @@ function addPartLine(sel){
 async function compJ(id){
   setLoad('compBtn',true)
   const j=D.jobs.find(x=>x.id===id);if(!j)return
-  const l=j.location||{}
+  const l=D.locs.find(x=>x.id===(j.location_id||j.location?.id))||j.location||{}
   const sc=j.scope||[]
 
   // read lines from jobLines state
@@ -822,6 +956,9 @@ async function compJ(id){
 
   if(inv&&lines.length)await SB.from('invoice_lines').insert(lines.map((ln,i2)=>({invoice_id:inv.id,...ln,sort_order:i2})))
 
+  // save any custom items for future reuse
+  for(const ln of lines)await saveCustomItem(ln.description,ln.unit_price)
+
   await SB.from('jobs').update({
     status:'completed',
     completed_at:new Date().toISOString(),
@@ -832,6 +969,18 @@ async function compJ(id){
   // save extinguisher results
   for(const[eid,st] of Object.entries(extR)){
     try{await SB.from('extinguisher_results').insert({job_id:id,extinguisher_id:eid,status:st})}catch(e){}
+  }
+
+  // auto-reschedule: if location has any suppression system, create follow-up job ~5.5 months out
+  if(sc.includes('suppression')&&l.suppression_systems&&l.suppression_systems.length){
+    const nextDate=new Date()
+    nextDate.setMonth(nextDate.getMonth()+5)
+    nextDate.setDate(nextDate.getDate()+Math.floor(Math.random()*31)) // 5–6 months window
+    const nds=nextDate.toISOString().split('T')[0]
+    try{
+      await SB.from('jobs').insert({location_id:l.id,billing_account_id:l.billing_account_id||null,type:j.type||'inspection',scope:sc,scheduled_date:nds,scheduled_time:j.scheduled_time||'09:00',status:'scheduled',notes:'Auto-scheduled follow-up (semi-annual suppression)'})
+      toast('Follow-up scheduled for '+new Date(nds+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}))
+    }catch(e){console.error('auto-reschedule:',e)}
   }
 
   await load()
@@ -1061,6 +1210,7 @@ async function openInvDetail(id){
     {label:'Emergency Call',value:`Emergency Call|1|500`},
     {label:'After-Hours Call',value:`After-Hours Call|1|750`},
     {label:'Holiday/Weekend Call',value:`Holiday Weekend Call|1|1000`},
+    ...(D.customItems||[]).map(ci=>({label:'★ '+ci.description,value:`${ci.description}|1|${ci.unit_price||0}`})),
     {label:'Custom item...',value:'CUSTOM'},
   ]
   const partsOpts=PARTS.map(p=>`<option value="${esc(p.value)}">${esc(p.label)}</option>`).join('')
@@ -1084,7 +1234,7 @@ async function openInvDetail(id){
       <span class="badge ${bc}">${inv.status}</span>
     </div>
     <div style="font-size:11px;color:var(--g1)">${inv.date?'Issued '+new Date(inv.date).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):''} ${inv.due_date?' · Due '+new Date(inv.due_date).toLocaleDateString('en-US',{month:'short',day:'numeric'}):''}</div>
-    ${inv.paid_at?`<div style="font-size:11px;color:var(--ok);margin-top:4px">Paid ${new Date(inv.paid_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}${inv.payment_method?' · '+inv.payment_method:''}</div>`:''}
+    ${inv.paid_at?`<div style="font-size:11px;color:var(--ok);margin-top:4px">Paid ${new Date(inv.paid_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}${inv.payment_method?' · '+inv.payment_method:''}${inv.payment_note?' · '+esc(inv.payment_note):''}</div>`:''}
   </div>`
 
   if(loc.id){
@@ -1131,11 +1281,12 @@ async function openInvDetail(id){
     h+=`<div class="ov-foot" style="display:flex;flex-direction:column;gap:8px">
       <button class="btn-p" id="inv-save-lines-btn" onclick="saveInvLines('${id}')">💾 Save Changes</button>
       <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:var(--g2);margin-bottom:2px">Collect Payment</div>
-      <div style="display:flex;gap:6px">
-        <button class="qa-btn ok2" style="flex:1;font-size:11px" onclick="markPaid('${id}','check')">✓ Check</button>
-        <button class="qa-btn ok2" style="flex:1;font-size:11px" onclick="markPaid('${id}','cash')">💵 Cash</button>
-        <button class="qa-btn ok2" style="flex:1;font-size:11px" onclick="markPaid('${id}','card')">💳 Card</button>
-        <button class="qa-btn" style="flex:1;font-size:11px;background:rgba(99,102,241,.15);color:var(--info);border-color:var(--info)" onclick="openMazonFlow('${id}','${esc(loc.name||'')}',${+inv.total||0})">📋 Mazon</button>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="qa-btn ok2" style="flex:1;font-size:11px;min-width:60px" onclick="collectPayment('${id}','check')">✓ Check</button>
+        <button class="qa-btn ok2" style="flex:1;font-size:11px;min-width:60px" onclick="collectPayment('${id}','cash')">💵 Cash</button>
+        <button class="qa-btn ok2" style="flex:1;font-size:11px;min-width:60px" onclick="collectPayment('${id}','card')">💳 Card</button>
+        <button class="qa-btn" style="flex:1;font-size:11px;min-width:70px;background:rgba(124,132,151,.1);color:var(--g1);border-color:var(--g3)" onclick="collectPayment('${id}','undecided')">⏳ Undecided</button>
+        <button class="qa-btn" style="flex:1;font-size:11px;min-width:60px;background:rgba(99,102,241,.15);color:var(--info);border-color:var(--info)" onclick="openMazonFlow('${id}','${esc(loc.name||'')}',${+inv.total||0})">📋 Mazon</button>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
         <input id="det-email-to" type="email" placeholder="${esc(loc.contact_email||'Customer email')}" value="${esc(loc.contact_email||'')}" style="flex:1;min-height:44px;font-size:13px;background:var(--c1);color:var(--w);border:1.5px solid var(--b1);border-radius:var(--rs);padding:0 12px">
@@ -1151,6 +1302,7 @@ async function openInvDetail(id){
         <button id="det-send-btn" style="background:var(--info);color:#fff;padding:0 16px;border-radius:var(--rs);font-size:13px;font-weight:800;min-height:44px;white-space:nowrap;flex-shrink:0" onclick="sendInvoiceEmailFromDetail('${id}','${esc(loc.name||'')}','${esc(inv.invoice_number||'')}')">✉️ Send</button>
       </div>
       <div id="det-email-status" style="font-size:12px;color:var(--g1);text-align:center;min-height:16px"></div>
+      <button style="font-size:12px;font-weight:700;color:var(--bad);background:var(--bads);padding:10px;border-radius:var(--rs);width:100%;min-height:40px" onclick="markUnpaid('${id}')">Mark as Unpaid</button>
       <button class="btn-dim" style="margin-top:0" onclick="pop()">← Back</button>
     </div>`
   }
@@ -1203,7 +1355,8 @@ function addInvLine(sel,invId){
   }
   const parts=v.split('|')
   const desc=parts[0]||'',qty=parseFloat(parts[1])||1,price=parseFloat(parts[2])||0
-  const existing=invLines.find(l2=>l2.desc===desc)
+  const nd=norm(desc)
+  const existing=invLines.find(l2=>norm(l2.desc)===nd)
   if(existing){existing.qty=(+existing.qty||1)+1;renderInvLines(false);return}
   invLines.push({desc,qty,price})
   renderInvLines(false)
@@ -1225,6 +1378,8 @@ async function saveInvLines(invId){
       sort_order:i
     })))
     await SB.from('invoices').update({total:newTotal,subtotal:newTotal}).eq('id',invId)
+    // save any custom items for future reuse
+    for(const l2 of lines)await saveCustomItem(l2.desc.trim(),+(l2.price)||0)
     await load()
     toast('Invoice updated ✓')
     const el=$('inv-det-total');if(el)el.textContent=fmtD(newTotal)
@@ -1232,10 +1387,44 @@ async function saveInvLines(invId){
   if(btn){btn.textContent='💾 Save Changes';btn.disabled=false}
 }
 
-async function markPaid(id,method){
-  const{error}=await SB.from('invoices').update({status:'paid',payment_method:method,paid_at:new Date().toISOString()}).eq('id',id)
+function collectPayment(id,method){
+  if(method==='undecided'){
+    toast('Invoice left unpaid')
+    pop();openInvDetail(id)
+    return
+  }
+  if(method==='check'){
+    const num=prompt('Enter check number:')
+    if(!num)return
+    markPaid(id,'check',`Check #${num.trim()}`)
+    return
+  }
+  if(method==='cash'){
+    if(!confirm('Cash — mark as paid in full?'))return
+    markPaid(id,'cash','Cash — paid in full')
+    return
+  }
+  if(method==='card'){
+    if(!confirm('Card — mark as paid in full?'))return
+    markPaid(id,'card','Card — paid in full')
+    return
+  }
+  markPaid(id,method)
+}
+async function markPaid(id,method,note){
+  const upd={status:'paid',payment_method:method,paid_at:new Date().toISOString()}
+  if(note)upd.payment_note=note
+  const{error}=await SB.from('invoices').update(upd).eq('id',id)
   if(error){toast('Error',false);return}
   await load();toast('Marked as paid ✓')
+  pop();openInvDetail(id)
+}
+
+async function markUnpaid(id){
+  if(!confirm('Mark this invoice as unpaid?'))return
+  const{error}=await SB.from('invoices').update({status:'draft',payment_method:null,payment_note:null,paid_at:null}).eq('id',id)
+  if(error){toast('Error',false);return}
+  await load();toast('Marked as unpaid')
   pop();openInvDetail(id)
 }
 
@@ -1282,17 +1471,176 @@ function clrMazonSig(){if(mazonSigCtx){const c=$('mazonSigC');mazonSigCtx.clearR
 async function submitMazon(invId,custName,total){
   const sig=$('mazonSigC')?.toDataURL()||null
   const name=$('mazon-name')?.value?.trim()||''
-  const b=$('mazonSubmitBtn');if(b){b.innerHTML='<span class="spin"></span> Submitting...';b.classList.add('loading')}
-  const{error}=await SB.from('invoices').update({
-    status:'paid',payment_method:'mazon',paid_at:new Date().toISOString(),
-    notes:'Mazon Factoring — Client #1410. Customer: '+(name||custName)+'. Signature on file.'
+  const b=$('mazonSubmitBtn');if(b){b.innerHTML='<span class="spin"></span> Adding to queue...';b.classList.add('loading')}
+
+  // get invoice + location for address and service date
+  const inv=D.invs.find(x=>x.id===invId)||{}
+  const loc=D.locs.find(x=>x.id===inv.location_id)||{}
+  const addr=[loc.address,loc.city,loc.state,loc.zip].filter(Boolean).join(', ')
+
+  // save to mazon_queue
+  const{error:qErr}=await SB.from('mazon_queue').insert({
+    invoice_id:invId,customer_name:name||custName,amount:+total||0,
+    location_address:addr,date_of_service:inv.date||td(),
+    signature_data:sig,status:'pending',invoice_number:inv.invoice_number||''
+  })
+  if(qErr){toast('Error queuing',false);if(b){b.innerHTML='Submit to Mazon';b.classList.remove('loading')}return}
+
+  // mark invoice as factored (not paid yet — pending Mazon submission)
+  await SB.from('invoices').update({
+    status:'factored',payment_method:'mazon',
+    notes:'Mazon Factoring — Client #1410. Customer: '+(name||custName)+'. In queue for submission.'
   }).eq('id',invId)
-  if(error){toast('Error',false);if(b){b.innerHTML='Submit to Mazon';b.classList.remove('loading')}return}
+
   await load()
-  toast('Submitted to Mazon ✓')
+  toast('Added to Mazon queue ✓')
   popAll()
   rMoney()
   go(document.querySelector('[data-v="vMoney"]'))
+}
+
+// MAZON QUEUE REVIEW
+async function openMazonQueue(){
+  const{data:queue}=await SB.from('mazon_queue').select('*').order('created_at',{ascending:false})
+  const items=queue||[]
+  const pending=items.filter(x=>x.status==='pending')
+  const submitted=items.filter(x=>x.status==='submitted')
+  const pendingTotal=pending.reduce((s,x)=>s+(+x.amount||0),0)
+
+  let h=`<div class="ov-hdr">
+    <button class="ov-back" onclick="pop()">‹</button>
+    <div class="ov-title">Mazon Queue</div>
+  </div><div class="ov-body">
+  <div style="background:var(--infos);border:1.5px solid var(--info);border-radius:var(--r);padding:14px;margin-bottom:16px">
+    <div style="font-size:13px;font-weight:700;color:var(--info)">Client #1410 · PIN 4182</div>
+    <div style="font-size:12px;color:var(--g1);margin-top:4px">Submit to schedule@mazon.com by 10 AM Friday for same-day funding</div>
+  </div>`
+
+  if(pending.length){
+    h+=`<div class="sec"><div class="sec-t" style="color:var(--warn)">Pending · ${pending.length} invoices · ${fmt(pendingTotal)}</div></div>`
+    pending.forEach((q,i)=>{
+      h+=`<div class="ic" style="margin-bottom:8px" id="mq-${q.id}">
+        <div class="ic-r1">
+          <div class="ic-nm">${esc(q.customer_name)}</div>
+          <span class="badge bsent">${q.invoice_number||'—'}</span>
+        </div>
+        <div class="ic-sub">${esc(q.location_address||'')}</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
+          <div style="font-size:11px;color:var(--g1)">Service: ${q.date_of_service||'—'}</div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <span style="font-size:11px;color:var(--g1)">$</span>
+            <input type="number" value="${+q.amount||0}" style="width:80px;text-align:right;font-size:15px;font-weight:800;background:var(--c2);border:1px solid var(--b1);padding:6px 8px" id="mq-amt-${q.id}" onchange="updateMazonAmt('${q.id}',this.value)">
+          </div>
+        </div>
+        <button style="margin-top:6px;font-size:11px;color:var(--bad);background:none;padding:4px 0" onclick="removeMazonQueue('${q.id}')">Remove from queue</button>
+      </div>`
+    })
+    h+=`<button class="btn-p" id="mazonSendBtn" style="margin-top:12px;background:var(--info)" onclick="sendMazonSchedule()">✉️ Send ${pending.length} Invoice${pending.length>1?'s':''} to Mazon — ${fmt(pendingTotal)}</button>`
+  }else{
+    h+=`<div class="ey" style="padding:30px"><div class="ey-t">No pending invoices in queue.<br>Add invoices via the Mazon payment option.</div></div>`
+  }
+
+  if(submitted.length){
+    h+=`<div class="sec"><div class="sec-t">Submitted</div></div>`
+    submitted.forEach(q=>{
+      h+=`<div class="ic" style="margin-bottom:8px;opacity:.6">
+        <div class="ic-r1"><div class="ic-nm">${esc(q.customer_name)}</div><span class="badge bpaid">${q.invoice_number||'—'}</span></div>
+        <div style="display:flex;justify-content:space-between;margin-top:4px">
+          <div class="ic-sub">${esc(q.location_address||'')}</div>
+          <div style="font-size:15px;font-weight:800;color:var(--ok)">${fmt(+q.amount)}</div>
+        </div>
+        <div style="font-size:10px;color:var(--g2);margin-top:4px">Submitted ${q.submitted_at?new Date(q.submitted_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):''}</div>
+      </div>`
+    })
+  }
+
+  h+=`</div>`
+  push(h)
+}
+
+async function updateMazonAmt(qId,val){
+  await SB.from('mazon_queue').update({amount:+val||0}).eq('id',qId)
+}
+
+async function removeMazonQueue(qId){
+  if(!confirm('Remove from Mazon queue?'))return
+  // get the invoice_id to un-factor it
+  const{data}=await SB.from('mazon_queue').select('invoice_id').eq('id',qId).single()
+  await SB.from('mazon_queue').delete().eq('id',qId)
+  if(data?.invoice_id){
+    await SB.from('invoices').update({status:'draft',payment_method:null,notes:null}).eq('id',data.invoice_id)
+  }
+  await load();pop();openMazonQueue()
+}
+
+async function sendMazonSchedule(){
+  const btn=$('mazonSendBtn');if(btn){btn.innerHTML='<span class="spin"></span> Sending to Mazon...';btn.disabled=true}
+  // fetch current pending
+  const{data:pending}=await SB.from('mazon_queue').select('*').eq('status','pending').order('created_at')
+  if(!pending?.length){toast('No pending invoices',false);if(btn){btn.textContent='Send';btn.disabled=false};return}
+
+  const totalAmt=pending.reduce((s,x)=>s+(+x.amount||0),0)
+  const today=new Date().toLocaleDateString('en-US',{month:'2-digit',day:'2-digit',year:'numeric'})
+
+  // build Mazon schedule email
+  let scheduleHtml=`<div style="font-family:Arial,sans-serif;font-size:14px;color:#222;max-width:600px">
+    <p>Good morning,</p>
+    <p>Please find below the schedule submission for <b>Stephens Advanced LLC</b>.</p>
+    <p><b>Client #:</b> 1410<br><b>PIN:</b> 4182<br><b>Date:</b> ${today}<br><b>Number of Invoices:</b> ${pending.length}<br><b>Total Amount:</b> ${fmt(totalAmt)}</p>
+    <table style="width:100%;border-collapse:collapse;margin:16px 0">
+      <tr style="background:#f5f5f5">
+        <th style="text-align:left;padding:8px;border:1px solid #ddd;font-size:12px">Invoice #</th>
+        <th style="text-align:left;padding:8px;border:1px solid #ddd;font-size:12px">Customer</th>
+        <th style="text-align:left;padding:8px;border:1px solid #ddd;font-size:12px">Address</th>
+        <th style="text-align:right;padding:8px;border:1px solid #ddd;font-size:12px">Amount</th>
+        <th style="text-align:center;padding:8px;border:1px solid #ddd;font-size:12px">Date of Service</th>
+      </tr>`
+  pending.forEach(q=>{
+    scheduleHtml+=`<tr>
+      <td style="padding:8px;border:1px solid #ddd">${esc(q.invoice_number||'—')}</td>
+      <td style="padding:8px;border:1px solid #ddd">${esc(q.customer_name)}</td>
+      <td style="padding:8px;border:1px solid #ddd;font-size:12px">${esc(q.location_address||'')}</td>
+      <td style="padding:8px;border:1px solid #ddd;text-align:right;font-weight:bold">${fmt(+q.amount)}</td>
+      <td style="padding:8px;border:1px solid #ddd;text-align:center">${q.date_of_service||'—'}</td>
+    </tr>`
+  })
+  scheduleHtml+=`<tr style="background:#f0f0f0;font-weight:bold">
+      <td colspan="3" style="padding:8px;border:1px solid #ddd;text-align:right">Total</td>
+      <td style="padding:8px;border:1px solid #ddd;text-align:right">${fmt(totalAmt)}</td>
+      <td style="padding:8px;border:1px solid #ddd"></td>
+    </tr></table>
+    <p>Thank you,<br><b>Jonathan Stephens</b><br>Stephens Advanced LLC<br>(214) 994-4799<br>jonathan@stephensadvanced.com</p>
+  </div>`
+
+  try{
+    const res=await fetch('/api/send-email',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        to:'schedule@mazon.com',
+        subject:'Stephens Advanced LLC — Schedule Submission — Client #1410 — '+today,
+        html:scheduleHtml
+      })
+    })
+    const data=await res.json()
+    if(!res.ok)throw new Error(data.error||'Send failed')
+
+    // mark all as submitted
+    const now=new Date().toISOString()
+    for(const q of pending){
+      await SB.from('mazon_queue').update({status:'submitted',submitted_at:now}).eq('id',q.id)
+      // mark invoice as paid via mazon
+      if(q.invoice_id){
+        await SB.from('invoices').update({status:'paid',paid_at:now,payment_note:'Mazon schedule submitted '+today}).eq('id',q.invoice_id)
+      }
+    }
+    await load()
+    toast('Sent to Mazon ✓ — '+pending.length+' invoices')
+    pop();openMazonQueue()
+  }catch(e){
+    console.error('mazon send:',e)
+    toast('Error sending: '+e.message,false)
+    if(btn){btn.textContent='✉️ Send to Mazon';btn.disabled=false}
+  }
 }
 
 // CLIENTS LIST
@@ -1361,10 +1709,18 @@ async function saveNewCust(){
 // MONEY
 function rMoney(){
   const pd=D.invs.filter(i=>i.status==='paid').reduce((s,i)=>s+(+i.total),0)
-  const ow=D.invs.filter(i=>!['paid','void','record'].includes(i.status)).reduce((s,i)=>s+(+i.total),0)
-  $('moneyC').innerHTML=`<div class="stats s2">
+  const unpaid=D.invs.filter(i=>['draft','sent'].includes(i.status))
+  const unpaidTotal=unpaid.reduce((s,i)=>s+(+i.total),0)
+  const ow=D.invs.filter(i=>!['paid','void','record','factored'].includes(i.status)).reduce((s,i)=>s+(+i.total),0)
+  const mzPending=(D.mazonQueue||[]).filter(x=>x.status==='pending')
+  const mzTotal=mzPending.reduce((s,x)=>s+(+x.amount||0),0)
+  const factored=D.invs.filter(i=>i.status==='factored')
+  const factoredTotal=factored.reduce((s,i)=>s+(+i.total),0)
+  $('moneyC').innerHTML=`<div class="stats" style="grid-template-columns:repeat(2,1fr);margin-bottom:12px">
     <div class="st" style="cursor:pointer" onclick="filterMoney('paid')"><div class="sn g">${fmt(pd)}</div><div class="sl">Collected ›</div></div>
-    <div class="st" style="cursor:pointer" onclick="filterMoney('unpaid')"><div class="sn r">${fmt(ow)}</div><div class="sl">Outstanding ›</div></div>
+    <div class="st" style="cursor:pointer" onclick="filterMoney('unpaid')"><div class="sn r">${fmt(unpaidTotal)}</div><div class="sl">Unpaid · ${unpaid.length} ›</div></div>
+    <div class="st" style="cursor:pointer" onclick="filterMoney('outstanding')"><div class="sn y">${fmt(ow)}</div><div class="sl">Outstanding ›</div></div>
+    <div class="st" style="cursor:pointer" onclick="openMazonQueue()"><div class="sn i">${fmt(mzPending.length?mzTotal:factoredTotal)}</div><div class="sl">${mzPending.length?'Mazon Queue · '+mzPending.length+' ›':'Mazon ›'}</div></div>
   </div>
   <div class="sec"><div class="sec-t">Invoices</div></div>
   <input class="srch" placeholder="Search by customer or invoice #..." oninput="fI(this.value)">
@@ -1395,14 +1751,139 @@ function openNew(){
   </div><div class="ov-body">
     <div class="mode-card" onclick="pop();openPhotoFlow()"><div class="mode-icon">📸</div><div><div class="mode-title">Photo / AI</div><div class="mode-desc">Snap a work order or note. Claude reads it and builds the invoice.</div></div></div>
     <div class="mode-card" onclick="pop();openManual(false)"><div class="mode-icon">✏️</div><div><div class="mode-title">Build Invoice</div><div class="mode-desc">Pick a customer, add line items, save or send.</div></div></div>
-    <div class="mode-card" onclick="pop();openManual(true)"><div class="mode-icon">🗂️</div><div><div class="mode-title">Record Only</div><div class="mode-desc">Log a past job or invoice. Nothing sent to customer.</div></div></div>
+    <div class="mode-card" onclick="pop();openRecordInvoice()"><div class="mode-icon">🗂️</div><div><div class="mode-title">Record Invoice</div><div class="mode-desc">Snap a photo of an old invoice. AI reads it, detects if reinspection is due.</div></div></div>
     <div class="mode-card" onclick="pop();openSchedJob()"><div class="mode-icon">📋</div><div><div class="mode-title">Schedule a Job</div><div class="mode-desc">Create a new job on the schedule.</div></div></div>
     <div class="mode-card" onclick="pop();addNewCust()"><div class="mode-icon">👤</div><div><div class="mode-title">Add Client</div><div class="mode-desc">Add a new service location.</div></div></div>
   </div>`)
 }
 
+// RECORD INVOICE — form with camera to snap old work order, AI populates fields
+let _recordMode=false
+let _recData={hasSup:false,hasExt:false,isDue:false,dueType:'',monthsAgo:0}
+function openRecordInvoice(){
+  _recordMode=true
+  _recData={hasSup:false,hasExt:false,isDue:false,dueType:'',monthsAgo:0}
+  _recPayMethod='old_system'
+  _aiN=1
+  const today=td()
+  const locOpts=D.locs.map(l=>`<option value="${l.id}">${esc(l.name)}${l.city?' — '+esc(l.city):''}</option>`).join('')
+  push(`<div class="ov-hdr">
+    <button class="ov-back" onclick="_recordMode=false;pop()">‹</button>
+    <div class="ov-title">Record Work Order</div>
+  </div><div class="ov-body">
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <button onclick="$('camInput').click()" style="flex:1;padding:14px;border-radius:var(--r);background:var(--fire);color:#fff;font-size:14px;font-weight:800;display:flex;align-items:center;justify-content:center;gap:8px;min-height:52px;border:none;cursor:pointer">📷 Snap Work Order</button>
+    </div>
+    <img id="photoPrev" class="photo-prev" style="display:none;margin-bottom:10px">
+    <div id="aiStatus" style="display:none;text-align:center;padding:16px;color:var(--g1);margin-bottom:10px"><span class="spin"></span><span id="aiTxt">Reading work order...</span></div>
+    <div id="rec-ai-total" style="display:none"></div>
+    <div id="rec-due-alert"></div>
+    <div class="fg"><label class="fg-l">Customer *</label>
+      <div class="ac">
+        <input id="rec-loc-search" placeholder="Type customer name..." oninput="recCustSearch(this.value)" onfocus="recCustSearch(this.value)" autocomplete="off">
+        <div class="ac-dd" id="rec-loc-dd"></div>
+      </div>
+      <input type="hidden" id="rec-loc" value="">
+      <div id="rec-loc-selected" style="display:none;margin-top:6px;background:var(--c1);border:1.5px solid rgba(16,185,129,.2);border-radius:var(--rs);padding:10px 12px;display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span id="rec-loc-name" style="font-size:14px;font-weight:700;color:var(--ok)"></span>
+          <button style="font-size:11px;color:var(--g1);padding:4px 8px" onclick="clearRecLoc()">Change</button>
+        </div>
+      </div>
+    </div>
+    <div id="rec-new-cust"></div>
+    <div class="fg"><label class="fg-l">Original Service Date *</label><input type="date" id="rec-date" value="${today}" onchange="recUpdateDue()"></div>
+    <div class="fg"><label class="fg-l">Service Type</label>
+      <select id="rec-svc-type">
+        <option>Semi-Annual Inspection</option><option>Annual Inspection</option><option>Emergency Service</option><option>Installation</option><option>Repair</option><option>Hydrostatic Test</option><option>Other</option>
+      </select>
+    </div>
+    <div class="fg"><label class="fg-l">What was serviced?</label>
+      <div style="display:flex;gap:6px;flex-wrap:wrap" id="rec-scope">
+        <button data-k="suppression" class="tg ts" style="padding:8px 14px;font-size:11px;cursor:pointer" onclick="this.classList.toggle('ts');this.classList.toggle('tg-off');recUpdateDue()">Suppression</button>
+        <button data-k="extinguishers" class="tg ts" style="padding:8px 14px;font-size:11px;cursor:pointer" onclick="this.classList.toggle('ts');this.classList.toggle('tg-off');recUpdateDue()">Extinguishers</button>
+        <button data-k="elights" class="tg" style="padding:8px 14px;font-size:11px;cursor:pointer;background:var(--c2);color:var(--g1)" onclick="this.classList.toggle('ts')">E-Lights</button>
+      </div>
+    </div>
+    <div class="fg"><label class="fg-l">Line Items</label>
+      <div id="ai-li-wrap"><div class="li-row">
+        <input placeholder="Description" id="ald0" value="">
+        <input class="li-qty" type="number" id="alq0" value="1">
+        <input class="li-price" type="number" id="alp0" value="0" placeholder="$">
+      </div></div>
+      <button class="btn-dim" style="margin-top:6px;width:auto;padding:10px 16px;font-size:13px" onclick="addAILine()">+ Add Line</button>
+    </div>
+    <div class="fg"><label class="fg-l">Notes</label><textarea id="ai-notes" placeholder="Optional..."></textarea></div>
+    <div class="fg"><label class="fg-l">How was it paid?</label>
+      <div style="display:flex;gap:6px;flex-wrap:wrap" id="rec-pay">
+        <button class="tg" style="padding:8px 14px;font-size:11px;cursor:pointer;background:var(--fires);color:var(--fire)" data-m="old_system" onclick="recSetPay(this)">Paid</button>
+        <button class="tg" style="padding:8px 14px;font-size:11px;cursor:pointer;background:var(--c2);color:var(--g1)" data-m="unpaid" onclick="recSetPay(this)">Unpaid</button>
+        <button class="tg" style="padding:8px 14px;font-size:11px;cursor:pointer;background:var(--c2);color:var(--g1)" data-m="check" onclick="recSetPay(this)">Check</button>
+        <button class="tg" style="padding:8px 14px;font-size:11px;cursor:pointer;background:var(--c2);color:var(--g1)" data-m="cash" onclick="recSetPay(this)">Cash</button>
+        <button class="tg" style="padding:8px 14px;font-size:11px;cursor:pointer;background:var(--c2);color:var(--g1)" data-m="card" onclick="recSetPay(this)">Card</button>
+      </div>
+      <input id="rec-check-num" placeholder="Check number" style="display:none;margin-top:6px">
+    </div>
+    <button class="btn-p" id="recSaveBtn" onclick="saveRecordInvoice()">Record Old Job</button>
+    <button style="width:100%;padding:12px;border-radius:var(--rs);font-size:13px;font-weight:800;background:var(--bads);color:var(--bad);border:1.5px solid var(--bad);margin-top:6px;cursor:pointer" onclick="_recPayMethod='unpaid';saveRecordInvoice()">Record as Unpaid</button>
+  </div>`)
+}
+let _recPayMethod='unpaid'
+function recSetPay(btn){
+  _recPayMethod=btn.dataset.m
+  document.querySelectorAll('#rec-pay button').forEach(b=>{b.style.background='var(--c2)';b.style.color='var(--g1)'})
+  btn.style.background='var(--fires)';btn.style.color='var(--fire)'
+  const ck=$('rec-check-num');if(ck)ck.style.display=_recPayMethod==='check'?'block':'none'
+}
+
+function recCustSearch(q){
+  const dd=$('rec-loc-dd');if(!dd)return
+  if(q.length<1){dd.classList.remove('vis');return}
+  const ql=q.toLowerCase()
+  const matches=D.locs.filter(l=>l.name.toLowerCase().includes(ql)||(l.city||'').toLowerCase().includes(ql)||(l.address||'').toLowerCase().includes(ql))
+  const canMk=q.length>=2&&!matches.some(l=>l.name.toLowerCase()===ql)
+  let h=''
+  matches.forEach(l=>{
+    h+=`<div class="ac-it" onclick="selectRecLoc('${l.id}','${esc(l.name)}')"><div class="ac-n">${esc(l.name)}</div><div class="ac-d">${esc([l.address,l.city].filter(Boolean).join(', '))}</div></div>`
+  })
+  if(canMk)h+=`<div class="ac-it ac-new" onclick="showRecNewCust('${esc(q)}')"><div class="ac-n">+ Add "${esc(q)}" as new customer</div></div>`
+  dd.innerHTML=h;dd.classList.add('vis')
+}
+
+function selectRecLoc(id,name){
+  const inp=$('rec-loc');if(inp)inp.value=id
+  const search=$('rec-loc-search');if(search)search.style.display='none'
+  const dd=$('rec-loc-dd');if(dd)dd.classList.remove('vis')
+  const sel=$('rec-loc-selected');if(sel){sel.style.display='block';$('rec-loc-name').textContent=name}
+  // clear new customer form if it was showing
+  const ncW=$('rec-new-cust');if(ncW)ncW.innerHTML=''
+}
+
+function clearRecLoc(){
+  const inp=$('rec-loc');if(inp)inp.value=''
+  const search=$('rec-loc-search');if(search){search.style.display='block';search.value='';search.focus()}
+  const sel=$('rec-loc-selected');if(sel)sel.style.display='none'
+}
+
+function showRecNewCust(name){
+  const dd=$('rec-loc-dd');if(dd)dd.classList.remove('vis')
+  const search=$('rec-loc-search');if(search)search.style.display='none'
+  const sel=$('rec-loc-selected');if(sel)sel.style.display='none'
+  const inp=$('rec-loc');if(inp)inp.value=''
+  const ncW=$('rec-new-cust')
+  if(ncW)ncW.innerHTML=`<div class="inl" style="margin-top:8px;margin-bottom:12px">
+    <div class="inl-hdr"><span>New Customer</span><button onclick="clearRecLoc();$('rec-new-cust').innerHTML=''">Cancel</button></div>
+    <input id="ai-nc-name" placeholder="Business name *" value="${esc(name||'')}">
+    <input id="ai-nc-addr" placeholder="Address">
+    <div class="row3" style="gap:6px"><input id="ai-nc-city" placeholder="City"><input id="ai-nc-st" placeholder="ST" value="TX"><input id="ai-nc-zip" placeholder="Zip"></div>
+    <div class="row2" style="gap:6px"><input id="ai-nc-contact" placeholder="Contact name"><input id="ai-nc-phone" placeholder="Phone"></div>
+    <input id="ai-nc-email" placeholder="Email">
+  </div>`
+}
+
 // PHOTO FLOW
 function openPhotoFlow(){
+  _recordMode=false
   push(`<div class="ov-hdr">
     <button class="ov-back" onclick="pop()">‹</button>
     <div class="ov-title">Photo → Invoice</div>
@@ -1461,7 +1942,9 @@ RULES:
 Known customers: ${JSON.stringify(locList)}
 
 Return ONLY valid JSON, no markdown:
-{"customer_name":"","matched_location_id":null,"is_new_customer":true,"new_customer":{"name":"","address":"","city":"","state":"TX","zip":"","contact_name":"","contact_phone":"","email":""},"service_date":null,"work_order_number":"","service_type":"","line_items":[{"description":"","quantity":1,"unit_price":0,"total_as_written":""}],"subtotal_as_written":"","total_as_written":"","payment_method":"","notes":"","confidence":"high/medium/low"}`}
+{"customer_name":"","matched_location_id":null,"is_new_customer":true,"new_customer":{"name":"","address":"","city":"","state":"TX","zip":"","contact_name":"","contact_phone":"","email":""},"service_date":null,"work_order_number":"","service_type":"","has_suppression":false,"has_extinguishers":false,"line_items":[{"description":"","quantity":1,"unit_price":0,"total_as_written":""}],"subtotal_as_written":"","total_as_written":"","payment_method":"","notes":"","confidence":"high/medium/low"}
+
+IMPORTANT: Set has_suppression=true if ANY line item mentions suppression, hood, Ansul, kitchen, clean agent, FM-200, halon, novec, semi-annual inspection of systems, fusible link, nozzle, blow-off cap, or similar fire suppression system work. Set has_extinguishers=true if ANY line item mentions extinguisher, fire ext, tag, inspection tag, hydro test, or similar portable extinguisher work. service_date MUST be in YYYY-MM-DD format if found.`}
         ]}]
       })
     })
@@ -1469,7 +1952,7 @@ Return ONLY valid JSON, no markdown:
     const txt=data.content?.[0]?.text||''
     let p;try{p=JSON.parse(txt.replace(/```json|```/g,'').trim())}catch{throw new Error('parse')}
     const st=$('aiStatus');if(st)st.style.display='none'
-    renderAIResult(p)
+    if(_recordMode)renderRecordResult(p);else renderAIResult(p)
   }catch(err){
     const tx=$('aiTxt');if(tx)tx.textContent='Could not read photo — try again or build manually.'
     console.error(err)
@@ -1480,25 +1963,29 @@ function renderAIResult(p){
   const today=td(),due=new Date();due.setDate(due.getDate()+15);const dueStr=due.toISOString().split('T')[0]
   const lines=p.line_items?.length?p.line_items:[{description:'',quantity:1,unit_price:0,total_as_written:''}]
   _aiN=lines.length
-  const locOpts=D.locs.map(l=>`<option value="${l.id}"${l.id===p.matched_location_id?' selected':''}>${esc(l.name)}${l.city?' — '+esc(l.city):''}</option>`).join('')
-  const nc=p.new_customer||{}
-  const newCust=p.is_new_customer&&!p.matched_location_id?`<div class="inl">
-    <div class="inl-hdr"><span>New Customer — Confirm</span></div>
-    <input id="ai-nc-name" placeholder="Business name" value="${esc(nc.name||p.customer_name||'')}">
-    <input id="ai-nc-addr" placeholder="Address" value="${esc(nc.address||'')}">
-    <div class="row3" style="gap:6px"><input id="ai-nc-city" placeholder="City" value="${esc(nc.city||'')}"><input id="ai-nc-st" placeholder="ST" value="TX"><input id="ai-nc-zip" placeholder="Zip" value="${esc(nc.zip||'')}"></div>
-    <div class="row2" style="gap:6px"><input id="ai-nc-contact" placeholder="Contact" value="${esc(nc.contact_name||'')}"><input id="ai-nc-phone" placeholder="Phone" value="${esc(nc.contact_phone||'')}"></div>
-    <input id="ai-nc-email" placeholder="Email" value="${esc(nc.email||'')}">
-  </div>`:''
   const ar=$('aiResult');if(!ar)return
+
+  // determine matched location name
+  const matchedLoc=p.matched_location_id?D.locs.find(x=>x.id===p.matched_location_id):null
+
   ar.innerHTML=`
     <div class="ai-box"><div class="ai-lbl">AI Extracted · Confidence: ${p.confidence||'?'}</div>
     <div class="ai-txt">${esc(p.customer_name||'Unknown')} · ${esc(p.service_type||'')}${p.service_date?' · '+p.service_date:''}${p.work_order_number?' · WO#'+p.work_order_number:''}${p.total_as_written?' · Total: '+p.total_as_written:''}${p.payment_method?' · '+p.payment_method:''}</div></div>
     <div class="fg"><label class="fg-l">Customer</label>
-      <select id="ai-loc"><option value="">-- Select --</option>${locOpts}</select>
+      <div class="ac">
+        <input id="ai-loc-search" placeholder="Type customer name..." oninput="aiCustSearch(this.value)" onfocus="aiCustSearch(this.value)" autocomplete="off" style="${matchedLoc?'display:none':''}">
+        <div class="ac-dd" id="ai-loc-dd"></div>
+      </div>
+      <input type="hidden" id="ai-loc" value="${matchedLoc?matchedLoc.id:''}">
+      <div id="ai-loc-selected" style="${matchedLoc?'':'display:none'};margin-top:6px;background:var(--c1);border:1.5px solid rgba(16,185,129,.2);border-radius:var(--rs);padding:10px 12px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span id="ai-loc-name" style="font-size:14px;font-weight:700;color:var(--ok)">${matchedLoc?esc(matchedLoc.name):''}</span>
+          <button style="font-size:11px;color:var(--g1);padding:4px 8px" onclick="clearAiLoc()">Change</button>
+        </div>
+      </div>
       ${p.customer_name?`<div style="font-size:11px;color:var(--g1);margin-top:4px">AI read: "${esc(p.customer_name)}"</div>`:''}
     </div>
-    ${newCust}
+    <div id="ai-new-cust"></div>
     <div class="fg"><label class="fg-l">Service Date</label><input type="date" id="ai-date" value="${p.service_date||today}"></div>
     <div class="fg"><label class="fg-l">Due Date</label><input type="date" id="ai-due" value="${dueStr}"></div>
     <div class="fg"><label class="fg-l">Service Type</label><input id="ai-type" value="${esc(p.service_type||'')}"></div>
@@ -1513,6 +2000,253 @@ function renderAIResult(p){
     <div class="fg"><label class="fg-l">Notes</label><textarea id="ai-notes" placeholder="Optional...">${esc(p.notes||'')}</textarea></div>
     <button class="btn-p" id="aiSaveBtn" onclick="saveAIInv(false)">Save Invoice</button>
     <button class="btn-dim" onclick="saveAIInv(true)">Record Only — Don't Send</button>`
+
+  // if AI read a name but no match, pre-fill the search
+  if(!matchedLoc&&p.customer_name){
+    setTimeout(()=>{const s=$('ai-loc-search');if(s){s.value=p.customer_name;aiCustSearch(p.customer_name)}},50)
+  }
+  // if new customer, show the form
+  if(p.is_new_customer&&!matchedLoc){
+    const nc=p.new_customer||{}
+    setTimeout(()=>{
+      showAiNewCust(nc.name||p.customer_name||'')
+      setTimeout(()=>{
+        if(nc.address){const e=$('ai-nc-addr');if(e)e.value=nc.address}
+        if(nc.city){const e=$('ai-nc-city');if(e)e.value=nc.city}
+        if(nc.zip){const e=$('ai-nc-zip');if(e)e.value=nc.zip}
+        if(nc.contact_name){const e=$('ai-nc-contact');if(e)e.value=nc.contact_name}
+        if(nc.contact_phone){const e=$('ai-nc-phone');if(e)e.value=nc.contact_phone}
+        if(nc.email){const e=$('ai-nc-email');if(e)e.value=nc.email}
+      },30)
+    },60)
+  }
+}
+
+function aiCustSearch(q){
+  const dd=$('ai-loc-dd');if(!dd)return
+  if(q.length<1){dd.classList.remove('vis');return}
+  const ql=q.toLowerCase()
+  const matches=D.locs.filter(l=>l.name.toLowerCase().includes(ql)||(l.city||'').toLowerCase().includes(ql)||(l.address||'').toLowerCase().includes(ql))
+  const canMk=q.length>=2&&!matches.some(l=>l.name.toLowerCase()===ql)
+  let h=''
+  matches.forEach(l=>{
+    h+=`<div class="ac-it" onclick="selectAiLoc('${l.id}','${esc(l.name)}')"><div class="ac-n">${esc(l.name)}</div><div class="ac-d">${esc([l.address,l.city].filter(Boolean).join(', '))}</div></div>`
+  })
+  if(canMk)h+=`<div class="ac-it ac-new" onclick="showAiNewCust('${esc(q)}')"><div class="ac-n">+ Add "${esc(q)}" as new customer</div></div>`
+  dd.innerHTML=h;dd.classList.add('vis')
+}
+function selectAiLoc(id,name){
+  const inp=$('ai-loc');if(inp)inp.value=id
+  const s=$('ai-loc-search');if(s)s.style.display='none'
+  const dd=$('ai-loc-dd');if(dd)dd.classList.remove('vis')
+  const sel=$('ai-loc-selected');if(sel){sel.style.display='block';$('ai-loc-name').textContent=name}
+  const ncW=$('ai-new-cust');if(ncW)ncW.innerHTML=''
+}
+function clearAiLoc(){
+  const inp=$('ai-loc');if(inp)inp.value=''
+  const s=$('ai-loc-search');if(s){s.style.display='block';s.value='';s.focus()}
+  const sel=$('ai-loc-selected');if(sel)sel.style.display='none'
+}
+function showAiNewCust(name){
+  const dd=$('ai-loc-dd');if(dd)dd.classList.remove('vis')
+  const s=$('ai-loc-search');if(s)s.style.display='none'
+  const sel=$('ai-loc-selected');if(sel)sel.style.display='none'
+  const inp=$('ai-loc');if(inp)inp.value=''
+  const ncW=$('ai-new-cust')
+  if(ncW)ncW.innerHTML=`<div class="inl" style="margin-top:8px;margin-bottom:12px">
+    <div class="inl-hdr"><span>New Customer</span><button onclick="clearAiLoc();$('ai-new-cust').innerHTML=''">Cancel</button></div>
+    <input id="ai-nc-name" placeholder="Business name *" value="${esc(name||'')}">
+    <input id="ai-nc-addr" placeholder="Address">
+    <div class="row3" style="gap:6px"><input id="ai-nc-city" placeholder="City"><input id="ai-nc-st" placeholder="ST" value="TX"><input id="ai-nc-zip" placeholder="Zip"></div>
+    <div class="row2" style="gap:6px"><input id="ai-nc-contact" placeholder="Contact name"><input id="ai-nc-phone" placeholder="Phone"></div>
+    <input id="ai-nc-email" placeholder="Email">
+  </div>`
+}
+
+function renderRecordResult(p){
+  // populate the existing form fields from AI — don't rebuild the page
+  if(p.matched_location_id){
+    const loc=D.locs.find(x=>x.id===p.matched_location_id)
+    if(loc)selectRecLoc(loc.id,loc.name)
+  }else if(p.customer_name){
+    // AI read a name but no match — show it in search so user can pick or add
+    const search=$('rec-loc-search');if(search){search.value=p.customer_name;recCustSearch(p.customer_name)}
+  }
+  if(p.service_date){const dt=$('rec-date');if(dt){dt.value=p.service_date;dt.dispatchEvent(new Event('change'))}}
+  if(p.service_type){
+    const sel=$('rec-svc-type');if(sel){
+      const opts=Array.from(sel.options)
+      const match=opts.find(o=>o.text.toLowerCase().includes(p.service_type.toLowerCase()))
+      if(match)sel.value=match.value
+    }
+  }
+  // set scope toggles
+  const scopeWrap=$('rec-scope')
+  if(scopeWrap){
+    scopeWrap.querySelectorAll('button').forEach(b=>{
+      const k=b.dataset.k
+      if(k==='suppression'){if(p.has_suppression){b.classList.add('ts');b.classList.remove('tg-off')}else{b.classList.remove('ts');b.classList.add('tg-off')}}
+      if(k==='extinguishers'){if(p.has_extinguishers){b.classList.add('ts');b.classList.remove('tg-off')}else{b.classList.remove('ts');b.classList.add('tg-off')}}
+    })
+  }
+  // populate line items
+  const lines=p.line_items?.length?p.line_items:[{description:'',quantity:1,unit_price:0,total_as_written:''}]
+  _aiN=lines.length
+  const wrap=$('ai-li-wrap')
+  if(wrap){
+    wrap.innerHTML=lines.map((l2,i)=>`<div class="li-row">
+      <input placeholder="Description" id="ald${i}" value="${esc(l2.description||'')}">
+      <input class="li-qty" type="number" id="alq${i}" value="${l2.quantity||1}">
+      <input class="li-price" type="number" id="alp${i}" value="${l2.total_as_written?parseFloat((l2.total_as_written+'').replace(/[$,]/g,''))||0:l2.unit_price||0}" placeholder="$">
+    </div>`).join('')
+  }
+  if(p.notes){const n=$('ai-notes');if(n)n.value=p.notes}
+  // show AI-read total for verification
+  const aiTotal=$('rec-ai-total')
+  if(aiTotal){
+    const sub=p.subtotal_as_written||''
+    const tot=p.total_as_written||''
+    if(tot||sub){
+      aiTotal.style.display='block'
+      aiTotal.innerHTML=`<div style="background:var(--c1);border:2px solid var(--fire);border-radius:var(--r);padding:14px;margin-bottom:14px">
+        <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--g1);margin-bottom:6px">Total from Work Order</div>
+        <div style="font-size:28px;font-weight:900;color:var(--fire)">${esc(tot||sub)}</div>
+        ${sub&&tot&&sub!==tot?`<div style="font-size:12px;color:var(--g1);margin-top:4px">Subtotal: ${esc(sub)}</div>`:''}
+        <div style="font-size:11px;color:var(--g1);margin-top:6px">Verify this matches the line items below</div>
+      </div>`
+    }
+  }
+  // new customer — show add form pre-filled
+  if(p.is_new_customer&&!p.matched_location_id){
+    const nc=p.new_customer||{}
+    showRecNewCust(nc.name||p.customer_name||'')
+    // pre-fill extra fields after form is created
+    setTimeout(()=>{
+      if(nc.address){const e=$('ai-nc-addr');if(e)e.value=nc.address}
+      if(nc.city){const e=$('ai-nc-city');if(e)e.value=nc.city}
+      if(nc.zip){const e=$('ai-nc-zip');if(e)e.value=nc.zip}
+      if(nc.contact_name){const e=$('ai-nc-contact');if(e)e.value=nc.contact_name}
+      if(nc.contact_phone){const e=$('ai-nc-phone');if(e)e.value=nc.contact_phone}
+      if(nc.email){const e=$('ai-nc-email');if(e)e.value=nc.email}
+    },30)
+  }
+  // auto-select payment method if AI detected one
+  if(p.payment_method){
+    const pm=p.payment_method.toLowerCase()
+    let mKey='unpaid'
+    if(pm.includes('check'))mKey='check'
+    else if(pm.includes('cash'))mKey='cash'
+    else if(pm.includes('card')||pm.includes('credit')||pm.includes('debit'))mKey='card'
+    else if(pm.includes('paid'))mKey='cash'
+    const payBtn=document.querySelector(`#rec-pay button[data-m="${mKey}"]`)
+    if(payBtn)recSetPay(payBtn)
+  }
+  recUpdateDue()
+  toast('Work order read — review and save')
+}
+
+function recUpdateDue(){
+  const dateVal=$('rec-date')?.value
+  const scopeBtns=$('rec-scope')?.querySelectorAll('button.ts')||[]
+  const scopes=Array.from(scopeBtns).map(b=>b.dataset.k)
+  const hasSup=scopes.includes('suppression')
+  const hasExt=scopes.includes('extinguishers')
+  const svcDate=dateVal?new Date(dateVal+'T12:00:00'):null
+  const alert=$('rec-due-alert')
+  const btn=$('recSaveBtn')
+  _recData={hasSup,hasExt,isDue:false,dueType:'',monthsAgo:0}
+
+  if(!svcDate||isNaN(svcDate)||!alert){if(alert)alert.innerHTML='';if(btn)btn.textContent='Record Old Job';return}
+  const now=new Date()
+  const monthsAgo=Math.round((now-svcDate)/(1000*60*60*24*30.44))
+  _recData.monthsAgo=monthsAgo
+  const supDue=hasSup&&monthsAgo>=6
+  const extDue=hasExt&&!hasSup&&monthsAgo>=12
+
+  if(supDue){
+    _recData.isDue=true;_recData.dueType='suppression'
+    alert.innerHTML=`<div style="background:var(--bads);border:2px solid var(--bad);border-radius:var(--r);padding:14px;margin-bottom:14px">
+      <div style="font-size:13px;font-weight:800;color:var(--bad);margin-bottom:4px">REINSPECTION DUE — Suppression</div>
+      <div style="font-size:12px;color:var(--w2)">Last service ${monthsAgo} months ago. Semi-annual (6 mo) required.</div>
+    </div>`
+    if(btn)btn.textContent='Record Old Job + Schedule Reinspection'
+  }else if(extDue){
+    _recData.isDue=true;_recData.dueType='extinguishers'
+    alert.innerHTML=`<div style="background:var(--warns);border:2px solid var(--warn);border-radius:var(--r);padding:14px;margin-bottom:14px">
+      <div style="font-size:13px;font-weight:800;color:var(--warn);margin-bottom:4px">REINSPECTION DUE — Extinguishers</div>
+      <div style="font-size:12px;color:var(--w2)">Last service ${monthsAgo} months ago. Annual (12 mo) required.</div>
+    </div>`
+    if(btn)btn.textContent='Record Old Job + Schedule Reinspection'
+  }else{
+    const nextMonths=hasSup?6-monthsAgo:hasExt?12-monthsAgo:null
+    if(nextMonths!==null&&nextMonths>0){
+      alert.innerHTML=`<div style="background:var(--oks);border:2px solid var(--ok);border-radius:var(--r);padding:12px;margin-bottom:14px">
+        <div style="font-size:12px;font-weight:700;color:var(--ok)">Not yet due — ~${nextMonths} month${nextMonths!==1?'s':''} until next inspection</div>
+      </div>`
+    }else{alert.innerHTML=''}
+    if(btn)btn.textContent='Record Old Job'
+  }
+}
+
+async function saveRecordInvoice(){
+  const btn=$('recSaveBtn');if(btn){btn.innerHTML='<span class="spin"></span> Saving...';btn.disabled=true}
+  const resetBtn=()=>{if(btn){btn.textContent=_recData.isDue?'Record Old Job + Schedule Reinspection':'Record Old Job';btn.disabled=false}}
+  const locId=$('rec-loc')?.value
+  let finalLocId=locId
+  if(!locId){
+    const nm=$('ai-nc-name')?.value?.trim()
+    if(!nm){toast('Select a customer',false);resetBtn();return}
+    const city=$('ai-nc-city')?.value?.trim()||''
+    const{data:newLoc,error}=await SB.from('locations').insert({
+      name:nm,address:$('ai-nc-addr')?.value?.trim()||null,city:city||null,
+      state:$('ai-nc-st')?.value?.trim()||'TX',zip:$('ai-nc-zip')?.value?.trim()||null,
+      contact_name:$('ai-nc-contact')?.value?.trim()||null,contact_phone:$('ai-nc-phone')?.value?.trim()||null,
+      contact_email:$('ai-nc-email')?.value?.trim()||null
+    }).select().single()
+    if(error){toast('Error saving customer',false);resetBtn();return}
+    finalLocId=newLoc.id;await load()
+  }
+  const lines=[]
+  for(let i=0;i<_aiN;i++){
+    const d=($('ald'+i)?.value||'').trim();if(!d)continue
+    const q=parseFloat($('alq'+i)?.value)||1,pp=parseFloat($('alp'+i)?.value)||0
+    lines.push({description:d,quantity:q,unit_price:pp,total:q*pp})
+  }
+  if(!lines.length){toast('Add at least one line item',false);resetBtn();return}
+  const total=lines.reduce((s,l2)=>s+l2.total,0)
+  const invNum='INV-'+Date.now().toString().slice(-6)
+  const isPaid=_recPayMethod&&_recPayMethod!=='unpaid'
+  const payNote=_recPayMethod==='old_system'?'Old system file — paid':_recPayMethod==='check'?'Check #'+($('rec-check-num')?.value?.trim()||'?'):_recPayMethod==='cash'?'Cash — paid in full':_recPayMethod==='card'?'Card — paid in full':null
+  const{data:inv,error}=await SB.from('invoices').insert({
+    location_id:finalLocId,invoice_number:invNum,date:$('rec-date')?.value||td(),
+    due_date:null,status:isPaid?'paid':'record',subtotal:total,total,
+    notes:$('ai-notes')?.value?.trim()||null,
+    ...(isPaid?{payment_method:_recPayMethod,payment_note:payNote,paid_at:new Date().toISOString()}:{})
+  }).select().single()
+  if(error){toast('Error saving',false);resetBtn();return}
+  await SB.from('invoice_lines').insert(lines.map((l2,i)=>({invoice_id:inv.id,description:l2.description,quantity:l2.quantity,unit_price:l2.unit_price,total:l2.total,sort_order:i})))
+
+  // auto-schedule reinspection if due
+  let scheduledMsg=''
+  if(_recData.isDue&&finalLocId){
+    const scopeBtns=$('rec-scope')?.querySelectorAll('button.ts')||[]
+    const scopes=Array.from(scopeBtns).map(b=>b.dataset.k)
+    const nextDate=new Date()
+    nextDate.setDate(nextDate.getDate()+7)
+    const nds=nextDate.toISOString().split('T')[0]
+    try{
+      await SB.from('jobs').insert({
+        location_id:finalLocId,type:'inspection',scope:scopes.length?scopes:['extinguishers','suppression'],
+        scheduled_date:nds,scheduled_time:'09:00',status:'scheduled',
+        notes:'Reinspection — from old work order ('+($('rec-date')?.value||'')+')'
+      })
+      scheduledMsg=' + reinspection '+new Date(nds+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})
+    }catch(e){console.error('auto-schedule:',e)}
+  }
+
+  await load();_recordMode=false;popAll()
+  toast('Recorded'+scheduledMsg)
+  openInvDetail(inv.id)
 }
 
 function addAILine(){
@@ -1773,7 +2507,14 @@ function schedFor(locId,locName,locAddr,locCity){
   openSchedJob()
 }
 
-function openSchedJob(){rNewJob()}
+function openSchedJob(preLocId,preScope){
+  if(preLocId){
+    const pl=D.locs.find(x=>x.id===preLocId)
+    if(pl)nSt={loc:{id:pl.id,name:pl.name,address:pl.address||'',city:pl.city||'',ba:pl.billing_account_id||''},mk:false}
+    window._preScope=preScope||null
+  }else{window._preScope=null}
+  rNewJob()
+}
 
 function rNewJob(){
   let h=`<div class="ov-hdr">
@@ -1803,7 +2544,11 @@ function rNewJob(){
   <div class="fg"><div class="fg-l">Type</div><div class="tgl" id="nTy">`
   ;[['inspection','Inspection'],['emergency','Emergency'],['misc','Misc']].forEach(([k,v])=>h+=`<button data-k="${k}" ${k==='inspection'?'class="on"':''} onclick="document.querySelectorAll('#nTy button').forEach(b=>b.classList.remove('on'));this.classList.add('on')">${v}</button>`)
   h+=`</div></div><div class="fg"><div class="fg-l">Scope</div><div class="tgl" id="nSc">`
-  ;[['extinguishers','Extinguishers'],['suppression','Suppression'],['elights','E-Lights'],['hydro','Hydro']].forEach(([k,v])=>h+=`<button data-k="${k}" ${(k==='extinguishers'||k==='suppression')?'class="gn"':''} onclick="this.classList.toggle('gn')">${v}</button>`)
+  const _ps=window._preScope
+  ;[['extinguishers','Extinguishers'],['suppression','Suppression'],['elights','E-Lights'],['hydro','Hydro']].forEach(([k,v])=>{
+    const on=_ps?k===_ps:(k==='extinguishers'||k==='suppression')
+    h+=`<button data-k="${k}" ${on?'class="gn"':''} onclick="this.classList.toggle('gn')">${v}</button>`
+  })
   h+=`</div></div>
   <div class="fg"><div class="fg-l">Notes</div><textarea id="nnt" placeholder="Optional..."></textarea></div>
   <button class="btn-p" id="saveJobBtn" onclick="saveJob()">Create Job</button></div>`
@@ -2041,34 +2786,76 @@ function openAddExt(locId){
     <button class="ov-act" id="saveExtBtn" onclick="saveExt('${locId}')">Save</button>
   </div><div class="ov-body">
     <div class="fg"><label class="fg-l">Type *</label>
-      <select id="ext-type">
+      <select id="ext-type" onchange="updateExtSizes()">
         <option>ABC Dry Chemical</option>
         <option>Class K</option>
         <option>CO2</option>
         <option>Water</option>
         <option>Halotron</option>
+        <option>Halon</option>
+        <option>Class D</option>
         <option>Purple K</option>
+        <option>Clean Agent</option>
+        <option value="_custom">+ Add Type...</option>
       </select>
+    </div>
+    <div id="ext-custom-type" style="display:none;margin-top:6px;margin-bottom:10px">
+      <input id="ext-custom-name" placeholder="Enter custom type name..." style="margin-bottom:6px">
+      <button class="btn-dim" style="width:auto;padding:8px 16px;font-size:12px" onclick="applyCustomExtType()">Use This Type</button>
     </div>
     <div class="fg"><label class="fg-l">Size *</label>
       <select id="ext-size">
-        <option>2.5lb</option><option>5lb</option><option>10lb</option><option>15lb</option><option>20lb</option><option>2.5gal</option><option>5gal</option>
+        <option>2.5lb</option><option>5lb</option><option>10lb</option><option>20lb</option><option>30lb</option>
       </select>
     </div>
     <div class="fg"><label class="fg-l">Location in Building</label><input id="ext-loc" placeholder="e.g. Kitchen, Front Counter, Hood"></div>
-    <div class="fg"><label class="fg-l">Serial Number</label><input id="ext-sn" placeholder="Optional"></div>
     <div class="fg"><label class="fg-l">Manufacture Date</label><input type="month" id="ext-mfg"></div>
     <div class="err" id="ext-err"></div>
   </div>`)
 }
 
+const EXT_SIZES={
+  'ABC Dry Chemical':['2.5lb','5lb','10lb','20lb','30lb'],
+  'CO2':['5lb','10lb','15lb','20lb'],
+  'Class K':['6 Liter'],
+  'Halon':['5lb','13lb','17lb'],
+  'Class D':['30lb'],
+  'Water':['2.5gal'],
+  'Halotron':['2.5lb','5lb','11lb','15.5lb'],
+  'Purple K':['2.5lb','5lb','10lb','20lb','30lb'],
+  'Clean Agent':['5lb','13lb'],
+}
+function updateExtSizes(){
+  const type=$('ext-type')?.value
+  if(type==='_custom'){
+    const cw=$('ext-custom-type');if(cw)cw.style.display='block'
+    return
+  }
+  const cw=$('ext-custom-type');if(cw)cw.style.display='none'
+  const sizes=EXT_SIZES[type]||['2.5lb','5lb','10lb','20lb','30lb']
+  const sel=$('ext-size');if(!sel)return
+  sel.innerHTML=sizes.map(s=>`<option>${s}</option>`).join('')
+}
+function applyCustomExtType(){
+  const name=$('ext-custom-name')?.value?.trim()
+  if(!name){toast('Enter a type name',false);return}
+  const sel=$('ext-type')
+  // add the custom option before the "+ Add Type..." option
+  const opt=document.createElement('option');opt.value=name;opt.textContent=name
+  sel.insertBefore(opt,sel.querySelector('option[value="_custom"]'))
+  sel.value=name
+  const cw=$('ext-custom-type');if(cw)cw.style.display='none'
+  // default sizes for unknown type
+  updateExtSizes()
+}
 async function saveExt(locId){
   const b=$('saveExtBtn');if(b){b.textContent='Saving...';b.style.opacity='.5';b.style.pointerEvents='none'}
-  const type=$('ext-type')?.value;if(!type){if($('ext-err'))$('ext-err').textContent='Select a type.';if(b){b.textContent='Save';b.style.opacity='';b.style.pointerEvents=''}return}
+  let type=$('ext-type')?.value
+  if(type==='_custom')type=$('ext-custom-name')?.value?.trim()||''
+  if(!type){if($('ext-err'))$('ext-err').textContent='Select a type.';if(b){b.textContent='Save';b.style.opacity='';b.style.pointerEvents=''}return}
   const{error}=await SB.from('extinguishers').insert({
     location_id:locId,type,size:$('ext-size')?.value||null,
     location_in_building:$('ext-loc')?.value?.trim()||null,
-    serial_number:$('ext-sn')?.value?.trim()||null,
     manufacture_date:$('ext-mfg')?.value||null
   })
   if(error){if($('ext-err'))$('ext-err').textContent='Error: '+error.message;if(b){b.textContent='Save';b.style.opacity='';b.style.pointerEvents=''}return}
