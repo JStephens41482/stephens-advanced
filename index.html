@@ -268,6 +268,9 @@ select{-webkit-appearance:none;appearance:none}
 .del-yes{flex:1;padding:12px;border-radius:var(--rs);background:var(--bad);color:#fff;font-size:13px;font-weight:800;min-height:44px;display:flex;align-items:center;justify-content:center}
 .del-no{flex:1;padding:12px;border-radius:var(--rs);background:var(--c2);color:var(--g1);font-size:13px;font-weight:700;border:1px solid var(--b1);min-height:44px;display:flex;align-items:center;justify-content:center}
 .del-eq{padding:6px 10px;border-radius:var(--rs);background:var(--bads);color:var(--bad);font-size:11px;font-weight:800;border:1px solid var(--bad);min-height:36px;display:flex;align-items:center}
+.swipe-wrap{position:relative;overflow:hidden;border-radius:var(--r);margin-bottom:8px}
+.swipe-inner{transition:transform .2s ease;position:relative;z-index:1}
+.swipe-del{position:absolute;right:0;top:0;bottom:0;width:90px;background:var(--bad);display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:800;z-index:0}
 </style>
 </head>
 <body>
@@ -369,6 +372,9 @@ async function load(){
   if(bq.error)console.error('brycer_queue error:',bq.error)
   if(tk.error)console.error('techs error:',tk.error)
   if(ci.error)console.error('custom_items error:',ci.error)
+  if(b.error)console.error('billing_accounts error:',b.error)
+  if(sr.error)console.error('service_requests error:',sr.error)
+  if(pt.error)console.error('portal_tokens error:',pt.error)
   console.log('loaded:',j.data?.length,'jobs,',l.data?.length,'locs,',i.data?.length,'invs,',td2.data?.length,'todos')
   D.jobs=j.data||[];D.locs=l.data||[];D.invs=i.data||[];D.bas=b.data||[]
   const rc={};(r.data||[]).forEach(x=>rc[x.key]=+x.price);D.rc=rc
@@ -612,6 +618,37 @@ function go(btn){
 function toast(m,ok=true){
   const t=$('toast');t.textContent=m;t.style.background=ok?'var(--ok)':'var(--bad)'
   t.classList.add('vis');setTimeout(()=>t.classList.remove('vis'),2800)
+}
+
+// swipe-to-delete handler
+function initSwipe(el,onDelete){
+  let sx=0,sy=0,swiping=false,moved=false
+  const inner=el.querySelector('.swipe-inner')
+  if(!inner)return
+  el.addEventListener('touchstart',e=>{sx=e.touches[0].clientX;sy=e.touches[0].clientY;swiping=true;moved=false},{passive:true})
+  el.addEventListener('touchmove',e=>{
+    if(!swiping)return
+    const dx=e.touches[0].clientX-sx,dy=Math.abs(e.touches[0].clientY-sy)
+    if(dy>30){swiping=false;inner.style.transform='';return}
+    if(dx<-10){moved=true;inner.style.transition='none';inner.style.transform=`translateX(${Math.max(dx,-90)}px)`}
+  },{passive:true})
+  el.addEventListener('touchend',e=>{
+    swiping=false;inner.style.transition='transform .2s ease'
+    if(!moved){inner.style.transform='';return}
+    const dx=e.changedTouches[0].clientX-sx
+    if(dx<-60){
+      inner.style.transform='translateX(-90px)'
+      // show delete zone — tap to confirm
+    }else{inner.style.transform=''}
+    moved=false
+  },{passive:true})
+  // delete button click
+  const delBtn=el.querySelector('.swipe-del')
+  if(delBtn)delBtn.addEventListener('click',()=>{
+    el.style.transition='all .2s';el.style.maxHeight=el.offsetHeight+'px'
+    requestAnimationFrame(()=>{el.style.maxHeight='0';el.style.opacity='0';el.style.marginBottom='0';el.style.padding='0'})
+    setTimeout(()=>{el.remove();onDelete()},250)
+  })
 }
 
 function setLoad(id,on,orig){
@@ -1370,7 +1407,7 @@ function rDash(){
   if(tj.length){h+=`<div class="sec"><div class="sec-t">Today</div></div>`;tj.forEach(j=>h+=jCard(j))}
   if(ov.length){h+=`<div class="sec"><div class="sec-t" style="color:var(--bad)">Overdue · ${ov.length}</div></div>`;ov.slice(0,5).forEach(j=>h+=jCard(j,true))}
   if(!tj.length&&!ov.length)h+=`<div class="ey"><div class="ey-i">⚡</div><div class="ey-t">No jobs today. Tap + to schedule one.</div></div>`
-  $('dashC').innerHTML=h
+  $('dashC').innerHTML=h;setTimeout(initSwipes,50)
 }
 
 function showStatDrill(type){
@@ -1441,7 +1478,9 @@ function jCard(j,isOv=false){
   const l=j.location||{},sc=j.scope||[],v=est(j),a=[l.address,l.city].filter(Boolean).join(', ')
   const ds=j.scheduled_date?new Date(j.scheduled_date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}):''
   const cls=isOv?'jrd':j.status==='active'?'jgn':j.status==='completed'?'jgy':'jbl'
-  return`<div class="jc ${cls}" onclick="openJob('${j.id}')">
+  return`<div class="swipe-wrap" data-swipe-job="${j.id}">
+    <div class="swipe-del">Delete</div>
+    <div class="swipe-inner jc ${cls}" onclick="openJob('${j.id}')" style="margin-bottom:0">
     <div class="jc-r1"><div class="jc-nm"><span style="color:var(--fire);text-decoration:underline;text-decoration-color:rgba(240,90,40,.3);text-underline-offset:2px;cursor:pointer" onclick="event.stopPropagation();openCust('${j.location_id||l.id}')">${esc(l.name||'Unknown')} ›</span></div><div class="jc-tm">${ds}${j.scheduled_time?' '+j.scheduled_time.slice(0,5):''}</div></div>
     <div class="jc-addr">${esc(a)||'No address'}</div>
     <div class="jc-tags">${sc.includes('suppression')?'<span class="tg ts">Suppression</span>':''}${sc.includes('extinguishers')?'<span class="tg te">Ext</span>':''}${sc.includes('elights')?'<span class="tg tl">E-Lights</span>':''}${sc.includes('hydro')?'<span class="tg th">Hydro</span>':''}${isOv?'<span class="tg to2">Overdue</span>':''}${l.is_brycer_jurisdiction?'<span class="tg tb">Brycer</span>':''}${j.assigned_to?(()=>{const tk2=D.techs?.find(x=>x.id===j.assigned_to);return tk2?'<span class="tg" style="background:'+tk2.color+'22;color:'+tk2.color+'">'+esc(tk2.name.split(' ')[0])+'</span>':''})():''}</div>
@@ -1450,7 +1489,7 @@ function jCard(j,isOv=false){
       <button class="jb jb-n" onclick="event.stopPropagation();startNav('${j.id}')">🗺 Nav</button>
       <button class="jb jb-g" onclick="event.stopPropagation();openJob('${j.id}')">Open Job →</button>
     </div>
-  </div>`
+  </div></div>`
 }
 
 // JOBS LIST
@@ -1485,7 +1524,7 @@ function rJobs(q){
   if(done.length){h+=`<div class="sec"><div class="sec-t">Completed</div></div>`;done.forEach(j=>h+=jCard(j))}
   if(!all.length)h+=`<div class="ey"><div class="ey-i">📋</div><div class="ey-t">No jobs yet. Tap + to create one.</div></div>`
   h+=`</div>`
-  $('jobsC').innerHTML=h
+  $('jobsC').innerHTML=h;setTimeout(initSwipes,50)
 }
 
 // JOB WORK ORDER — live editable invoice during the job
@@ -2618,18 +2657,45 @@ function rMoney(){
   <div class="sec"><div class="sec-t">Invoices</div></div>
   <input class="srch" placeholder="Search by customer or invoice #..." oninput="fI(this.value)">
   <div id="iL">${iHtml(D.invs)}</div>`
+  setTimeout(initSwipes,50)
 }
 function iHtml(invs){
   if(!invs.length)return`<div class="ey"><div class="ey-i">💰</div><div class="ey-t">No invoices yet.</div></div>`
   return invs.map(i=>{
     const loc=D.locs.find(l=>l.id===i.location_id)
     const bc=i.status==='paid'?'bpaid':i.status==='sent'?'bsent':i.status==='overdue'?'bover':i.status==='record'?'brec':i.status==='factored'?'bfact':'bdraft'
-    return`<div class="ic" onclick="openInvDetail('${i.id}')">
-      <div class="ic-r1"><div><div class="ic-nm">${esc(loc?.name||'Unknown')}</div><div class="ic-sub">${i.invoice_number||'—'}</div></div><span class="badge ${bc}">${i.status}</span></div>
-      <div class="ic-sub">${i.date?new Date(i.date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):''}</div>
-      <div class="ic-amt">${fmt(+i.total)}</div>
+    return`<div class="swipe-wrap" data-swipe-inv="${i.id}">
+      <div class="swipe-del" onclick="event.stopPropagation()">Delete</div>
+      <div class="swipe-inner ic" onclick="openInvDetail('${i.id}')" style="margin-bottom:0">
+        <div class="ic-r1"><div><div class="ic-nm">${esc(loc?.name||'Unknown')}</div><div class="ic-sub">${i.invoice_number||'—'}</div></div><span class="badge ${bc}">${i.status}</span></div>
+        <div class="ic-sub">${i.date?new Date(i.date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):''}</div>
+        <div class="ic-amt">${fmt(+i.total)}</div>
+      </div>
     </div>`
   }).join('')
+}
+function initSwipes(){
+  document.querySelectorAll('.swipe-wrap[data-swipe-inv]').forEach(el=>{
+    initSwipe(el,async()=>{
+      const id=el.dataset.swipeInv
+      await SB.from('invoice_lines').delete().eq('invoice_id',id)
+      await SB.from('invoices').delete().eq('id',id)
+      await load();toast('Invoice deleted');rMoney()
+    })
+  })
+  document.querySelectorAll('.swipe-wrap[data-swipe-job]').forEach(el=>{
+    initSwipe(el,async()=>{
+      const id=el.dataset.swipeJob
+      const{data:invs2}=await SB.from('invoices').select('id').eq('job_id',id)
+      const invIds2=(invs2||[]).map(x=>x.id)
+      if(invIds2.length)await SB.from('invoice_lines').delete().in('invoice_id',invIds2)
+      if(invIds2.length)await SB.from('invoices').delete().in('id',invIds2)
+      try{await SB.from('reports').delete().eq('job_id',id)}catch(e){}
+      try{await SB.from('extinguisher_results').delete().eq('job_id',id)}catch(e){}
+      await SB.from('jobs').delete().eq('id',id)
+      await load();toast('Job deleted');rJobs();rDash()
+    })
+  })
 }
 function fI(q){
   const ql=q.toLowerCase()
