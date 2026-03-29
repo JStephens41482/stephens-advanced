@@ -2993,12 +2993,33 @@ function renderAIResult(p){
     <div class="fg"><label class="fg-l">Service Date</label><input type="date" id="ai-date" value="${p.service_date||today}"></div>
     <div class="fg"><label class="fg-l">Due Date</label><input type="date" id="ai-due" value="${dueStr}"></div>
     <div class="fg"><label class="fg-l">Service Type</label><input id="ai-type" value="${esc(p.service_type||'')}"></div>
+    ${(p.total_as_written||p.subtotal_as_written)?`<div style="background:var(--c1);border:2px solid var(--fire);border-radius:var(--r);padding:14px;margin-bottom:14px">
+      <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--g1);margin-bottom:6px">Total from Work Order (AI Read)</div>
+      <div style="font-size:28px;font-weight:900;color:var(--fire)">${esc(p.total_as_written||p.subtotal_as_written)}</div>
+      ${p.subtotal_as_written&&p.total_as_written&&p.subtotal_as_written!==p.total_as_written?`<div style="font-size:12px;color:var(--g1);margin-top:4px">Subtotal: ${esc(p.subtotal_as_written)}</div>`:''}
+      <div style="font-size:11px;color:var(--g1);margin-top:6px">Compare with line item total below — edit any field to correct</div>
+    </div>`:''}
     <div class="fg"><label class="fg-l">Line Items <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--g1)">(all editable)</span></label>
-      <div id="ai-li-wrap">${lines.map((l2,i)=>`<div class="li-row">
-        <input placeholder="Description" id="ald${i}" value="${esc(l2.description||'')}">
-        <input class="li-qty" type="number" id="alq${i}" value="${l2.quantity||1}">
-        <input class="li-price" type="number" id="alp${i}" value="${l2.total_as_written?parseFloat((l2.total_as_written+'').replace(/[$,]/g,''))||0:l2.unit_price||0}" placeholder="$">
-      </div>`).join('')}</div>
+      <div style="display:flex;gap:6px;margin-bottom:4px;padding:0 2px">
+        <span style="flex:2;font-size:9px;font-weight:800;color:var(--g2);text-transform:uppercase;letter-spacing:.8px">Description</span>
+        <span style="width:50px;font-size:9px;font-weight:800;color:var(--g2);text-transform:uppercase;letter-spacing:.8px;text-align:center">Qty</span>
+        <span style="width:80px;font-size:9px;font-weight:800;color:var(--g2);text-transform:uppercase;letter-spacing:.8px;text-align:right">Unit $</span>
+        <span style="width:80px;font-size:9px;font-weight:800;color:var(--g2);text-transform:uppercase;letter-spacing:.8px;text-align:right">Total</span>
+      </div>
+      <div id="ai-li-wrap">${lines.map((l2,i)=>{
+        const qty2=l2.quantity||1
+        const lineTotal2=l2.total_as_written?parseFloat((l2.total_as_written+'').replace(/[$,]/g,''))||0:(qty2*(l2.unit_price||0))
+        const calcUnit2=qty2>0?Math.round(lineTotal2/qty2*100)/100:lineTotal2
+        return`<div class="li-row">
+        <input placeholder="Description" id="ald${i}" value="${esc(l2.description||'')}" style="flex:2">
+        <input class="li-qty" type="number" id="alq${i}" value="${qty2}" oninput="updateAiTotal()">
+        <input type="number" id="alup${i}" value="${calcUnit2}" placeholder="Unit $" oninput="updateAiTotal()" style="width:80px!important;flex:none!important">
+        <input type="number" id="alp${i}" value="${lineTotal2}" placeholder="Total" oninput="updateAiTotalFromLine(${i})" style="width:80px!important;flex:none!important;color:var(--fire);font-weight:700">
+      </div>`}).join('')}</div>
+      <div style="display:flex;justify-content:flex-end;padding:8px 0;border-top:1.5px solid var(--b1);margin-top:4px">
+        <span style="font-size:10px;font-weight:800;color:var(--g2);margin-right:8px;align-self:center">TOTAL</span>
+        <span id="ai-running-total" style="font-size:20px;font-weight:900;color:var(--fire)"></span>
+      </div>
       <button class="btn-dim" style="margin-top:6px;width:auto;padding:10px 16px;font-size:13px" onclick="addAILine()">+ Add Line</button>
     </div>
     <div class="fg"><label class="fg-l">Notes</label><textarea id="ai-notes" placeholder="Optional...">${esc(p.notes||'')}</textarea></div>
@@ -3049,6 +3070,8 @@ function renderAIResult(p){
     else if(pm.includes('unpaid')||pm.includes('due'))mKey='unpaid'
     setTimeout(()=>{const btn=document.querySelector(`#ai-pay button[data-m="${mKey}"]`);if(btn)aiSetPay(btn)},80)
   }
+  // calculate initial total
+  setTimeout(updateAiTotal,50)
 }
 
 function aiCustSearch(q){
@@ -3429,12 +3452,31 @@ function addAILine(){
   const wrap=$('ai-li-wrap');if(!wrap)return
   const i=_aiN++
   const d=document.createElement('div');d.className='li-row'
-  d.innerHTML=`<input placeholder="Description" id="ald${i}" style="flex:2"><input class="li-qty" type="number" id="alq${i}" value="1" oninput="updateRecTotal()"><input type="number" id="alup${i}" value="0" placeholder="Unit $" oninput="updateRecTotal()" style="width:80px!important;flex:none!important"><input type="number" id="alp${i}" value="0" placeholder="Total" oninput="updateRecTotalFromLine(${i})" style="width:80px!important;flex:none!important;color:var(--fire);font-weight:700">`
-  // insert before the total row
-  const totalRow=wrap.querySelector('[id=rec-running-total]')?.parentElement
+  d.innerHTML=`<input placeholder="Description" id="ald${i}" style="flex:2"><input class="li-qty" type="number" id="alq${i}" value="1" oninput="updateAiTotal();updateRecTotal()"><input type="number" id="alup${i}" value="0" placeholder="Unit $" oninput="updateAiTotal();updateRecTotal()" style="width:80px!important;flex:none!important"><input type="number" id="alp${i}" value="0" placeholder="Total" oninput="updateAiTotalFromLine(${i});updateRecTotalFromLine(${i})" style="width:80px!important;flex:none!important;color:var(--fire);font-weight:700">`
+  const totalRow=wrap.querySelector('[id=ai-running-total]')?.parentElement||wrap.querySelector('[id=rec-running-total]')?.parentElement
   if(totalRow)wrap.insertBefore(d,totalRow)
   else wrap.appendChild(d)
-  updateRecTotal()
+  updateAiTotal();updateRecTotal()
+}
+
+function updateAiTotal(){
+  let total=0
+  for(let i=0;i<_aiN;i++){
+    const q=parseFloat($('alq'+i)?.value)||1
+    const up=parseFloat($('alup'+i)?.value)||0
+    const lt=q*up
+    const tp=$('alp'+i);if(tp)tp.value=lt.toFixed(2)
+    total+=lt
+  }
+  const el=$('ai-running-total');if(el)el.textContent=fmtD(total)
+}
+function updateAiTotalFromLine(idx){
+  const q=parseFloat($('alq'+idx)?.value)||1
+  const lt=parseFloat($('alp'+idx)?.value)||0
+  const up=$('alup'+idx);if(up&&q>0)up.value=(lt/q).toFixed(2)
+  let total=0
+  for(let i=0;i<_aiN;i++){total+=parseFloat($('alp'+i)?.value)||0}
+  const el=$('ai-running-total');if(el)el.textContent=fmtD(total)
 }
 
 function updateRecTotal(){
