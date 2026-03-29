@@ -4027,15 +4027,22 @@ function snapExtPhoto(idx,jobId){
 }
 
 function manualAddExt(locId,jobId){
-  const types=['ABC Dry Chemical','CO2','Class K','Water','Halon','Halotron','Class D','Purple K','Clean Agent']
+  const types=Object.keys(EXT_SIZES)
+  const defaultSizes=EXT_SIZES[types[0]]||[]
   push(`<div class="ov-hdr"><button class="ov-back" onclick="pop()">‹</button><div class="ov-title">Add Extinguisher</div>
     <button class="ov-act" id="manExtSaveBtn" onclick="saveManualExt('${locId}','${jobId}')">Save</button>
   </div><div class="ov-body">
-    <div class="fg"><label class="fg-l">Type *</label><select id="man-ext-type">${types.map(t=>`<option>${t}</option>`).join('')}</select></div>
-    <div class="fg"><label class="fg-l">Size</label><input id="man-ext-size" placeholder="e.g. 5lb, 10lb, 6 Liter"></div>
+    <div class="fg"><label class="fg-l">Type *</label><select id="man-ext-type" onchange="updateManExtSizes()">${types.map(t=>`<option>${t}</option>`).join('')}</select></div>
+    <div class="fg"><label class="fg-l">Size *</label><select id="man-ext-size">${defaultSizes.map(s=>`<option>${s}</option>`).join('')}</select></div>
     <div class="fg"><label class="fg-l">Location in Building</label><input id="man-ext-loc" placeholder="e.g. Kitchen, Front Counter"></div>
     <div class="fg"><label class="fg-l">Manufacture Date</label><input type="month" id="man-ext-mfg"></div>
   </div>`)
+}
+function updateManExtSizes(){
+  const type=$('man-ext-type')?.value
+  const sizes=EXT_SIZES[type]||['5lb','10lb','20lb']
+  const sel=$('man-ext-size');if(!sel)return
+  sel.innerHTML=sizes.map(s=>`<option>${s}</option>`).join('')
 }
 
 async function saveManualExt(locId,jobId){
