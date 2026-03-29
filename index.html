@@ -504,6 +504,60 @@ function routeJobs(jobs){
   return route
 }
 
+function startNav(jobId){
+  const j=D.jobs.find(x=>x.id===jobId);if(!j)return
+  const l=D.locs.find(x=>x.id===(j.location_id||j.location?.id))||j.location||{}
+  const a=[l.address,l.city].filter(Boolean).join(', ')
+  if(!a){window.open('https://maps.apple.com/');return}
+
+  // estimate ETA from city coords
+  const city=(l.city||'').toLowerCase().trim()
+  const dest=CITY_COORDS[city]
+  let etaMin=20 // default
+  if(dest){
+    const d=Math.sqrt(Math.pow((dest.lat-BASE.lat)*69,2)+Math.pow((dest.lng-BASE.lng)*60,2))
+    etaMin=Math.max(10,Math.round(d*2.2)) // ~2.2 min per mile in DFW
+  }
+  const lo=etaMin,hi=etaMin+5
+  const phone=l.contact_phone||''
+  const contactName=l.contact_name||'there'
+  const msg=`Hi${contactName!=='there'?' '+contactName.split(' ')[0]:''}, this is Jon from Stephens Advanced. I'm heading to your location now and should arrive in about ${lo}-${hi} minutes.`
+
+  push(`<div class="ov-hdr">
+    <button class="ov-back" onclick="pop()">‹</button>
+    <div class="ov-title">Navigate to ${esc(l.name||'Job')}</div>
+  </div><div class="ov-body">
+    <div style="background:var(--c1);border:1px solid var(--b1);border-radius:var(--r);padding:14px;margin-bottom:16px">
+      <div style="font-size:14px;font-weight:700">${esc(l.name||'')}</div>
+      <div style="font-size:12px;color:var(--g1);margin-top:4px">${esc(a)}</div>
+      <div style="font-size:13px;font-weight:800;color:var(--info);margin-top:8px">ETA: ~${lo}-${hi} minutes</div>
+    </div>
+    ${phone?`<div class="fg"><label class="fg-l">Send arrival text to ${esc(phone)}</label>
+      <textarea id="nav-msg" style="min-height:80px;font-size:14px">${esc(msg)}</textarea>
+      <button class="btn-p" style="margin-top:8px" id="navSmsBtn" onclick="sendNavSms('${esc(phone)}','${esc(a)}')">📱 Send Text & Navigate</button>
+    </div>`:`<div style="font-size:12px;color:var(--g2);margin-bottom:12px">No phone number on file — can't send text</div>`}
+    <button class="btn-dim" onclick="pop();window.open('https://maps.apple.com/?daddr='+encodeURIComponent('${esc(a)}'))">🗺 Just Navigate — No Text</button>
+  </div>`)
+}
+
+async function sendNavSms(phone,addr){
+  const btn=$('navSmsBtn');if(btn){btn.innerHTML='<span class="spin"></span> Sending...';btn.disabled=true}
+  const msg=$('nav-msg')?.value||''
+  try{
+    const res=await fetch('/api/send-sms',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({to:phone,body:msg})
+    })
+    const data=await res.json()
+    if(!res.ok)throw new Error(data.error||'SMS failed')
+    toast('Text sent ✓')
+  }catch(e){
+    console.error('sms:',e)
+    toast('Text failed — navigating anyway',false)
+  }
+  pop()
+  window.open('https://maps.apple.com/?daddr='+encodeURIComponent(addr))
+}
+
 function openRouteView(){
   const t=td()
   const tom=new Date(Date.now()+86400000).toISOString().split('T')[0]
@@ -662,7 +716,7 @@ function jCard(j,isOv=false){
     <div class="jc-tags">${sc.includes('suppression')?'<span class="tg ts">Suppression</span>':''}${sc.includes('extinguishers')?'<span class="tg te">Ext</span>':''}${sc.includes('elights')?'<span class="tg tl">E-Lights</span>':''}${sc.includes('hydro')?'<span class="tg th">Hydro</span>':''}${isOv?'<span class="tg to2">Overdue</span>':''}${l.is_brycer_jurisdiction?'<span class="tg tb">Brycer</span>':''}</div>
     <div class="jc-val">${v?fmt(v):'Rate card not set'}</div>
     <div class="jc-btns">
-      <button class="jb jb-n" onclick="event.stopPropagation();window.open('https://maps.apple.com/?daddr='+encodeURIComponent('${esc(a)}'))">🗺 Nav</button>
+      <button class="jb jb-n" onclick="event.stopPropagation();startNav('${j.id}')">🗺 Nav</button>
       <button class="jb jb-g" onclick="event.stopPropagation();openJob('${j.id}')">Open Job →</button>
     </div>
   </div>`
@@ -816,7 +870,7 @@ async function openJob(id){
   <div class="ds"><div class="ds-t">Location</div>
     <div class="ds-info">${esc(a)||'No address'}${l.contact_name?'<br>'+esc(l.contact_name)+(l.contact_phone?' · '+l.contact_phone:''):''}${l.is_brycer_jurisdiction?'<br><span style="color:var(--warn);font-weight:700">⚡ Brycer — '+esc(l.brycer_ahj_name||'Fort Worth FD')+'</span>':''}</div>
     <div class="qa">
-      ${a?`<button class="qa-btn" onclick="window.open('https://maps.apple.com/?daddr='+encodeURIComponent('${esc(a)}'))">🗺 Navigate</button>`:''}
+      ${a?`<button class="qa-btn" onclick="startNav('${j.id}')">🗺 Navigate</button>`:''}
       ${l.contact_phone?`<button class="qa-btn" onclick="window.open('tel:${l.contact_phone}')">📞 Call</button>`:''}
     </div>
   </div>`
