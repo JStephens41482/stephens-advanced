@@ -3077,11 +3077,28 @@ function renderRecordResult(p){
   _aiN=lines.length
   const wrap=$('ai-li-wrap')
   if(wrap){
-    wrap.innerHTML=lines.map((l2,i)=>`<div class="li-row">
-      <input placeholder="Description" id="ald${i}" value="${esc(l2.description||'')}">
-      <input class="li-qty" type="number" id="alq${i}" value="${l2.quantity||1}">
-      <input class="li-price" type="number" id="alp${i}" value="${l2.total_as_written?parseFloat((l2.total_as_written+'').replace(/[$,]/g,''))||0:l2.unit_price||0}" placeholder="$">
-    </div>`).join('')
+    // column headers
+    wrap.innerHTML=`<div style="display:flex;gap:6px;margin-bottom:4px;padding:0 2px">
+      <span style="flex:2;font-size:9px;font-weight:800;color:var(--g2);text-transform:uppercase;letter-spacing:.8px">Description</span>
+      <span style="width:50px;font-size:9px;font-weight:800;color:var(--g2);text-transform:uppercase;letter-spacing:.8px;text-align:center">Qty</span>
+      <span style="width:80px;font-size:9px;font-weight:800;color:var(--g2);text-transform:uppercase;letter-spacing:.8px;text-align:right">Unit $</span>
+      <span style="width:80px;font-size:9px;font-weight:800;color:var(--g2);text-transform:uppercase;letter-spacing:.8px;text-align:right">Total</span>
+    </div>`+lines.map((l2,i)=>{
+      const qty=l2.quantity||1
+      const unitP=l2.unit_price||0
+      const lineTotal=l2.total_as_written?parseFloat((l2.total_as_written+'').replace(/[$,]/g,''))||0:(qty*unitP)
+      const calcUnit=qty>0?Math.round(lineTotal/qty*100)/100:lineTotal
+      return`<div class="li-row">
+      <input placeholder="Description" id="ald${i}" value="${esc(l2.description||'')}" style="flex:2">
+      <input class="li-qty" type="number" id="alq${i}" value="${qty}" oninput="updateRecTotal()">
+      <input class="li-price" type="number" id="alup${i}" value="${calcUnit}" placeholder="Unit $" oninput="updateRecTotal()" style="width:80px!important;flex:none!important">
+      <input type="number" id="alp${i}" value="${lineTotal}" placeholder="Total" oninput="updateRecTotalFromLine(${i})" style="width:80px!important;flex:none!important;color:var(--fire);font-weight:700">
+    </div>`}).join('')
+    wrap.innerHTML+=`<div style="display:flex;justify-content:flex-end;padding:8px 0;border-top:1.5px solid var(--b1);margin-top:4px">
+      <span style="font-size:10px;font-weight:800;color:var(--g2);margin-right:8px;align-self:center">TOTAL</span>
+      <span id="rec-running-total" style="font-size:20px;font-weight:900;color:var(--fire)"></span>
+    </div>`
+    setTimeout(updateRecTotal,10)
   }
   if(p.notes){const n=$('ai-notes');if(n)n.value=p.notes}
   // show AI-read total for verification
@@ -3092,10 +3109,10 @@ function renderRecordResult(p){
     if(tot||sub){
       aiTotal.style.display='block'
       aiTotal.innerHTML=`<div style="background:var(--c1);border:2px solid var(--fire);border-radius:var(--r);padding:14px;margin-bottom:14px">
-        <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--g1);margin-bottom:6px">Total from Work Order</div>
+        <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--g1);margin-bottom:6px">Work Order Total (AI Read)</div>
         <div style="font-size:28px;font-weight:900;color:var(--fire)">${esc(tot||sub)}</div>
         ${sub&&tot&&sub!==tot?`<div style="font-size:12px;color:var(--g1);margin-top:4px">Subtotal: ${esc(sub)}</div>`:''}
-        <div style="font-size:11px;color:var(--g1);margin-top:6px">Verify this matches the line items below</div>
+        <div style="font-size:11px;color:var(--g1);margin-top:6px">Compare with line item total below — edit any line to correct</div>
       </div>`
     }
   }
@@ -3195,8 +3212,10 @@ async function saveRecordInvoice(){
   const lines=[]
   for(let i=0;i<_aiN;i++){
     const d=($('ald'+i)?.value||'').trim();if(!d)continue
-    const q=parseFloat($('alq'+i)?.value)||1,pp=parseFloat($('alp'+i)?.value)||0
-    lines.push({description:d,quantity:q,unit_price:pp,total:q*pp})
+    const q=parseFloat($('alq'+i)?.value)||1
+    const up=parseFloat($('alup'+i)?.value)||parseFloat($('alp'+i)?.value)||0
+    const lt=parseFloat($('alp'+i)?.value)||(q*up)
+    lines.push({description:d,quantity:q,unit_price:up,total:lt})
   }
   if(!lines.length){toast('Add at least one line item',false);resetBtn();return}
   const total=lines.reduce((s,l2)=>s+l2.total,0)
@@ -3239,8 +3258,35 @@ function addAILine(){
   const wrap=$('ai-li-wrap');if(!wrap)return
   const i=_aiN++
   const d=document.createElement('div');d.className='li-row'
-  d.innerHTML=`<input placeholder="Description" id="ald${i}"><input class="li-qty" type="number" id="alq${i}" value="1"><input class="li-price" type="number" id="alp${i}" value="0" placeholder="$">`
-  wrap.appendChild(d)
+  d.innerHTML=`<input placeholder="Description" id="ald${i}" style="flex:2"><input class="li-qty" type="number" id="alq${i}" value="1" oninput="updateRecTotal()"><input type="number" id="alup${i}" value="0" placeholder="Unit $" oninput="updateRecTotal()" style="width:80px!important;flex:none!important"><input type="number" id="alp${i}" value="0" placeholder="Total" oninput="updateRecTotalFromLine(${i})" style="width:80px!important;flex:none!important;color:var(--fire);font-weight:700">`
+  // insert before the total row
+  const totalRow=wrap.querySelector('[id=rec-running-total]')?.parentElement
+  if(totalRow)wrap.insertBefore(d,totalRow)
+  else wrap.appendChild(d)
+  updateRecTotal()
+}
+
+function updateRecTotal(){
+  let total=0
+  for(let i=0;i<_aiN;i++){
+    const q=parseFloat($('alq'+i)?.value)||1
+    const up=parseFloat($('alup'+i)?.value)||0
+    const lt=q*up
+    const tp=$('alp'+i);if(tp)tp.value=lt.toFixed(2)
+    total+=lt
+  }
+  const el=$('rec-running-total');if(el)el.textContent=fmtD(total)
+}
+
+function updateRecTotalFromLine(idx){
+  // user edited the line total directly — back-calc unit price
+  const q=parseFloat($('alq'+idx)?.value)||1
+  const lt=parseFloat($('alp'+idx)?.value)||0
+  const up=$('alup'+idx);if(up&&q>0)up.value=(lt/q).toFixed(2)
+  // recalc running total
+  let total=0
+  for(let i=0;i<_aiN;i++){total+=parseFloat($('alp'+i)?.value)||0}
+  const el=$('rec-running-total');if(el)el.textContent=fmtD(total)
 }
 
 let _aiPayMethod='old_system'
@@ -3276,8 +3322,10 @@ async function saveAIInv(ro){
   const lines=[]
   for(let i=0;i<_aiN;i++){
     const d=($('ald'+i)?.value||'').trim();if(!d)continue
-    const q=parseFloat($('alq'+i)?.value)||1,pp=parseFloat($('alp'+i)?.value)||0
-    lines.push({description:d,quantity:q,unit_price:pp,total:q*pp})
+    const q=parseFloat($('alq'+i)?.value)||1
+    const up=parseFloat($('alup'+i)?.value)||parseFloat($('alp'+i)?.value)||0
+    const lt=parseFloat($('alp'+i)?.value)||(q*up)
+    lines.push({description:d,quantity:q,unit_price:up,total:lt})
   }
   if(!lines.length){toast('Add at least one line item',false);setLoad('aiSaveBtn',false,'Save Invoice');return}
   const total=lines.reduce((s,l2)=>s+l2.total,0)
