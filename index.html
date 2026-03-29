@@ -4098,7 +4098,7 @@ async function openSuppReport(jobId,sysId,preLocation){
     <div class="sig-wrap" id="rpt-tech-sig-wrap"><canvas id="rptTechSig"></canvas><div class="sig-ph" id="rptTechSigPh">Sign here</div><button class="sig-clr" onclick="clrRptSig('tech')">Clear</button></div>
   </div>
   <div class="fg"><label class="fg-l">Print Technician Name</label><input id="rpt-tech-name" placeholder="Jon Stephens" value="Jon Stephens"></div>
-  <div class="fg"><label class="fg-l">Permit No.</label><input id="rpt-permit" placeholder="Optional"></div>
+  <div class="fg"><label class="fg-l">Permit No.</label><input id="rpt-permit" value="FEL-A-2593933"></div>
 
   <div class="ds"><div class="ds-t">Owner / Manager Signature
     <span style="font-size:10px;font-weight:600;color:var(--ok);display:block;margin-top:2px">✓ Also signs the invoice</span>
@@ -4667,7 +4667,7 @@ async function openCleanAgentReport(jobId,sysId){
     <div class="sig-wrap" id="ca-tech-sig-wrap"><canvas id="caTechSig"></canvas><div class="sig-ph" id="caTechSigPh">Sign here</div><button class="sig-clr" onclick="clrCaSig('tech')">Clear</button></div>
   </div>
   <div class="fg"><label class="fg-l">Print Technician Name</label><input id="ca-tech-name" placeholder="Jon Stephens" value="${esc(prev.techName||'Jon Stephens')}"></div>
-  <div class="fg"><label class="fg-l">License / Permit No.</label><input id="ca-permit" placeholder="Optional" value="${esc(prev.permit||'')}"></div>
+  <div class="fg"><label class="fg-l">License / Permit No.</label><input id="ca-permit" value="${esc(prev.permit||'FEL-A-2593933')}"></div>
 
   <div class="ds"><div class="ds-t">Owner / Manager Signature
     <span style="font-size:10px;font-weight:600;color:var(--ok);display:block;margin-top:2px">✓ Also signs the invoice</span>
