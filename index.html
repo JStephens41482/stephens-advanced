@@ -564,15 +564,17 @@ function distBetween(a,b){
   return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x))
 }
 
-// travel charge calculation — origin: 32.7487, -97.3387 (do not expose in UI)
-const TRAVEL_ORIGIN={lat:32.7487,lng:-97.3387}
+// travel charge calculation origin (do not expose in UI)
+const TRAVEL_ORIGIN={lat:32.837,lng:-97.082}
 function calcTravelCharge(loc){
-  if(!loc)return{charge:0,desc:''}
+  console.log('calcTravelCharge called with loc:',loc?.name,loc?.city,loc?.address)
+  if(!loc){console.log('travel: no loc, returning 0');return{charge:0,desc:''}}
   const dest=cityCoords(loc.city)
-  // haversine straight-line * 1.25 road factor
+  console.log('travel: city=',loc.city,'dest coords=',dest,'origin=',TRAVEL_ORIGIN)
   const straightMi=distBetween(TRAVEL_ORIGIN,dest)
   const driveMi=Math.round(straightMi*1.25)
-  if(driveMi<=50)return{charge:0,desc:''}
+  console.log('travel: straightMi=',straightMi.toFixed(1),'driveMi=',driveMi)
+  if(driveMi<=50){console.log('travel: under 50mi, no charge');return{charge:0,desc:''}}
   const excessMi=driveMi-50
   const rtMi=excessMi*2
   const rtHrs=rtMi/55
@@ -580,6 +582,7 @@ function calcTravelCharge(loc){
   const mileageCharge=rtMi*0.67
   const total=Math.round(timeCharge+mileageCharge)
   const desc=`Travel — ${excessMi} mi over 50-mile radius, ${rtHrs.toFixed(1)} hrs round trip`
+  console.log('travel: CHARGE=',total,'desc=',desc)
   return{charge:total,desc}
 }
 
@@ -819,7 +822,7 @@ function jCard(j,isOv=false){
   const ds=j.scheduled_date?new Date(j.scheduled_date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}):''
   const cls=isOv?'jrd':j.status==='active'?'jgn':j.status==='completed'?'jgy':'jbl'
   return`<div class="jc ${cls}" onclick="openJob('${j.id}')">
-    <div class="jc-r1"><div class="jc-nm">${esc(l.name||'Unknown')}</div><div class="jc-tm">${ds}${j.scheduled_time?' '+j.scheduled_time.slice(0,5):''}</div></div>
+    <div class="jc-r1"><div class="jc-nm"><span style="color:var(--fire);text-decoration:underline;text-decoration-color:rgba(240,90,40,.3);text-underline-offset:2px;cursor:pointer" onclick="event.stopPropagation();openCust('${l.id||j.location_id}')">${esc(l.name||'Unknown')} ›</span></div><div class="jc-tm">${ds}${j.scheduled_time?' '+j.scheduled_time.slice(0,5):''}</div></div>
     <div class="jc-addr">${esc(a)||'No address'}</div>
     <div class="jc-tags">${sc.includes('suppression')?'<span class="tg ts">Suppression</span>':''}${sc.includes('extinguishers')?'<span class="tg te">Ext</span>':''}${sc.includes('elights')?'<span class="tg tl">E-Lights</span>':''}${sc.includes('hydro')?'<span class="tg th">Hydro</span>':''}${isOv?'<span class="tg to2">Overdue</span>':''}${l.is_brycer_jurisdiction?'<span class="tg tb">Brycer</span>':''}</div>
     <div class="jc-val">${v?fmt(v):'Rate card not set'}</div>
@@ -1116,9 +1119,14 @@ async function compJ(id){
   if(!lines.length){toast('Add at least one line item',false);setLoad('compBtn',false,'✓ Complete Job — Generate Invoice');return}
 
   // auto-add travel charge if over 50 miles
+  console.log('compJ: calling calcTravelCharge with l=',l?.name,l?.city)
   const travel=calcTravelCharge(l)
+  console.log('compJ: travel result=',travel)
   if(travel.charge>0){
+    console.log('compJ: ADDING travel line item, charge=',travel.charge)
     lines.push({description:travel.desc,quantity:1,unit_price:travel.charge,total:travel.charge})
+  }else{
+    console.log('compJ: no travel charge (under 50mi or $0)')
   }
 
   const sub=lines.reduce((s,l2)=>s+l2.total,0)
