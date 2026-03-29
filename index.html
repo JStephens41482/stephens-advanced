@@ -240,9 +240,12 @@ let D={jobs:[],locs:[],invs:[],bas:[],rc:{}},extR={},manLines=[],recOnly=false,_
 // NAV STACK
 const OVS=['ov1','ov2','ov3','ov4']
 let stk=[]
+const _popTimers={}
 
 function push(html){
   let slot=OVS.find(o=>!stk.includes(o))||OVS[OVS.length-1]
+  // cancel any pending cleanup timer for this slot
+  if(_popTimers[slot]){clearTimeout(_popTimers[slot]);delete _popTimers[slot]}
   const el=document.getElementById(slot)
   el.innerHTML=html
   el.style.display='flex'
@@ -256,7 +259,7 @@ function pop(){
   const id=stk.pop()
   const el=document.getElementById(id)
   el.classList.remove('open')
-  setTimeout(()=>{el.style.display='none';el.innerHTML=''},250)
+  _popTimers[id]=setTimeout(()=>{el.style.display='none';el.innerHTML='';delete _popTimers[id]},250)
 }
 
 function popAll(){
