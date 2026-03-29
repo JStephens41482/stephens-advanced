@@ -1179,7 +1179,7 @@ function jCard(j,isOv=false){
     <div class="jc-r1"><div class="jc-nm"><span style="color:var(--fire);text-decoration:underline;text-decoration-color:rgba(240,90,40,.3);text-underline-offset:2px;cursor:pointer" onclick="event.stopPropagation();openCust('${l.id||j.location_id}')">${esc(l.name||'Unknown')} ›</span></div><div class="jc-tm">${ds}${j.scheduled_time?' '+j.scheduled_time.slice(0,5):''}</div></div>
     <div class="jc-addr">${esc(a)||'No address'}</div>
     <div class="jc-tags">${sc.includes('suppression')?'<span class="tg ts">Suppression</span>':''}${sc.includes('extinguishers')?'<span class="tg te">Ext</span>':''}${sc.includes('elights')?'<span class="tg tl">E-Lights</span>':''}${sc.includes('hydro')?'<span class="tg th">Hydro</span>':''}${isOv?'<span class="tg to2">Overdue</span>':''}${l.is_brycer_jurisdiction?'<span class="tg tb">Brycer</span>':''}</div>
-    <div class="jc-val">${v?fmt(v):'Rate card not set'}</div>
+    <div class="jc-val">${v?fmt(v):'<span style="color:var(--g2);font-size:12px">Add equipment to estimate</span>'}</div>
     <div class="jc-btns">
       <button class="jb jb-n" onclick="event.stopPropagation();startNav('${j.id}')">🗺 Nav</button>
       <button class="jb jb-g" onclick="event.stopPropagation();openJob('${j.id}')">Open Job →</button>
