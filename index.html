@@ -3933,7 +3933,7 @@ async function openExtReport(jobId){
     h+=`<div class="trk" style="margin-bottom:12px" id="ext-rpt-${i}">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
         <div style="font-size:14px;font-weight:800">#${i+1} — ${esc(e.type)} ${esc(e.size||'')}</div>
-        <button style="font-size:11px;color:var(--fire);font-weight:700;padding:4px 8px" onclick="snapExtPhoto(${i})">📷 Photo</button>
+        <button style="font-size:11px;color:var(--fire);font-weight:700;padding:4px 8px" onclick="snapExtPhoto(${i},'${jobId}')">📷 AI Snap</button>
       </div>
       ${d.photoB64?`<img src="${d.photoB64}" style="width:100%;max-height:120px;object-fit:cover;border-radius:var(--rs);margin-bottom:8px">`:''}
       <div style="font-size:11px;color:var(--g1);margin-bottom:8px">${esc(e.location_in_building||'Location not set')}${e.manufacture_date?' · Mfg: '+e.manufacture_date:''}</div>
@@ -3961,7 +3961,10 @@ async function openExtReport(jobId){
     </div>`
   })
 
-  h+=`<button class="trk-btn" style="background:var(--c2);border:1.5px solid var(--fire);color:var(--fire);margin-bottom:12px" onclick="snapNewExt('${jobId}','${l.id}')">📷 Snap New Extinguisher (AI Identify)</button>
+  h+=`<div style="display:flex;gap:8px;margin-bottom:12px">
+    <button class="trk-btn" style="flex:1;background:var(--fire);color:#fff;font-size:12px" onclick="snapNewExt('${jobId}','${l.id}')">📷 AI — Snap to Add</button>
+    <button class="trk-btn" style="flex:1;background:var(--c2);border:1.5px solid var(--b1);color:var(--w2);font-size:12px" onclick="manualAddExt('${l.id}','${jobId}')">✏️ Add Manually</button>
+  </div>
   </div>
   <div class="ov-foot"><button class="btn-p" onclick="saveExtReport('${jobId}')">Save Extinguisher Report</button></div>`
   push(h)
@@ -3988,9 +3991,33 @@ function renderExtUnit(i){
 }
 
 let _snapExtIdx=-1
-function snapExtPhoto(idx){
+function snapExtPhoto(idx,jobId){
   _snapExtIdx=idx
+  if(jobId)window._snapExtJobId=jobId
   $('extPhotoInput').click()
+}
+
+function manualAddExt(locId,jobId){
+  const types=['ABC Dry Chemical','CO2','Class K','Water','Halon','Halotron','Class D','Purple K','Clean Agent']
+  push(`<div class="ov-hdr"><button class="ov-back" onclick="pop()">‹</button><div class="ov-title">Add Extinguisher</div>
+    <button class="ov-act" id="manExtSaveBtn" onclick="saveManualExt('${locId}','${jobId}')">Save</button>
+  </div><div class="ov-body">
+    <div class="fg"><label class="fg-l">Type *</label><select id="man-ext-type">${types.map(t=>`<option>${t}</option>`).join('')}</select></div>
+    <div class="fg"><label class="fg-l">Size</label><input id="man-ext-size" placeholder="e.g. 5lb, 10lb, 6 Liter"></div>
+    <div class="fg"><label class="fg-l">Location in Building</label><input id="man-ext-loc" placeholder="e.g. Kitchen, Front Counter"></div>
+    <div class="fg"><label class="fg-l">Manufacture Date</label><input type="month" id="man-ext-mfg"></div>
+  </div>`)
+}
+
+async function saveManualExt(locId,jobId){
+  const b=$('manExtSaveBtn');if(b){b.textContent='Saving...';b.style.opacity='.5'}
+  await SB.from('extinguishers').insert({
+    location_id:locId,type:$('man-ext-type')?.value||'ABC Dry Chemical',
+    size:$('man-ext-size')?.value?.trim()||null,
+    location_in_building:$('man-ext-loc')?.value?.trim()||null,
+    manufacture_date:$('man-ext-mfg')?.value||null
+  })
+  await load();toast('Extinguisher added');pop();pop();openExtReport(jobId)
 }
 
 function snapNewExt(jobId,locId){
@@ -4014,46 +4041,51 @@ async function handleExtPhoto(ev){
       canvas.width=w;canvas.height=h;canvas.getContext('2d').drawImage(img,0,0,w,h)
       const small=canvas.toDataURL('image/jpeg',0.7)
 
-      if(_snapExtIdx===-2){
-        // new extinguisher — AI identify
-        toast('AI reading extinguisher...')
-        try{
-          const res=await fetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:500,
-              messages:[{role:'user',content:[
-                {type:'image',source:{type:'base64',media_type:'image/jpeg',data:small.split(',')[1]}},
-                {type:'text',text:`Identify this fire extinguisher. Return ONLY valid JSON: {"type":"ABC Dry Chemical|CO2|Class K|Water|Halon|Halotron|Class D|Purple K|Clean Agent","size":"e.g. 5lb or 6 Liter","color":"red/silver/yellow/etc","brand":"if visible","notes":"any visible damage, tags, or notable features"}`}
-              ]}]
-            })
+      // AI identify for both new and existing
+      toast('AI reading extinguisher...')
+      try{
+        const res=await fetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:500,
+            messages:[{role:'user',content:[
+              {type:'image',source:{type:'base64',media_type:'image/jpeg',data:small.split(',')[1]}},
+              {type:'text',text:`Identify this fire extinguisher. Return ONLY valid JSON: {"type":"ABC Dry Chemical|CO2|Class K|Water|Halon|Halotron|Class D|Purple K|Clean Agent","size":"e.g. 5lb or 6 Liter","color":"red/silver/yellow/etc","brand":"if visible","mfgDate":"YYYY-MM if visible on label","condition":"pass or fail","notes":"any visible damage, expired tags, missing pin, dented, corroded, or other notable features"}`}
+            ]}]
           })
-          const data=await res.json()
-          const txt=data.content?.[0]?.text||''
-          let p;try{p=JSON.parse(txt.replace(/```json|```/g,'').trim())}catch{p={type:'ABC Dry Chemical',size:'',notes:'Could not identify'}}
-          // add to location
+        })
+        const data=await res.json()
+        const txt=data.content?.[0]?.text||''
+        let p;try{p=JSON.parse(txt.replace(/```json|```/g,'').trim())}catch{p={type:'ABC Dry Chemical',size:'',notes:'Could not identify'}}
+
+        if(_snapExtIdx===-2){
+          // new extinguisher — add to location
           await SB.from('extinguishers').insert({
             location_id:window._snapExtLocId,type:p.type||'ABC Dry Chemical',
-            size:p.size||null,location_in_building:null,manufacture_date:null
+            size:p.size||null,location_in_building:null,manufacture_date:p.mfgDate||null
           })
           await load()
           toast(`Added: ${p.type} ${p.size||''}`)
           pop()
           openExtReport(window._snapExtJobId)
-        }catch(err){console.error(err);toast('Could not identify',false)}
-      }else if(_snapExtIdx>=0){
-        // existing ext — save photo
-        _extRptData[_snapExtIdx].photoB64=small
-        const imgEl=$('ext-rpt-'+_snapExtIdx)?.querySelector('img')
-        if(imgEl){imgEl.src=small}
-        else{
-          const wrap=$('ext-rpt-'+_snapExtIdx)
-          if(wrap){
-            const im=document.createElement('img')
-            im.src=small;im.style.cssText='width:100%;max-height:120px;object-fit:cover;border-radius:8px;margin-bottom:8px'
-            wrap.insertBefore(im,wrap.children[1])
+        }else if(_snapExtIdx>=0){
+          // existing ext — AI populates fields + saves photo
+          const d=_extRptData[_snapExtIdx]
+          d.photoB64=small
+          if(p.type)d.type=p.type
+          if(p.size)d.size=p.size
+          if(p.mfgDate)d.mfgDate=p.mfgDate
+          if(p.condition)d.condition=p.condition
+          if(p.notes)d.notes=(d.notes?d.notes+'; ':'')+p.notes
+          // update the DB record too
+          if(d.id){
+            try{await SB.from('extinguishers').update({type:p.type||d.type,size:p.size||d.size,manufacture_date:p.mfgDate||null}).eq('id',d.id)}catch(e){}
           }
+          toast(`Identified: ${p.type} ${p.size||''} — ${p.condition||''}`)
+          // refresh the report view
+          await load()
+          pop()
+          openExtReport(window._snapExtJobId||_extRptData[0]?._jobId)
         }
-        toast('Photo captured')
-      }
+      }catch(err){console.error(err);toast('Could not identify',false)}
     }
     img.src=b64Full
   }
