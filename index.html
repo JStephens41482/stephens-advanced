@@ -1519,6 +1519,10 @@ async function openJob(id){
     }).join('')}
   </div>`:''}
 
+  ${isActive&&sc.includes('extinguishers')?`<div style="margin-bottom:16px">
+    <button class="trk-btn" style="background:var(--ok);color:#fff" onclick="openExtReport('${j.id}')">🧯 Extinguisher Inspection Report</button>
+  </div>`:''}
+
   <!-- LOCATION -->
   <div class="ds"><div class="ds-t">Location</div>
     <div class="ds-info">${esc(a)||'No address'}${l.contact_name?'<br>'+esc(l.contact_name)+(l.contact_phone?' · '+l.contact_phone:''):''}${l.is_brycer_jurisdiction?'<br><span style="color:var(--warn);font-weight:700">⚡ Brycer — '+esc(l.brycer_ahj_name||'Fort Worth FD')+'</span>':''}</div>
@@ -3813,6 +3817,242 @@ async function saveExt(locId){
   const slot=stk[stk.length-1]
   if(slot){stk.pop();document.getElementById(slot).classList.remove('open');document.getElementById(slot).style.display='none';document.getElementById(slot).innerHTML=''}
   setTimeout(()=>openCust(locId),50)
+}
+
+// ═══ EXTINGUISHER INSPECTION REPORT ═══
+const NFPA10={
+  'ABC Dry Chemical':{hydro:12,internal:6,hydroLabel:'12-year hydro',intLabel:'6-year internal'},
+  'BC Dry Chemical':{hydro:12,internal:6,hydroLabel:'12-year hydro',intLabel:'6-year internal'},
+  'Purple K':{hydro:12,internal:6,hydroLabel:'12-year hydro',intLabel:'6-year internal'},
+  'CO2':{hydro:5,internal:0,hydroLabel:'5-year hydro',intLabel:'N/A — checked by weight'},
+  'Water':{hydro:5,internal:0,hydroLabel:'5-year hydro',intLabel:'N/A'},
+  'Class K':{hydro:5,internal:6,hydroLabel:'5-year hydro',intLabel:'6-year internal'},
+  'Halon':{hydro:12,internal:6,hydroLabel:'12-year hydro',intLabel:'6-year internal'},
+  'Halotron':{hydro:12,internal:6,hydroLabel:'12-year hydro',intLabel:'6-year internal'},
+  'Class D':{hydro:12,internal:6,hydroLabel:'12-year hydro',intLabel:'6-year internal'},
+  'Clean Agent':{hydro:12,internal:6,hydroLabel:'12-year hydro',intLabel:'6-year internal'}
+}
+
+let _extRptData=[]
+
+async function openExtReport(jobId){
+  const j=D.jobs.find(x=>x.id===jobId);if(!j)return
+  const l=D.locs.find(x=>x.id===(j.location_id||j.location?.id))||j.location||{}
+  const exts=l.extinguishers||[]
+
+  // load previous report if exists
+  const{data:prevRpt}=await SB.from('reports').select('report_data').eq('job_id',jobId).eq('report_type','extinguisher').limit(1)
+  const prev=prevRpt?.[0]?.report_data||{}
+
+  _extRptData=exts.map((e,i)=>{
+    const p=prev.units?.[i]||{}
+    return{
+      id:e.id,type:p.type||e.type||'',size:p.size||e.size||'',
+      location:p.location||e.location_in_building||'',
+      mfgDate:p.mfgDate||e.manufacture_date||'',
+      status:p.status||'',lastInternal:p.lastInternal||'',
+      lastHydro:p.lastHydro||'',condition:p.condition||'pass',
+      notes:p.notes||'',photoB64:p.photoB64||''
+    }
+  })
+
+  let h=`<div class="ov-hdr">
+    <button class="ov-back" onclick="pop()">‹</button>
+    <div class="ov-title">Extinguisher Report</div>
+    <button class="ov-act" id="extRptSaveBtn" onclick="saveExtReport('${jobId}')">Save</button>
+  </div><div class="ov-body" style="padding-bottom:200px">
+  <div style="background:var(--c1);border:1px solid var(--b1);border-radius:var(--r);padding:14px;margin-bottom:16px">
+    <div style="font-size:14px;font-weight:700">${esc(l.name||'')}</div>
+    <div style="font-size:12px;color:var(--g1);margin-top:4px">${exts.length} extinguisher${exts.length!==1?'s':''} on file · ${j.scheduled_date||td()}</div>
+  </div>
+  <input type="file" id="extPhotoInput" accept="image/*" capture="environment" style="display:none" onchange="handleExtPhoto(event)">`
+
+  if(!exts.length){
+    h+=`<div style="background:var(--warns);border:1.5px solid var(--warn);border-radius:var(--r);padding:14px;margin-bottom:16px">
+      <div style="font-size:13px;font-weight:700;color:var(--warn)">No extinguishers on file</div>
+      <div style="font-size:12px;color:var(--w2);margin-top:4px">Add extinguishers to this location first, or use the camera below to identify and add them.</div>
+    </div>
+    <button class="trk-btn trk-go" style="margin-bottom:12px" onclick="snapNewExt('${jobId}','${l.id}')">📷 Snap an Extinguisher to Add</button>`
+  }
+
+  exts.forEach((e,i)=>{
+    const nfpa=NFPA10[e.type]||NFPA10['ABC Dry Chemical']
+    const d=_extRptData[i]
+    // check if internal/hydro are due
+    let internalDue='',hydroDue=''
+    if(nfpa.internal&&d.mfgDate){
+      const mfg=new Date(d.mfgDate+'-01')
+      const nextInt=new Date(mfg);nextInt.setFullYear(nextInt.getFullYear()+nfpa.internal)
+      if(d.lastInternal){const li=new Date(d.lastInternal);nextInt.setTime(li.getTime());nextInt.setFullYear(nextInt.getFullYear()+nfpa.internal)}
+      if(nextInt<=new Date())internalDue='DUE'
+    }
+    if(d.mfgDate){
+      const mfg=new Date(d.mfgDate+'-01')
+      const nextHyd=new Date(mfg);nextHyd.setFullYear(nextHyd.getFullYear()+nfpa.hydro)
+      if(d.lastHydro){const lh=new Date(d.lastHydro);nextHyd.setTime(lh.getTime());nextHyd.setFullYear(nextHyd.getFullYear()+nfpa.hydro)}
+      if(nextHyd<=new Date())hydroDue='DUE'
+    }
+
+    h+=`<div class="trk" style="margin-bottom:12px" id="ext-rpt-${i}">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div style="font-size:14px;font-weight:800">#${i+1} — ${esc(e.type)} ${esc(e.size||'')}</div>
+        <button style="font-size:11px;color:var(--fire);font-weight:700;padding:4px 8px" onclick="snapExtPhoto(${i})">📷 Photo</button>
+      </div>
+      ${d.photoB64?`<img src="${d.photoB64}" style="width:100%;max-height:120px;object-fit:cover;border-radius:var(--rs);margin-bottom:8px">`:''}
+      <div style="font-size:11px;color:var(--g1);margin-bottom:8px">${esc(e.location_in_building||'Location not set')}${e.manufacture_date?' · Mfg: '+e.manufacture_date:''}</div>
+
+      <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--g2);margin-bottom:6px">NFPA 10 — ${esc(nfpa.hydroLabel)} · ${nfpa.internal?nfpa.intLabel:'No internal required'}</div>
+
+      <div class="ds-row"><div class="ds-lbl">Condition</div><div class="ds-val">
+        <div style="display:flex;gap:4px;justify-content:flex-end">
+          <button style="padding:5px 10px;border-radius:6px;font-size:10px;font-weight:800;border:1.5px solid ${d.condition==='pass'?'var(--ok)':'var(--b1)'};background:${d.condition==='pass'?'var(--oks)':'var(--c2)'};color:${d.condition==='pass'?'var(--ok)':'var(--g2)'}" onclick="_extRptData[${i}].condition='pass';renderExtUnit(${i})">Pass</button>
+          <button style="padding:5px 10px;border-radius:6px;font-size:10px;font-weight:800;border:1.5px solid ${d.condition==='fail'?'var(--bad)':'var(--b1)'};background:${d.condition==='fail'?'var(--bads)':'var(--c2)'};color:${d.condition==='fail'?'var(--bad)':'var(--g2)'}" onclick="_extRptData[${i}].condition='fail';renderExtUnit(${i})">Fail</button>
+        </div>
+      </div></div>
+
+      ${nfpa.internal?`<div class="ds-row"><div class="ds-lbl">Last Internal (6-yr)${internalDue?' <span style="color:var(--bad);font-weight:800">'+internalDue+'</span>':''}</div>
+        <div class="ds-val"><input type="month" value="${d.lastInternal||''}" onchange="_extRptData[${i}].lastInternal=this.value" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:12px;font-weight:600;width:130px"></div>
+      </div>`:''}
+
+      <div class="ds-row"><div class="ds-lbl">Last Hydro (${nfpa.hydro}-yr)${hydroDue?' <span style="color:var(--bad);font-weight:800">'+hydroDue+'</span>':''}</div>
+        <div class="ds-val"><input type="month" value="${d.lastHydro||''}" onchange="_extRptData[${i}].lastHydro=this.value" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:12px;font-weight:600;width:130px"></div>
+      </div>
+
+      <div class="ds-row"><div class="ds-lbl">Notes</div>
+        <div class="ds-val"><input placeholder="Deficiencies, damage..." value="${esc(d.notes||'')}" onchange="_extRptData[${i}].notes=this.value" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:12px;font-weight:600"></div>
+      </div>
+    </div>`
+  })
+
+  h+=`<button class="trk-btn" style="background:var(--c2);border:1.5px solid var(--fire);color:var(--fire);margin-bottom:12px" onclick="snapNewExt('${jobId}','${l.id}')">📷 Snap New Extinguisher (AI Identify)</button>
+  </div>
+  <div class="ov-foot"><button class="btn-p" onclick="saveExtReport('${jobId}')">Save Extinguisher Report</button></div>`
+  push(h)
+}
+
+function renderExtUnit(i){
+  // re-render just this unit's condition buttons
+  const el=$('ext-rpt-'+i);if(!el)return
+  // simplest: re-open the whole report
+  // for now just toggle visually
+  const d=_extRptData[i]
+  el.querySelectorAll('button').forEach(b=>{
+    if(b.textContent==='Pass'){
+      b.style.borderColor=d.condition==='pass'?'var(--ok)':'var(--b1)'
+      b.style.background=d.condition==='pass'?'var(--oks)':'var(--c2)'
+      b.style.color=d.condition==='pass'?'var(--ok)':'var(--g2)'
+    }
+    if(b.textContent==='Fail'){
+      b.style.borderColor=d.condition==='fail'?'var(--bad)':'var(--b1)'
+      b.style.background=d.condition==='fail'?'var(--bads)':'var(--c2)'
+      b.style.color=d.condition==='fail'?'var(--bad)':'var(--g2)'
+    }
+  })
+}
+
+let _snapExtIdx=-1
+function snapExtPhoto(idx){
+  _snapExtIdx=idx
+  $('extPhotoInput').click()
+}
+
+function snapNewExt(jobId,locId){
+  _snapExtIdx=-2 // special flag for new ext
+  window._snapExtJobId=jobId
+  window._snapExtLocId=locId
+  $('extPhotoInput').click()
+}
+
+async function handleExtPhoto(ev){
+  const file=ev.target.files[0];if(!file)return
+  const reader=new FileReader()
+  reader.onload=async e=>{
+    const b64Full=e.target.result
+    // resize
+    const img=new Image()
+    img.onload=async()=>{
+      const canvas=document.createElement('canvas')
+      const max=800;let w=img.width,h=img.height
+      if(w>max||h>max){if(w>h){h=Math.round(h*max/w);w=max}else{w=Math.round(w*max/h);h=max}}
+      canvas.width=w;canvas.height=h;canvas.getContext('2d').drawImage(img,0,0,w,h)
+      const small=canvas.toDataURL('image/jpeg',0.7)
+
+      if(_snapExtIdx===-2){
+        // new extinguisher — AI identify
+        toast('AI reading extinguisher...')
+        try{
+          const res=await fetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:500,
+              messages:[{role:'user',content:[
+                {type:'image',source:{type:'base64',media_type:'image/jpeg',data:small.split(',')[1]}},
+                {type:'text',text:`Identify this fire extinguisher. Return ONLY valid JSON: {"type":"ABC Dry Chemical|CO2|Class K|Water|Halon|Halotron|Class D|Purple K|Clean Agent","size":"e.g. 5lb or 6 Liter","color":"red/silver/yellow/etc","brand":"if visible","notes":"any visible damage, tags, or notable features"}`}
+              ]}]
+            })
+          })
+          const data=await res.json()
+          const txt=data.content?.[0]?.text||''
+          let p;try{p=JSON.parse(txt.replace(/```json|```/g,'').trim())}catch{p={type:'ABC Dry Chemical',size:'',notes:'Could not identify'}}
+          // add to location
+          await SB.from('extinguishers').insert({
+            location_id:window._snapExtLocId,type:p.type||'ABC Dry Chemical',
+            size:p.size||null,location_in_building:null,manufacture_date:null
+          })
+          await load()
+          toast(`Added: ${p.type} ${p.size||''}`)
+          pop()
+          openExtReport(window._snapExtJobId)
+        }catch(err){console.error(err);toast('Could not identify',false)}
+      }else if(_snapExtIdx>=0){
+        // existing ext — save photo
+        _extRptData[_snapExtIdx].photoB64=small
+        const imgEl=$('ext-rpt-'+_snapExtIdx)?.querySelector('img')
+        if(imgEl){imgEl.src=small}
+        else{
+          const wrap=$('ext-rpt-'+_snapExtIdx)
+          if(wrap){
+            const im=document.createElement('img')
+            im.src=small;im.style.cssText='width:100%;max-height:120px;object-fit:cover;border-radius:8px;margin-bottom:8px'
+            wrap.insertBefore(im,wrap.children[1])
+          }
+        }
+        toast('Photo captured')
+      }
+    }
+    img.src=b64Full
+  }
+  reader.readAsDataURL(file)
+  ev.target.value=''
+}
+
+async function saveExtReport(jobId){
+  const btn=$('extRptSaveBtn');if(btn){btn.textContent='Saving...';btn.style.opacity='.5'}
+  const j=D.jobs.find(x=>x.id===jobId)||{}
+  const locId=j.location_id||j.location?.id
+  const data={units:_extRptData,savedAt:new Date().toISOString()}
+
+  try{
+    const{data:existing}=await SB.from('reports').select('id').eq('job_id',jobId).eq('report_type','extinguisher').limit(1)
+    if(existing?.length){
+      await SB.from('reports').update({report_data:data}).eq('id',existing[0].id)
+    }else{
+      await SB.from('reports').insert({job_id:jobId,location_id:locId,report_type:'extinguisher',report_data:data})
+    }
+  }catch(e){console.error('ext report save:',e)}
+
+  // update extinguisher records with latest internal/hydro dates
+  for(const d of _extRptData){
+    if(!d.id)continue
+    const upd={}
+    if(d.lastInternal)upd.last_internal=d.lastInternal
+    if(d.lastHydro)upd.last_hydro=d.lastHydro
+    if(Object.keys(upd).length){
+      try{await SB.from('extinguishers').update(upd).eq('id',d.id)}catch(e){}
+    }
+  }
+
+  toast('Extinguisher report saved ✓')
+  if(btn){btn.textContent='Save';btn.style.opacity=''}
+  pop()
 }
 
 // EDIT EQUIPMENT
