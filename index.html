@@ -4174,10 +4174,13 @@ async function openExtReport(jobId,editMode){
     return
   }
 
-  // edit mode — show one extinguisher at a time
-  _extRptIdx=0
-  if(exts.length)showExtEntry(jobId,l)
-  else showExtEmpty(jobId,l)
+  // edit mode — show one extinguisher at a time in a single overlay
+  if(typeof editMode==='number'){_extRptIdx=editMode}else{_extRptIdx=0}
+  // push one overlay shell — we'll rewrite its content for each extinguisher
+  push(`<div id="ext-edit-shell"></div>`)
+  window._extJobId=jobId
+  window._extLoc=l
+  renderExtCurrent()
 }
 
 function showExtReportSummary(jobId,l){
@@ -4222,14 +4225,30 @@ function showExtEmpty(jobId,l){
   </div>`)
 }
 
-function showExtEntry(jobId,l){
+function renderExtCurrent(){
+  const jobId=window._extJobId
+  const l=window._extLoc
+  const shell=$('ext-edit-shell');if(!shell)return
   const i=_extRptIdx
   const exts=l.extinguishers||[]
+
   if(i>=exts.length){
-    // all done — offer to add more or save
-    showExtFinish(jobId,l)
+    // all done — show finish screen in same shell
+    shell.innerHTML=`<div class="ov-hdr"><button class="ov-back" onclick="pop()">‹</button><div class="ov-title">All Done · ${_extRptData.length} inspected</div></div><div class="ov-body">
+      <div style="background:var(--oks);border:1.5px solid var(--ok);border-radius:var(--r);padding:16px;margin-bottom:16px;text-align:center">
+        <div style="font-size:28px;margin-bottom:6px">✓</div>
+        <div style="font-size:15px;font-weight:800;color:var(--ok)">${_extRptData.length} extinguisher${_extRptData.length!==1?'s':''} inspected</div>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:16px">
+        <button class="trk-btn" style="flex:1;background:var(--fire);color:#fff;font-size:12px" onclick="addExtAndContinue('snap')">📷 Add Another (AI)</button>
+        <button class="trk-btn" style="flex:1;background:var(--c2);border:1.5px solid var(--b1);color:var(--w2);font-size:12px" onclick="addExtAndContinue('manual')">✏️ Add Manually</button>
+      </div>
+      <input type="file" id="extPhotoInput" accept="image/*" capture="environment" style="display:none" onchange="handleExtPhoto(event)">
+    </div>
+    <div class="ov-foot"><button class="btn-p" onclick="finishExtReport('${jobId}')">Done — Save Report</button></div>`
     return
   }
+
   const e=exts[i]
   const d=_extRptData[i]
   const nfpa=NFPA10[e.type]||NFPA10['ABC Dry Chemical']
@@ -4245,7 +4264,7 @@ function showExtEntry(jobId,l){
     if(next<=new Date())hydroDue='DUE'
   }
 
-  const h=`<div class="ov-hdr"><button class="ov-back" onclick="pop()">‹</button>
+  shell.innerHTML=`<div class="ov-hdr"><button class="ov-back" onclick="pop()">‹</button>
     <div class="ov-title">#${i+1} of ${exts.length}</div>
     <button class="ov-act" onclick="snapExtPhoto(${i},'${jobId}')">📷 AI</button>
   </div><div class="ov-body">
@@ -4255,37 +4274,31 @@ function showExtEntry(jobId,l){
     <div style="font-size:12px;color:var(--g1);margin-top:4px">${esc(e.location_in_building||'Location not set')}${e.manufacture_date?' · Mfg: '+e.manufacture_date:''}</div>
     <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--g2);margin-top:8px">NFPA 10 — ${nfpa.hydroLabel}${nfpa.internal?' · '+nfpa.intLabel:''}</div>
   </div>
-
   ${d.photoB64?`<img src="${d.photoB64}" style="width:100%;max-height:140px;object-fit:cover;border-radius:var(--r);margin-bottom:12px">`:''}
-
   <div class="fg"><label class="fg-l">Condition *</label>
     <div style="display:flex;gap:8px">
       <button style="flex:1;padding:14px;border-radius:var(--rs);font-size:14px;font-weight:800;border:2px solid ${d.condition==='pass'?'var(--ok)':'var(--b1)'};background:${d.condition==='pass'?'var(--oks)':'var(--c2)'};color:${d.condition==='pass'?'var(--ok)':'var(--g2)'}" onclick="_extRptData[${i}].condition='pass';this.style.borderColor='var(--ok)';this.style.background='var(--oks)';this.style.color='var(--ok)';this.nextElementSibling.style.borderColor='var(--b1)';this.nextElementSibling.style.background='var(--c2)';this.nextElementSibling.style.color='var(--g2)'">✓ Pass</button>
       <button style="flex:1;padding:14px;border-radius:var(--rs);font-size:14px;font-weight:800;border:2px solid ${d.condition==='fail'?'var(--bad)':'var(--b1)'};background:${d.condition==='fail'?'var(--bads)':'var(--c2)'};color:${d.condition==='fail'?'var(--bad)':'var(--g2)'}" onclick="_extRptData[${i}].condition='fail';this.style.borderColor='var(--bad)';this.style.background='var(--bads)';this.style.color='var(--bad)';this.previousElementSibling.style.borderColor='var(--b1)';this.previousElementSibling.style.background='var(--c2)';this.previousElementSibling.style.color='var(--g2)'">✕ Fail</button>
     </div>
   </div>
-
   ${nfpa.internal?`<div class="fg"><label class="fg-l">Last Internal (6-yr)${internalDue?' — <span style="color:var(--bad)">DUE</span>':''}</label>
     <input type="month" id="ext-int-${i}" value="${d.lastInternal||''}" onchange="_extRptData[${i}].lastInternal=this.value">
   </div>`:''}
-
   <div class="fg"><label class="fg-l">Last Hydro (${nfpa.hydro}-yr)${hydroDue?' — <span style="color:var(--bad)">DUE</span>':''}</label>
     <input type="month" id="ext-hyd-${i}" value="${d.lastHydro||''}" onchange="_extRptData[${i}].lastHydro=this.value">
   </div>
-
   <div class="fg"><label class="fg-l">Notes / Deficiencies</label>
     <input id="ext-notes-${i}" value="${esc(d.notes||'')}" onchange="_extRptData[${i}].notes=this.value" placeholder="Damage, expired tags, missing pin...">
   </div>
-
   </div>
   <div class="ov-foot">
-    <button class="btn-p" style="background:var(--ok)" onclick="nextExtEntry('${jobId}')">Next Extinguisher →</button>
+    <button class="btn-p" style="background:var(--ok)" onclick="nextExtEntry()">Next Extinguisher →</button>
   </div>`
-  push(h)
+  // scroll to top
+  shell.querySelector('.ov-body')?.scrollTo(0,0)
 }
 
-function nextExtEntry(jobId){
-  // save current entry's values from inputs (in case onchange didn't fire)
+function nextExtEntry(){
   const i=_extRptIdx
   const d=_extRptData[i]
   if(d){
@@ -4295,29 +4308,83 @@ function nextExtEntry(jobId){
   }
   toast(`#${i+1} saved ✓`)
   _extRptIdx++
-  pop()
-  const j=D.jobs.find(x=>x.id===jobId)||{}
-  const l=D.locs.find(x=>x.id===(j.location_id||j.location?.id))||j.location||{}
-  showExtEntry(jobId,l)
+  renderExtCurrent()
 }
 
-function showExtFinish(jobId,l){
-  const h=`<div class="ov-hdr"><button class="ov-back" onclick="pop()">‹</button><div class="ov-title">All Done</div></div><div class="ov-body">
-    <div style="background:var(--oks);border:1.5px solid var(--ok);border-radius:var(--r);padding:16px;margin-bottom:16px;text-align:center">
-      <div style="font-size:28px;margin-bottom:6px">✓</div>
-      <div style="font-size:15px;font-weight:800;color:var(--ok)">${_extRptData.length} extinguisher${_extRptData.length!==1?'s':''} inspected</div>
-    </div>
-    <div style="display:flex;gap:8px;margin-bottom:16px">
-      <button class="trk-btn" style="flex:1;background:var(--fire);color:#fff;font-size:12px" onclick="pop();snapNewExt('${jobId}','${l.id}')">📷 Add Another (AI)</button>
-      <button class="trk-btn" style="flex:1;background:var(--c2);border:1.5px solid var(--b1);color:var(--w2);font-size:12px" onclick="pop();manualAddExt('${l.id}','${jobId}')">✏️ Add Manually</button>
-    </div>
-    <input type="file" id="extPhotoInput" accept="image/*" capture="environment" style="display:none" onchange="handleExtPhoto(event)">
-  </div>
-  <div class="ov-foot"><button class="btn-p" onclick="finishExtReport('${jobId}')">Done — Save Report</button></div>`
-  push(h)
+function addExtAndContinue(mode){
+  const jobId=window._extJobId
+  const l=window._extLoc
+  if(mode==='snap'){
+    window._snapExtLocId=l.id
+    window._snapExtJobId=jobId
+    _snapExtIdx=-2
+    $('extPhotoInput')?.click()
+  }else{
+    // manual add — save current report data first, then open manual form
+    // when manual form saves, it'll reload and reopen at the new index
+    const saveAndAdd=async()=>{
+      const data={units:_extRptData,savedAt:new Date().toISOString()}
+      const locId2=D.jobs.find(x=>x.id===jobId)?.location_id
+      try{
+        const{data:ex}=await SB.from('reports').select('id').eq('job_id',jobId).eq('report_type','extinguisher').limit(1)
+        if(ex?.length){await SB.from('reports').update({report_data:data}).eq('id',ex[0].id)}
+        else{await SB.from('reports').insert({job_id:jobId,location_id:locId2,report_type:'extinguisher',report_data:data})}
+      }catch(e){}
+      // save hydro/internal dates
+      for(const dd of _extRptData){
+        if(!dd.id)continue
+        const upd={};if(dd.lastInternal)upd.last_internal=dd.lastInternal;if(dd.lastHydro)upd.last_hydro=dd.lastHydro
+        if(Object.keys(upd).length){try{await SB.from('extinguishers').update(upd).eq('id',dd.id)}catch(e){}}
+      }
+      await load()
+      pop() // close the ext report shell
+      manualAddExtAndReturn(l.id,jobId)
+    }
+    saveAndAdd()
+  }
+}
+
+function manualAddExtAndReturn(locId,jobId){
+  const types=Object.keys(EXT_SIZES)
+  const defaultSizes=EXT_SIZES[types[0]]||[]
+  push(`<div class="ov-hdr"><button class="ov-back" onclick="pop()">‹</button><div class="ov-title">Add Extinguisher</div>
+    <button class="ov-act" id="manExtSaveBtn2" onclick="saveManExtAndReturn('${locId}','${jobId}')">Save</button>
+  </div><div class="ov-body">
+    <div class="fg"><label class="fg-l">Type *</label><select id="man-ext-type" onchange="updateManExtSizes()">${types.map(t=>`<option>${t}</option>`).join('')}</select></div>
+    <div class="fg"><label class="fg-l">Size *</label><select id="man-ext-size">${defaultSizes.map(s=>`<option>${s}</option>`).join('')}</select></div>
+    <div class="fg"><label class="fg-l">Location in Building</label><input id="man-ext-loc" placeholder="e.g. Kitchen, Front Counter"></div>
+    <div class="fg"><label class="fg-l">Manufacture Date</label><input type="month" id="man-ext-mfg"></div>
+  </div>`)
+}
+
+async function saveManExtAndReturn(locId,jobId){
+  const b=$('manExtSaveBtn2');if(b){b.textContent='Saving...';b.style.opacity='.5'}
+  await SB.from('extinguishers').insert({
+    location_id:locId,type:$('man-ext-type')?.value||'ABC Dry Chemical',
+    size:$('man-ext-size')?.value?.trim()||null,
+    location_in_building:$('man-ext-loc')?.value?.trim()||null,
+    manufacture_date:$('man-ext-mfg')?.value||null
+  })
+  await load()
+  toast('Extinguisher added')
+  pop() // close manual form
+  // reopen report at the NEW extinguisher (last one)
+  const l2=D.locs.find(x=>x.id===locId)||{}
+  const newIdx=(l2.extinguishers||[]).length-1
+  openExtReport(jobId,Math.max(0,newIdx))
 }
 
 async function finishExtReport(jobId){
+  // save current entry if we're on one
+  const i=_extRptIdx
+  if(i<_extRptData.length){
+    const d=_extRptData[i]
+    if(d){
+      const intEl=$('ext-int-'+i);if(intEl)d.lastInternal=intEl.value
+      const hydEl=$('ext-hyd-'+i);if(hydEl)d.lastHydro=hydEl.value
+      const notEl=$('ext-notes-'+i);if(notEl)d.notes=notEl.value
+    }
+  }
   const j=D.jobs.find(x=>x.id===jobId)||{}
   const locId=j.location_id||j.location?.id
   const data={units:_extRptData,savedAt:new Date().toISOString()}
@@ -4333,8 +4400,7 @@ async function finishExtReport(jobId){
   }
   toast('Extinguisher report saved ✓')
   await load()
-  popAll()
-  openJob(jobId)
+  pop() // just pop the single shell
 }
 
 
@@ -4419,8 +4485,12 @@ async function handleExtPhoto(ev){
           })
           await load()
           toast(`Added: ${p.type} ${p.size||''}`)
-          pop()
-          openExtReport(window._snapExtJobId)
+          await load()
+          // reopen report at the new extinguisher
+          const l3=D.locs.find(x=>x.id===window._snapExtLocId)||{}
+          const newIdx2=(l3.extinguishers||[]).length-1
+          pop() // close current shell
+          openExtReport(window._snapExtJobId,Math.max(0,newIdx2))
         }else if(_snapExtIdx>=0){
           // existing ext — AI populates fields + saves photo
           const d=_extRptData[_snapExtIdx]
@@ -4430,15 +4500,12 @@ async function handleExtPhoto(ev){
           if(p.mfgDate)d.mfgDate=p.mfgDate
           if(p.condition)d.condition=p.condition
           if(p.notes)d.notes=(d.notes?d.notes+'; ':'')+p.notes
-          // update the DB record too
           if(d.id){
             try{await SB.from('extinguishers').update({type:p.type||d.type,size:p.size||d.size,manufacture_date:p.mfgDate||null}).eq('id',d.id)}catch(e){}
           }
           toast(`Identified: ${p.type} ${p.size||''} — ${p.condition||''}`)
-          // refresh the report view
-          await load()
-          pop()
-          openExtReport(window._snapExtJobId||_extRptData[0]?._jobId)
+          // just re-render current entry in place — no pop, no restart
+          renderExtCurrent()
         }
       }catch(err){console.error(err);toast('Could not identify',false)}
     }
