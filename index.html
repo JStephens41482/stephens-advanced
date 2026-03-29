@@ -3263,43 +3263,178 @@ async function saveExt(locId){
   setTimeout(()=>openCust(locId),50)
 }
 
+// suppression system data — brands, models, tank sizes
+const SUPP_DATA={
+  'Wet Chemical':{
+    'Ansul':{models:{'R-102':{tanks:['1.5 gal','3 gal','1.5+3 gal','3+3 gal']},'Piranha':{tanks:['1.5 gal','3 gal']}},addNew:true},
+    'Amerex':{models:{'KP':{tanks:['1.5 gal','2.5 gal','3 gal','4 gal','6 gal']},'ZD':{tanks:['1.5 gal','3 gal']}},addNew:true},
+    'Buckeye':{models:{'BFR Kitchen Mister':{tanks:['2.5 gal','3.5 gal','5 gal']}},addNew:true},
+    'Kidde':{models:{'Universal/WHDR':{tanks:['1.6 gal','2.5 gal','4.75 gal']},'Belleville/UL300':{tanks:['1 gal','2 gal','3 gal']}},addNew:true},
+    'Lehavot':{models:{'WCK':{tanks:['2 gal','3 gal','4 gal']}},addNew:true},
+    'Pyro-Chem':{models:{'Kitchen Knight II':{tanks:['1.5 gal','3 gal','4 gal']}},addNew:true},
+    'Protex':{models:{'L-Series':{tanks:['1.5 gal','3 gal']}},addNew:true},
+    'Captive-Aire':{models:{'Tank System':{tanks:['Standard']}},addNew:false}
+  },
+  'Dry Chemical':{
+    'Ansul':{models:{'Ansul R-102 DC':{tanks:['10 lb','20 lb','30 lb','50 lb','125 lb']}},addNew:true},
+    'Amerex':{models:{'KP DC':{tanks:['10 lb','20 lb','30 lb']}},addNew:true},
+    'Pyro-Chem':{models:{'Monarch DC':{tanks:['10 lb','20 lb','30 lb','50 lb']}},addNew:true},
+    'Kidde':{models:{'Kidde DC':{tanks:['10 lb','20 lb','30 lb']}},addNew:true},
+    'Badger':{models:{'Badger DC':{tanks:['10 lb','20 lb','30 lb']}},addNew:true}
+  },
+  'Clean Agent':{
+    'Kidde':{models:{'FM-200':{tanks:['Various']},'Novec 1230':{tanks:['Various']}},addNew:true},
+    'Fike':{models:{'FM-200':{tanks:['Various']},'Novec 1230':{tanks:['Various']}},addNew:true},
+    'Ansul':{models:{'Sapphire/Inergen':{tanks:['Various']}},addNew:true}
+  },
+  'Water+':{
+    'Captive-Aire':{models:{'CORE System':{tanks:['Standard']}},addNew:false}
+  }
+}
+
 function openAddSupp(locId){
+  const agentTypes=Object.keys(SUPP_DATA)
   push(`<div class="ov-hdr">
     <button class="ov-back" onclick="pop()">‹</button>
     <div class="ov-title">Add Suppression System</div>
     <button class="ov-act" id="saveSuppBtn" onclick="saveSupp('${locId}')">Save</button>
   </div><div class="ov-body">
-    <div class="fg"><label class="fg-l">System Type *</label>
-      <select id="supp-type">
-        <option>Ansul R-102</option>
-        <option>Ansul Piranha</option>
-        <option>Pyro-Chem Kitchen Knight II</option>
-        <option>Buckeye Kitchen Mister</option>
-        <option>Kidde WHDR</option>
-        <option>Captive-Aire</option>
-        <option>Other</option>
+    <div class="fg"><label class="fg-l">Agent Type *</label>
+      <select id="supp-agent" onchange="suppAgentChanged()">
+        <option value="">-- Select --</option>
+        ${agentTypes.map(t=>`<option value="${t}">${t}</option>`).join('')}
+        <option value="_custom">+ Add New Type...</option>
       </select>
+      <input id="supp-agent-custom" placeholder="Enter agent type..." style="display:none;margin-top:6px">
     </div>
-    <div class="fg"><label class="fg-l">Category</label>
-      <select id="supp-cat">
-        <option value="standard">Standard</option>
-        <option value="captiveaire_tank">Captive-Aire Tank</option>
-        <option value="captiveaire_core">Captive-Aire CORE</option>
-      </select>
+    <div class="fg" id="supp-brand-wrap" style="display:none"><label class="fg-l">Brand *</label>
+      <select id="supp-brand" onchange="suppBrandChanged()"></select>
     </div>
-    <div class="fg"><label class="fg-l">Tanks</label><input type="number" id="supp-tanks" value="1" min="1"></div>
+    <div class="fg" id="supp-model-wrap" style="display:none"><label class="fg-l">Model *</label>
+      <select id="supp-model" onchange="suppModelChanged()"></select>
+      <input id="supp-model-custom" placeholder="Enter model name..." style="display:none;margin-top:6px">
+    </div>
+    <div class="fg" id="supp-tank-wrap" style="display:none"><label class="fg-l">Tank Size</label>
+      <select id="supp-tank-size"></select>
+    </div>
+    <div class="fg"><label class="fg-l">Number of Tanks</label><input type="number" id="supp-tanks" value="1" min="1"></div>
     <div class="fg"><label class="fg-l">Nozzles</label><input type="number" id="supp-nozzles" value="0" min="0"></div>
     <div class="fg"><label class="fg-l">Fusible Links</label><input type="number" id="supp-links" value="0" min="0"></div>
+    <div id="supp-price-note" style="display:none;background:var(--infos);border:1px solid var(--info);border-radius:var(--rs);padding:10px;margin-bottom:14px;font-size:12px;color:var(--info)"></div>
     <div class="err" id="supp-err"></div>
   </div>`)
 }
 
+function suppAgentChanged(){
+  const agent=$('supp-agent')?.value
+  const brandWrap=$('supp-brand-wrap')
+  const modelWrap=$('supp-model-wrap')
+  const tankWrap=$('supp-tank-wrap')
+  const customInput=$('supp-agent-custom')
+  const priceNote=$('supp-price-note')
+
+  if(agent==='_custom'){
+    if(customInput)customInput.style.display='block'
+    if(brandWrap)brandWrap.style.display='none'
+    if(modelWrap)modelWrap.style.display='none'
+    if(tankWrap)tankWrap.style.display='none'
+    if(priceNote)priceNote.style.display='none'
+    return
+  }
+  if(customInput)customInput.style.display='none'
+  if(!agent||!SUPP_DATA[agent]){
+    if(brandWrap)brandWrap.style.display='none'
+    if(modelWrap)modelWrap.style.display='none'
+    if(tankWrap)tankWrap.style.display='none'
+    if(priceNote)priceNote.style.display='none'
+    return
+  }
+
+  // show price note for Water+ / CORE
+  if(agent==='Water+'){
+    if(priceNote){priceNote.style.display='block';priceNote.textContent='Captive-Aire CORE — $650.00 per 6-month test & maintenance'}
+  }else{if(priceNote)priceNote.style.display='none'}
+
+  const brands=Object.keys(SUPP_DATA[agent])
+  const sel=$('supp-brand')
+  sel.innerHTML=`<option value="">-- Select Brand --</option>`+brands.map(b=>`<option value="${b}">${b}</option>`).join('')+`<option value="_custom">+ Add Brand...</option>`
+  if(brandWrap)brandWrap.style.display='block'
+  if(modelWrap)modelWrap.style.display='none'
+  if(tankWrap)tankWrap.style.display='none'
+
+  // auto-select if only one brand
+  if(brands.length===1){sel.value=brands[0];suppBrandChanged()}
+}
+
+function suppBrandChanged(){
+  const agent=$('supp-agent')?.value
+  const brand=$('supp-brand')?.value
+  const modelWrap=$('supp-model-wrap')
+  const tankWrap=$('supp-tank-wrap')
+
+  if(!brand||brand==='_custom'||!agent||!SUPP_DATA[agent]?.[brand]){
+    if(modelWrap)modelWrap.style.display='none'
+    if(tankWrap)tankWrap.style.display='none'
+    return
+  }
+
+  const brandData=SUPP_DATA[agent][brand]
+  const models=Object.keys(brandData.models)
+  const sel=$('supp-model')
+  const customM=$('supp-model-custom')
+  if(customM)customM.style.display='none'
+  sel.innerHTML=`<option value="">-- Select Model --</option>`+models.map(m=>`<option value="${m}">${m}</option>`).join('')+(brandData.addNew?`<option value="_custom">+ Add Model...</option>`:'')
+  if(modelWrap)modelWrap.style.display='block'
+  if(tankWrap)tankWrap.style.display='none'
+
+  // auto-select if only one model
+  if(models.length===1){sel.value=models[0];suppModelChanged()}
+}
+
+function suppModelChanged(){
+  const agent=$('supp-agent')?.value
+  const brand=$('supp-brand')?.value
+  const model=$('supp-model')?.value
+  const tankWrap=$('supp-tank-wrap')
+  const customM=$('supp-model-custom')
+
+  if(model==='_custom'){
+    if(customM)customM.style.display='block'
+    if(tankWrap)tankWrap.style.display='none'
+    return
+  }
+  if(customM)customM.style.display='none'
+
+  if(!model||!agent||!SUPP_DATA[agent]?.[brand]?.models?.[model]){
+    if(tankWrap)tankWrap.style.display='none'
+    return
+  }
+
+  const tanks=SUPP_DATA[agent][brand].models[model].tanks||[]
+  const sel=$('supp-tank-size')
+  sel.innerHTML=tanks.map(t=>`<option>${t}</option>`).join('')
+  if(tankWrap)tankWrap.style.display=tanks.length?'block':'none'
+}
+
 async function saveSupp(locId){
   const b=$('saveSuppBtn');if(b){b.textContent='Saving...';b.style.opacity='.5';b.style.pointerEvents='none'}
+  // build system_type from cascading selections
+  let agent=$('supp-agent')?.value||''
+  if(agent==='_custom')agent=$('supp-agent-custom')?.value?.trim()||'Custom'
+  let brand=$('supp-brand')?.value||''
+  if(brand==='_custom')brand=''
+  let model=$('supp-model')?.value||''
+  if(model==='_custom')model=$('supp-model-custom')?.value?.trim()||''
+  const tankSize=$('supp-tank-size')?.value||''
+  const sysType=[brand,model].filter(Boolean).join(' ')||agent||'Suppression System'
+  // determine category for pricing
+  let cat='standard'
+  if(agent==='Water+'||brand==='Captive-Aire'&&model==='CORE System')cat='captiveaire_core'
+  else if(brand==='Captive-Aire')cat='captiveaire_tank'
   const{error}=await SB.from('suppression_systems').insert({
     location_id:locId,
-    system_type:$('supp-type')?.value,
-    category:$('supp-cat')?.value||'standard',
+    system_type:sysType+(tankSize&&tankSize!=='Standard'&&tankSize!=='Various'?' ('+tankSize+')':''),
+    category:cat,
     tank_count:parseInt($('supp-tanks')?.value)||1,
     nozzle_count:parseInt($('supp-nozzles')?.value)||0,
     fusible_link_count:parseInt($('supp-links')?.value)||0
