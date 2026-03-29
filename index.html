@@ -712,8 +712,10 @@ async function openJob(id){
     </div>
     </div>`
 
-    // SIGNATURE
-    h+=`<div class="ds"><div class="ds-t">Customer Signature</div><div class="sig-wrap"><canvas id="sigC"></canvas><div class="sig-ph" id="sigPh">Sign here</div><button class="sig-clr" onclick="clrSig()">Clear</button></div></div>`
+    // SIGNATURE — only show if no suppression report (report captures owner sig)
+    if(!sc.includes('suppression')){
+      h+=`<div class="ds"><div class="ds-t">Customer Signature</div><div class="sig-wrap"><canvas id="sigC"></canvas><div class="sig-ph" id="sigPh">Sign here</div><button class="sig-clr" onclick="clrSig()">Clear</button></div></div>`
+    }
 
   }else{
     // COMPLETED — invoices (editable via openInvDetail)
@@ -2322,8 +2324,10 @@ async function openSuppReport(jobId,sysId){
   <div class="fg"><label class="fg-l">Print Technician Name</label><input id="rpt-tech-name" placeholder="Jon Stephens" value="Jon Stephens"></div>
   <div class="fg"><label class="fg-l">Permit No.</label><input id="rpt-permit" placeholder="Optional"></div>
 
-  <div class="ds"><div class="ds-t">Owner / Manager / Authorized Agent Signature</div>
-    <div class="sig-wrap" id="rpt-owner-sig-wrap"><canvas id="rptOwnerSig"></canvas><div class="sig-ph" id="rptOwnerSigPh">Sign here</div><button class="sig-clr" onclick="clrRptSig('owner')">Clear</button></div>
+  <div class="ds"><div class="ds-t">Owner / Manager Signature
+    <span style="font-size:10px;font-weight:600;color:var(--ok);display:block;margin-top:2px">✓ Also signs the invoice</span>
+  </div>
+    <div class="sig-wrap" id="rpt-owner-sig-wrap"><canvas id="rptOwnerSig"></canvas><div class="sig-ph" id="rptOwnerSigPh">Customer signs here</div><button class="sig-clr" onclick="clrRptSig('owner')">Clear</button></div>
   </div>
   <div class="fg"><label class="fg-l">Print Owner / Manager Name</label><input id="rpt-owner-name" placeholder="${esc(l.contact_name||'')}"></div>
 
@@ -2411,7 +2415,7 @@ function clrRptSig(key){
 }
 
 async function saveSuppReport(jobId,sysId){
-  // save report_data to reports table for future pre-population
+  const ownerSigData=$('rptOwnerSig')?.toDataURL()||null
   const data={
     checks:window._rptCheckState||{},
     serviceType:window._rptServiceType||'semi',
@@ -2426,7 +2430,10 @@ async function saveSuppReport(jobId,sysId){
   const j=D.jobs.find(x=>x.id===jobId)||{}
   try{
     await SB.from('reports').upsert({job_id:jobId,location_id:j.location_id||j.location?.id,report_type:'kitchen_suppression',report_data:data},{onConflict:'job_id'})
+    // owner sig on report also signs the job/invoice
+    if(ownerSigData)await SB.from('jobs').update({signature_data:ownerSigData,notes:($('rpt-deficiencies')?.value||j.notes||null)}).eq('id',jobId)
   }catch(e){console.error('report save:',e)}
+  toast('Report saved ✓')
   pop()
 }
 
@@ -2786,8 +2793,10 @@ async function openCleanAgentReport(jobId,sysId){
   <div class="fg"><label class="fg-l">Print Technician Name</label><input id="ca-tech-name" placeholder="Jon Stephens" value="${esc(prev.techName||'Jon Stephens')}"></div>
   <div class="fg"><label class="fg-l">License / Permit No.</label><input id="ca-permit" placeholder="Optional" value="${esc(prev.permit||'')}"></div>
 
-  <div class="ds"><div class="ds-t">Owner / Manager / Authorized Agent Signature</div>
-    <div class="sig-wrap" id="ca-owner-sig-wrap"><canvas id="caOwnerSig"></canvas><div class="sig-ph" id="caOwnerSigPh">Sign here</div><button class="sig-clr" onclick="clrCaSig('owner')">Clear</button></div>
+  <div class="ds"><div class="ds-t">Owner / Manager Signature
+    <span style="font-size:10px;font-weight:600;color:var(--ok);display:block;margin-top:2px">✓ Also signs the invoice</span>
+  </div>
+    <div class="sig-wrap" id="ca-owner-sig-wrap"><canvas id="caOwnerSig"></canvas><div class="sig-ph" id="caOwnerSigPh">Customer signs here</div><button class="sig-clr" onclick="clrCaSig('owner')">Clear</button></div>
   </div>
   <div class="fg"><label class="fg-l">Print Owner / Manager Name</label><input id="ca-owner-name" placeholder="${esc(l.contact_name||'')}" value="${esc(prev.ownerName||l.contact_name||'')}"></div>
 
@@ -2872,6 +2881,7 @@ function clrCaSig(key){
 }
 
 async function saveCleanAgentReport(jobId,sysId){
+  const ownerSigData=$('caOwnerSig')?.toDataURL()||null
   const data={
     checks:window._caCheckState||{},
     serviceType:window._caServiceType||'semi',
@@ -2888,7 +2898,9 @@ async function saveCleanAgentReport(jobId,sysId){
   const j=D.jobs.find(x=>x.id===jobId)||{}
   try{
     await SB.from('reports').upsert({job_id:jobId,location_id:j.location_id||j.location?.id,report_type:'clean_agent',report_data:data},{onConflict:'job_id'})
+    if(ownerSigData)await SB.from('jobs').update({signature_data:ownerSigData,notes:($('ca-deficiencies')?.value||j.notes||null)}).eq('id',jobId)
   }catch(e){console.error('ca report save:',e)}
+  toast('Report saved ✓')
   pop()
 }
 
