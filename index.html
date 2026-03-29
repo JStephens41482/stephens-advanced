@@ -893,9 +893,9 @@ async function openCust(id){
     </div>
   </div>
   <div class="stats s3" style="margin-bottom:16px">
-    <div class="st"><div class="sn i">${locJobs.length}</div><div class="sl">Jobs</div></div>
-    <div class="st"><div class="sn">${locInvs.length}</div><div class="sl">Invoices</div></div>
-    <div class="st"><div class="sn ${owed>0?'r':'g'}">${fmt(owed)}</div><div class="sl">Owed</div></div>
+    <div class="st" style="cursor:pointer" onclick="${locJobs.length===1?`openJob('${locJobs[0]?.id}')`:`document.getElementById('cust-jobs-section')?.scrollIntoView({behavior:'smooth',block:'start'})`}"><div class="sn i">${locJobs.length}</div><div class="sl">Jobs</div></div>
+    <div class="st" style="cursor:pointer" onclick="${locInvs.length===1?`openInvDetail('${locInvs[0]?.id}')`:`document.getElementById('cust-invs-section')?.scrollIntoView({behavior:'smooth',block:'start'})`}"><div class="sn">${locInvs.length}</div><div class="sl">Invoices</div></div>
+    <div class="st" style="cursor:pointer" onclick="document.getElementById('cust-invs-section')?.scrollIntoView({behavior:'smooth',block:'start'})"><div class="sn ${owed>0?'r':'g'}">${fmt(owed)}</div><div class="sl">Owed</div></div>
   </div>
   <div class="ds"><div class="ds-t">Contact Info</div>`
   if(a)h+=`<div class="ds-row"><div class="ds-lbl">Address</div><div class="ds-val">${esc(a)}</div></div>`
@@ -962,7 +962,7 @@ async function openCust(id){
   }
 
   if(locJobs.length){
-    h+=`<div class="ds"><div class="ds-t">Job History · ${locJobs.length}</div>`
+    h+=`<div class="ds" id="cust-jobs-section"><div class="ds-t">Job History · ${locJobs.length}</div>`
     locJobs.slice(0,15).forEach(j=>{
       const statC={scheduled:'var(--info)',active:'var(--ok)',completed:'var(--g1)'}[j.status]||'var(--g1)'
       h+=`<div class="ic" onclick="openJob('${j.id}')"><div class="ic-r1"><div class="ic-nm">${j.scheduled_date||'No date'}</div><span style="font-size:10px;font-weight:800;text-transform:uppercase;color:${statC}">${j.status}</span></div><div class="ic-sub">${(j.scope||[]).join(' · ')}</div></div>`
@@ -971,7 +971,7 @@ async function openCust(id){
   }
 
   if(locInvs.length){
-    h+=`<div class="ds"><div class="ds-t">Invoices · ${locInvs.length}</div>`
+    h+=`<div class="ds" id="cust-invs-section"><div class="ds-t">Invoices · ${locInvs.length}</div>`
     locInvs.slice(0,20).forEach(i=>{
       const bc=i.status==='paid'?'bpaid':i.status==='sent'?'bsent':i.status==='record'?'brec':'bdraft'
       h+=`<div class="ic" onclick="openInvDetail('${i.id}')"><div class="ic-r1"><div class="ic-nm">${i.invoice_number||'—'}</div><span class="badge ${bc}">${i.status}</span></div><div class="ic-sub">${i.date?new Date(i.date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):''}</div><div class="ic-amt">${fmt(+i.total)}</div></div>`
