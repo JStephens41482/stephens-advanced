@@ -15,6 +15,23 @@
   );
   alter table brycer_queue enable row level security;
   create policy "allow all" on brycer_queue for all using (true) with check (true);
+
+  -- Techs table
+  create table techs (
+    id uuid default gen_random_uuid() primary key,
+    name text not null,
+    phone text,
+    email text,
+    license_number text,
+    color text default '#f05a28',
+    active boolean default true,
+    created_at timestamptz default now()
+  );
+  alter table techs enable row level security;
+  create policy "allow all" on techs for all using (true) with check (true);
+
+  -- Add assigned_to column to jobs
+  alter table jobs add column if not exists assigned_to uuid references techs(id);
 -->
 <!DOCTYPE html>
 <html lang="en">
@@ -298,7 +315,7 @@ document.addEventListener('touchend',e=>{
 document.getElementById('invOv').addEventListener('click',function(e){if(e.target===this)this.classList.remove('open')})
 
 async function load(){
-  const[j,l,i,b,r,ci,td2,mz,bq]=await Promise.all([
+  const[j,l,i,b,r,ci,td2,mz,bq,tk]=await Promise.all([
     SB.from('jobs').select('*,location:locations(*)').order('scheduled_date').order('scheduled_time'),
     SB.from('locations').select('*,extinguishers(id,type,size,serial_number,location_in_building,manufacture_date),suppression_systems(id,system_type,category,tank_count,nozzle_count,fusible_link_count),emergency_lights(id,fixture_count),billing_account:billing_accounts(*)').order('name'),
     SB.from('invoices').select('*').order('date',{ascending:false}).limit(100),
@@ -307,7 +324,8 @@ async function load(){
     SB.from('custom_items').select('description,unit_price').order('description'),
     SB.from('todos').select('*').eq('done',false).order('created_at'),
     SB.from('mazon_queue').select('*').order('created_at',{ascending:false}),
-    SB.from('brycer_queue').select('*').eq('submitted',false).order('created_at')
+    SB.from('brycer_queue').select('*').eq('submitted',false).order('created_at'),
+    SB.from('techs').select('*').order('name')
   ])
   if(j.error)console.error('jobs error:',j.error)
   if(l.error)console.error('locations error:',l.error)
@@ -316,6 +334,7 @@ async function load(){
   if(td2.error)console.error('todos error:',td2.error)
   if(mz.error)console.error('mazon_queue error:',mz.error)
   if(bq.error)console.error('brycer_queue error:',bq.error)
+  if(tk.error)console.error('techs error:',tk.error)
   if(ci.error)console.error('custom_items error:',ci.error)
   console.log('loaded:',j.data?.length,'jobs,',l.data?.length,'locs,',i.data?.length,'invs,',td2.data?.length,'todos')
   D.jobs=j.data||[];D.locs=l.data||[];D.invs=i.data||[];D.bas=b.data||[]
@@ -324,6 +343,7 @@ async function load(){
   D.todos=td2.data||[]
   D.mazonQueue=mz.data||[]
   D.brycerQueue=bq.data||[]
+  D.techs=tk.data||[]
 }
 
 const td=()=>new Date().toISOString().split('T')[0]
@@ -1072,7 +1092,169 @@ ${body}
 }
 
 function rTechs(){
-  $('techsC').innerHTML=`<div class="ey" style="padding:80px 24px"><div class="ey-i">👥</div><div class="ey-t" style="font-size:15px;font-weight:700;color:var(--w);margin-bottom:8px">Techs — Coming Soon</div><div class="ey-t">Multi-tech management will go here.</div></div>`
+  const techs=D.techs||[]
+  const activeTechs=techs.filter(t=>t.active)
+  const inactiveTechs=techs.filter(t=>!t.active)
+  const t=td()
+
+  let h=`<div class="sec" style="margin-top:8px"><div class="sec-t">Technicians · ${activeTechs.length}</div><button class="sec-a" onclick="openAddTech()">+ Add</button></div>`
+
+  if(!activeTechs.length){
+    h+=`<div class="ey"><div class="ey-i">👥</div><div class="ey-t">No technicians yet. Tap + Add to create one.<br><br><span style="font-size:12px;color:var(--g2)">Add yourself first — Jon Stephens</span></div></div>`
+  }else{
+    activeTechs.forEach(tk=>{
+      const techJobs=D.jobs.filter(j=>j.assigned_to===tk.id)
+      const todayJobs=techJobs.filter(j=>j.scheduled_date===t)
+      const completedJobs=techJobs.filter(j=>j.status==='completed')
+      const techRev=D.invs.filter(i=>i.status==='paid'&&techJobs.some(j=>j.id===i.job_id)).reduce((s,i)=>s+(+i.total||0),0)
+      h+=`<div class="cc" onclick="openTechDetail('${tk.id}')">
+        <div style="width:40px;height:40px;border-radius:50%;background:${tk.color||'var(--fire)'};display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:900;color:#fff;flex-shrink:0">${(tk.name||'?')[0].toUpperCase()}</div>
+        <div class="cc-l">
+          <div class="cc-nm">${esc(tk.name)}</div>
+          <div class="cc-meta">
+            <span><b>${todayJobs.length}</b> today</span>
+            <span><b>${completedJobs.length}</b> completed</span>
+            <span style="color:var(--ok);font-weight:700">${fmt(techRev)}</span>
+          </div>
+          ${tk.license_number?`<div style="font-size:10px;color:var(--g2);margin-top:2px">${esc(tk.license_number)}</div>`:''}
+        </div><div class="cc-arr">›</div>
+      </div>`
+    })
+  }
+
+  // unassigned jobs
+  const unassigned=D.jobs.filter(j=>!j.assigned_to&&j.status==='scheduled')
+  if(unassigned.length){
+    h+=`<div style="background:var(--warns);border:1.5px solid var(--warn);border-radius:var(--r);padding:12px;margin-top:12px">
+      <div style="font-size:12px;font-weight:800;color:var(--warn)">${unassigned.length} Unassigned Job${unassigned.length>1?'s':''}</div>
+      <div style="font-size:11px;color:var(--w2);margin-top:4px">These jobs haven't been assigned to a technician yet.</div>
+    </div>`
+  }
+
+  if(inactiveTechs.length){
+    h+=`<div class="sec"><div class="sec-t" style="color:var(--g2)">Inactive</div></div>`
+    inactiveTechs.forEach(tk=>{
+      h+=`<div class="cc" style="opacity:.5" onclick="openTechDetail('${tk.id}')">
+        <div style="width:40px;height:40px;border-radius:50%;background:var(--g3);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:900;color:var(--g1);flex-shrink:0">${(tk.name||'?')[0].toUpperCase()}</div>
+        <div class="cc-l"><div class="cc-nm">${esc(tk.name)}</div><div style="font-size:11px;color:var(--g2)">Inactive</div></div><div class="cc-arr">›</div>
+      </div>`
+    })
+  }
+  $('techsC').innerHTML=h
+}
+
+function openAddTech(){
+  const colors=['#f05a28','#10b981','#6366f1','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#ec4899']
+  const colorOpts=colors.map(c=>`<button style="width:36px;height:36px;border-radius:50%;background:${c};border:2px solid var(--b1);cursor:pointer" onclick="document.querySelectorAll('#tech-colors button').forEach(b=>b.style.borderColor='var(--b1)');this.style.borderColor='#fff';$('tech-color-val').value='${c}'"></button>`).join('')
+  push(`<div class="ov-hdr">
+    <button class="ov-back" onclick="pop()">‹</button>
+    <div class="ov-title">Add Technician</div>
+    <button class="ov-act" id="saveTechBtn" onclick="saveTech()">Save</button>
+  </div><div class="ov-body">
+    <div class="fg"><label class="fg-l">Name *</label><input id="tech-name" placeholder="e.g. Jon Stephens"></div>
+    <div class="fg"><label class="fg-l">Phone</label><input id="tech-phone" type="tel"></div>
+    <div class="fg"><label class="fg-l">Email</label><input id="tech-email" type="email"></div>
+    <div class="fg"><label class="fg-l">License / Permit No.</label><input id="tech-license" placeholder="e.g. FEL-A-2593933"></div>
+    <div class="fg"><label class="fg-l">Color</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap" id="tech-colors">${colorOpts}</div>
+      <input type="hidden" id="tech-color-val" value="#f05a28">
+    </div>
+    <div class="err" id="tech-err"></div>
+  </div>`)
+}
+
+async function saveTech(){
+  const name=$('tech-name')?.value?.trim()
+  if(!name){if($('tech-err'))$('tech-err').textContent='Name is required';return}
+  const b=$('saveTechBtn');if(b){b.textContent='Saving...';b.style.opacity='.5'}
+  const{error}=await SB.from('techs').insert({
+    name,phone:$('tech-phone')?.value?.trim()||null,
+    email:$('tech-email')?.value?.trim()||null,
+    license_number:$('tech-license')?.value?.trim()||null,
+    color:$('tech-color-val')?.value||'#f05a28',active:true
+  })
+  if(error){if($('tech-err'))$('tech-err').textContent='Error: '+error.message;if(b){b.textContent='Save';b.style.opacity=''}return}
+  await load();toast('Technician added');pop();rTechs()
+}
+
+function openTechDetail(techId){
+  const tk=D.techs.find(x=>x.id===techId);if(!tk)return
+  const t=td()
+  const techJobs=D.jobs.filter(j=>j.assigned_to===techId)
+  const todayJobs=techJobs.filter(j=>j.scheduled_date===t)
+  const scheduledJobs=techJobs.filter(j=>j.status==='scheduled'&&j.scheduled_date>=t)
+  const completedJobs=techJobs.filter(j=>j.status==='completed')
+  const techRev=D.invs.filter(i=>i.status==='paid'&&techJobs.some(j=>j.id===i.job_id)).reduce((s,i)=>s+(+i.total||0),0)
+
+  let h=`<div class="ov-hdr">
+    <button class="ov-back" onclick="pop()">‹</button>
+    <div class="ov-title">${esc(tk.name)}</div>
+    <button class="ov-act" onclick="editTech('${techId}')">Edit</button>
+  </div><div class="ov-body">
+  <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
+    <div style="width:56px;height:56px;border-radius:50%;background:${tk.color||'var(--fire)'};display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:900;color:#fff;flex-shrink:0">${(tk.name||'?')[0].toUpperCase()}</div>
+    <div>
+      <div style="font-size:18px;font-weight:800">${esc(tk.name)}</div>
+      ${tk.phone?`<div style="font-size:12px;color:var(--g1);margin-top:2px">${esc(tk.phone)}</div>`:''}
+      ${tk.license_number?`<div style="font-size:11px;color:var(--g2);margin-top:2px">${esc(tk.license_number)}</div>`:''}
+    </div>
+  </div>
+  <div class="stats s3" style="margin-bottom:16px">
+    <div class="st"><div class="sn o">${todayJobs.length}</div><div class="sl">Today</div></div>
+    <div class="st"><div class="sn g">${completedJobs.length}</div><div class="sl">Completed</div></div>
+    <div class="st"><div class="sn i">${fmt(techRev)}</div><div class="sl">Revenue</div></div>
+  </div>`
+
+  if(scheduledJobs.length){
+    h+=`<div class="ds"><div class="ds-t">Upcoming Jobs · ${scheduledJobs.length}</div>`
+    scheduledJobs.slice(0,15).forEach(j=>h+=jCard(j))
+    h+=`</div>`
+  }
+  if(completedJobs.length){
+    h+=`<div class="ds"><div class="ds-t">Recent Completed</div>`
+    completedJobs.slice(0,10).forEach(j=>h+=jCard(j))
+    h+=`</div>`
+  }
+  h+=`</div>`
+  push(h)
+}
+
+function editTech(techId){
+  const tk=D.techs.find(x=>x.id===techId);if(!tk)return
+  const colors=['#f05a28','#10b981','#6366f1','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#ec4899']
+  const colorOpts=colors.map(c=>`<button style="width:36px;height:36px;border-radius:50%;background:${c};border:2px solid ${c===tk.color?'#fff':'var(--b1)'};cursor:pointer" onclick="document.querySelectorAll('#et-colors button').forEach(b=>b.style.borderColor='var(--b1)');this.style.borderColor='#fff';$('et-color-val').value='${c}'"></button>`).join('')
+  push(`<div class="ov-hdr">
+    <button class="ov-back" onclick="pop()">‹</button>
+    <div class="ov-title">Edit Technician</div>
+    <button class="ov-act" id="saveETBtn" onclick="saveEditTech('${techId}')">Save</button>
+  </div><div class="ov-body">
+    <div class="fg"><label class="fg-l">Name *</label><input id="et-name" value="${esc(tk.name||'')}"></div>
+    <div class="fg"><label class="fg-l">Phone</label><input id="et-phone" type="tel" value="${esc(tk.phone||'')}"></div>
+    <div class="fg"><label class="fg-l">Email</label><input id="et-email" type="email" value="${esc(tk.email||'')}"></div>
+    <div class="fg"><label class="fg-l">License / Permit No.</label><input id="et-license" value="${esc(tk.license_number||'')}"></div>
+    <div class="fg"><label class="fg-l">Color</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap" id="et-colors">${colorOpts}</div>
+      <input type="hidden" id="et-color-val" value="${tk.color||'#f05a28'}">
+    </div>
+    <div class="fg"><label class="fg-l">Status</label>
+      <select id="et-active"><option value="true"${tk.active?' selected':''}>Active</option><option value="false"${!tk.active?' selected':''}>Inactive</option></select>
+    </div>
+    <div class="err" id="et-err"></div>
+  </div>`)
+}
+
+async function saveEditTech(techId){
+  const b=$('saveETBtn');if(b){b.textContent='Saving...';b.style.opacity='.5'}
+  const{error}=await SB.from('techs').update({
+    name:$('et-name')?.value?.trim()||'Tech',
+    phone:$('et-phone')?.value?.trim()||null,
+    email:$('et-email')?.value?.trim()||null,
+    license_number:$('et-license')?.value?.trim()||null,
+    color:$('et-color-val')?.value||'#f05a28',
+    active:$('et-active')?.value==='true'
+  }).eq('id',techId)
+  if(error){if($('et-err'))$('et-err').textContent='Error: '+error.message;if(b){b.textContent='Save';b.style.opacity=''}return}
+  await load();toast('Technician updated');pop();pop();rTechs()
 }
 
 function rDash(){
@@ -1184,7 +1366,7 @@ function jCard(j,isOv=false){
   return`<div class="jc ${cls}" onclick="openJob('${j.id}')">
     <div class="jc-r1"><div class="jc-nm"><span style="color:var(--fire);text-decoration:underline;text-decoration-color:rgba(240,90,40,.3);text-underline-offset:2px;cursor:pointer" onclick="event.stopPropagation();openCust('${l.id||j.location_id}')">${esc(l.name||'Unknown')} ›</span></div><div class="jc-tm">${ds}${j.scheduled_time?' '+j.scheduled_time.slice(0,5):''}</div></div>
     <div class="jc-addr">${esc(a)||'No address'}</div>
-    <div class="jc-tags">${sc.includes('suppression')?'<span class="tg ts">Suppression</span>':''}${sc.includes('extinguishers')?'<span class="tg te">Ext</span>':''}${sc.includes('elights')?'<span class="tg tl">E-Lights</span>':''}${sc.includes('hydro')?'<span class="tg th">Hydro</span>':''}${isOv?'<span class="tg to2">Overdue</span>':''}${l.is_brycer_jurisdiction?'<span class="tg tb">Brycer</span>':''}</div>
+    <div class="jc-tags">${sc.includes('suppression')?'<span class="tg ts">Suppression</span>':''}${sc.includes('extinguishers')?'<span class="tg te">Ext</span>':''}${sc.includes('elights')?'<span class="tg tl">E-Lights</span>':''}${sc.includes('hydro')?'<span class="tg th">Hydro</span>':''}${isOv?'<span class="tg to2">Overdue</span>':''}${l.is_brycer_jurisdiction?'<span class="tg tb">Brycer</span>':''}${j.assigned_to?(()=>{const tk2=D.techs?.find(x=>x.id===j.assigned_to);return tk2?'<span class="tg" style="background:'+tk2.color+'22;color:'+tk2.color+'">'+esc(tk2.name.split(' ')[0])+'</span>':''})():''}</div>
     <div class="jc-val">${v?fmt(v):'<span style="color:var(--g2);font-size:12px">Add equipment to estimate</span>'}</div>
     <div class="jc-btns">
       <button class="jb jb-n" onclick="event.stopPropagation();startNav('${j.id}')">🗺 Nav</button>
@@ -3307,6 +3489,9 @@ function rNewJob(){
     h+=`<button data-k="${k}" ${on?'class="gn"':''} onclick="this.classList.toggle('gn')">${v}</button>`
   })
   h+=`</div></div>
+  ${D.techs?.length?`<div class="fg"><div class="fg-l">Assign To</div>
+    <select id="nAssign"><option value="">Unassigned</option>${D.techs.filter(t=>t.active).map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join('')}</select>
+  </div>`:''}
   <div class="fg"><div class="fg-l">Notes</div><textarea id="nnt" placeholder="Optional..."></textarea></div>
   <button class="btn-p" id="saveJobBtn" onclick="saveJob()">Create Job</button></div>`
   push(h)
@@ -3350,7 +3535,8 @@ async function saveJob(){
   const jobDate=$('ndt')?.value||new Date(Date.now()+86400000).toISOString().split('T')[0]
   const jobTime=$('ntm')?.value||'09:00'
   const jobNoteTxt=$('nnt')?.value?.trim()||''
-  const{error}=await SB.from('jobs').insert({location_id:lid,billing_account_id:ba,type:ty,scope:sc.length?sc:['extinguishers','suppression'],scheduled_date:jobDate,scheduled_time:jobTime,status:'scheduled',notes:jobNoteTxt||null})
+  const assignTo=$('nAssign')?.value||null
+  const{error}=await SB.from('jobs').insert({location_id:lid,billing_account_id:ba,type:ty,scope:sc.length?sc:['extinguishers','suppression'],scheduled_date:jobDate,scheduled_time:jobTime,status:'scheduled',notes:jobNoteTxt||null,assigned_to:assignTo||null})
   if(error){toast('Error creating job',false);setLoad('saveJobBtn',false,'Create Job');return}
   await load();toast('Job created ✓')
   nSt={loc:null,mk:false}
