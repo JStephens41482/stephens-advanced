@@ -226,8 +226,8 @@ select{-webkit-appearance:none;appearance:none}
 <div id="app">
   <div class="hdr">
     <div class="hdr-logo">
-      <svg width="26" height="30" viewBox="0 0 32 38" fill="none"><path d="M16 2C16 2 6 10 6 20C6 26 10 30 16 30C22 30 26 26 26 20C26 10 16 2 16 2Z" fill="#f05a28"/><path d="M16 8C16 8 10 14 10 20C10 23 12 25 14 26C13 23 14 20 16 18C18 20 19 23 18 26C20 25 22 23 22 20C22 14 16 8 16 8Z" fill="#ff7847"/><ellipse cx="16" cy="30" rx="5" ry="6" fill="#3498db"/><ellipse cx="16" cy="29" rx="3" ry="3.5" fill="#5dade2"/></svg>
-      Stephens <span>Advanced</span>
+      <svg width="26" height="30" viewBox="0 0 32 38" fill="none" onclick="openReports()" style="cursor:pointer"><path d="M16 2C16 2 6 10 6 20C6 26 10 30 16 30C22 30 26 26 26 20C26 10 16 2 16 2Z" fill="#f05a28"/><path d="M16 8C16 8 10 14 10 20C10 23 12 25 14 26C13 23 14 20 16 18C18 20 19 23 18 26C20 25 22 23 22 20C22 14 16 8 16 8Z" fill="#ff7847"/><ellipse cx="16" cy="30" rx="5" ry="6" fill="#3498db"/><ellipse cx="16" cy="29" rx="3" ry="3.5" fill="#5dade2"/></svg>
+      <span onclick="openReports()" style="cursor:pointer">Stephens <span>Advanced</span></span>
     </div>
     <div class="hdr-date" id="hdrDate"></div>
   </div>
@@ -715,6 +715,205 @@ function openFullMap(cities){
 }
 
 // DASHBOARD
+async function openReports(){
+  // fetch ALL invoices (not limited to 100) and ALL jobs for full reporting
+  const{data:allInvs}=await SB.from('invoices').select('*').order('date',{ascending:false})
+  const{data:allJobs}=await SB.from('jobs').select('*,location:locations(name,city,address)').order('scheduled_date',{ascending:false})
+  const invs=allInvs||[]
+  const jobs=allJobs||[]
+  const locs=D.locs||[]
+  const now=new Date()
+  const thisYear=now.getFullYear()
+  const thisMonth=now.getMonth()
+
+  // helper: group by period
+  function groupBy(arr,keyFn){const g={};arr.forEach(x=>{const k=keyFn(x);if(!g[k])g[k]=[];g[k].push(x)});return g}
+  function weekOf(d){const dt=new Date(d+'T12:00:00');const jan1=new Date(dt.getFullYear(),0,1);return Math.ceil(((dt-jan1)/86400000+jan1.getDay()+1)/7)}
+
+  // === OVERALL METRICS ===
+  const totalRev=invs.filter(i=>i.status==='paid').reduce((s,i)=>s+(+i.total||0),0)
+  const totalOutstanding=invs.filter(i=>!['paid','void','record'].includes(i.status)).reduce((s,i)=>s+(+i.total||0),0)
+  const totalJobs=jobs.length
+  const completedJobs=jobs.filter(j=>j.status==='completed').length
+  const activeClients=new Set(jobs.filter(j=>j.scheduled_date>=(thisYear-1)+'-01-01').map(j=>j.location_id)).size
+  const totalClients=locs.length
+  const avgJobValue=completedJobs?totalRev/completedJobs:0
+
+  // === YEARLY BREAKDOWN ===
+  const invsByYear=groupBy(invs.filter(i=>i.date),i=>i.date.slice(0,4))
+  const jobsByYear=groupBy(jobs.filter(j=>j.scheduled_date),j=>j.scheduled_date.slice(0,4))
+  const years=Array.from(new Set([...Object.keys(invsByYear),...Object.keys(jobsByYear)])).sort().reverse()
+
+  // === MONTHLY BREAKDOWN (current year) ===
+  const thisYearInvs=invs.filter(i=>i.date&&i.date.startsWith(thisYear+''))
+  const thisYearJobs=jobs.filter(j=>j.scheduled_date&&j.scheduled_date.startsWith(thisYear+''))
+  const invsByMonth=groupBy(thisYearInvs.filter(i=>i.date),i=>i.date.slice(0,7))
+  const jobsByMonth=groupBy(thisYearJobs.filter(j=>j.scheduled_date),j=>j.scheduled_date.slice(0,7))
+  const months=[]
+  for(let m=thisMonth;m>=0;m--){
+    const key=thisYear+'-'+(m+1).toString().padStart(2,'0')
+    months.push(key)
+  }
+
+  // === WEEKLY (last 8 weeks) ===
+  const weeks=[]
+  for(let w=0;w<8;w++){
+    const start=new Date(now);start.setDate(start.getDate()-start.getDay()-w*7)
+    const end=new Date(start);end.setDate(end.getDate()+6)
+    const sStr=start.toISOString().split('T')[0]
+    const eStr=end.toISOString().split('T')[0]
+    const wInvs=invs.filter(i=>i.date>=sStr&&i.date<=eStr)
+    const wJobs=jobs.filter(j=>j.scheduled_date>=sStr&&j.scheduled_date<=eStr)
+    weeks.push({label:start.toLocaleDateString('en-US',{month:'short',day:'numeric'})+' – '+end.toLocaleDateString('en-US',{month:'short',day:'numeric'}),invs:wInvs,jobs:wJobs})
+  }
+
+  // === TOP CLIENTS BY REVENUE ===
+  const clientRev={}
+  invs.filter(i=>i.status==='paid'&&i.location_id).forEach(i=>{clientRev[i.location_id]=(clientRev[i.location_id]||0)+(+i.total||0)})
+  const topClients=Object.entries(clientRev).sort((a,b)=>b[1]-a[1]).slice(0,10).map(([lid,rev])=>{
+    const loc=locs.find(x=>x.id===lid)
+    return{name:loc?.name||'Unknown',city:loc?.city||'',rev}
+  })
+
+  // === UNPAID AGING ===
+  const unpaid=invs.filter(i=>!['paid','void','record'].includes(i.status)&&i.date)
+  const aging={current:0,d30:0,d60:0,d90:0,over90:0}
+  unpaid.forEach(i=>{
+    const days=Math.round((now-new Date(i.date+'T12:00:00'))/(86400000))
+    const amt=+i.total||0
+    if(days<=30)aging.current+=amt
+    else if(days<=60)aging.d30+=amt
+    else if(days<=90)aging.d60+=amt
+    else aging.over90+=amt
+  })
+
+  // === EQUIPMENT SUMMARY ===
+  const totalExt=locs.reduce((s,l)=>s+(l.extinguishers?.length||0),0)
+  const totalSys=locs.reduce((s,l)=>s+(l.suppression_systems?.length||0),0)
+  const totalLights=locs.reduce((s,l)=>s+(l.emergency_lights?.[0]?.fixture_count||0),0)
+  const brycerLocs=locs.filter(l=>l.is_brycer_jurisdiction).length
+
+  // === BUILD HTML ===
+  let h=`<div class="ov-hdr"><button class="ov-back" onclick="pop()">‹</button><div class="ov-title">Business Reports</div></div><div class="ov-body">`
+
+  // KPI HEADER
+  h+=`<div style="background:linear-gradient(135deg,var(--fire),#d44a1a);border-radius:var(--r);padding:20px;margin-bottom:16px;color:#fff">
+    <div style="font-size:20px;font-weight:900;margin-bottom:4px">Stephens Advanced LLC</div>
+    <div style="font-size:11px;opacity:.8;margin-bottom:16px">Fire Suppression & Safety · DFW Texas</div>
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px">
+      <div><div style="font-size:24px;font-weight:900">${fmt(totalRev)}</div><div style="font-size:10px;opacity:.7;text-transform:uppercase;letter-spacing:1px">Total Revenue</div></div>
+      <div><div style="font-size:24px;font-weight:900">${fmt(totalOutstanding)}</div><div style="font-size:10px;opacity:.7;text-transform:uppercase;letter-spacing:1px">Outstanding</div></div>
+      <div><div style="font-size:24px;font-weight:900">${totalJobs}</div><div style="font-size:10px;opacity:.7;text-transform:uppercase;letter-spacing:1px">Total Jobs</div></div>
+      <div><div style="font-size:24px;font-weight:900">${fmt(avgJobValue)}</div><div style="font-size:10px;opacity:.7;text-transform:uppercase;letter-spacing:1px">Avg Job Value</div></div>
+    </div>
+  </div>`
+
+  // BUSINESS SNAPSHOT
+  h+=`<div class="ds"><div class="ds-t">Business Snapshot</div>
+    <div class="ds-row"><div class="ds-lbl">Active Clients (12mo)</div><div class="ds-val">${activeClients}</div></div>
+    <div class="ds-row"><div class="ds-lbl">Total Clients</div><div class="ds-val">${totalClients}</div></div>
+    <div class="ds-row"><div class="ds-lbl">Completed Jobs</div><div class="ds-val">${completedJobs}</div></div>
+    <div class="ds-row"><div class="ds-lbl">Completion Rate</div><div class="ds-val">${totalJobs?(completedJobs/totalJobs*100).toFixed(0)+'%':'—'}</div></div>
+    <div class="ds-row"><div class="ds-lbl">Extinguishers Managed</div><div class="ds-val">${totalExt}</div></div>
+    <div class="ds-row"><div class="ds-lbl">Suppression Systems</div><div class="ds-val">${totalSys}</div></div>
+    <div class="ds-row"><div class="ds-lbl">E-Light Fixtures</div><div class="ds-val">${totalLights}</div></div>
+    <div class="ds-row"><div class="ds-lbl">Brycer Locations</div><div class="ds-val">${brycerLocs}</div></div>
+  </div>`
+
+  // AR AGING
+  h+=`<div class="ds"><div class="ds-t">Accounts Receivable Aging</div>
+    <div class="ds-row"><div class="ds-lbl">Current (0-30 days)</div><div class="ds-val" style="color:var(--ok)">${fmt(aging.current)}</div></div>
+    <div class="ds-row"><div class="ds-lbl">31-60 days</div><div class="ds-val" style="color:var(--warn)">${fmt(aging.d30)}</div></div>
+    <div class="ds-row"><div class="ds-lbl">61-90 days</div><div class="ds-val" style="color:var(--fire)">${fmt(aging.d60)}</div></div>
+    <div class="ds-row"><div class="ds-lbl">90+ days</div><div class="ds-val" style="color:var(--bad)">${fmt(aging.over90)}</div></div>
+    <div class="ds-row" style="border-top:2px solid var(--b1)"><div class="ds-lbl" style="font-weight:800;color:var(--w)">Total Outstanding</div><div class="ds-val" style="font-weight:800;color:var(--bad)">${fmt(aging.current+aging.d30+aging.d60+aging.over90)}</div></div>
+  </div>`
+
+  // WEEKLY (last 8 weeks)
+  h+=`<div class="ds"><div class="ds-t">Weekly Breakdown</div>`
+  weeks.forEach(w=>{
+    const rev=w.invs.filter(i=>i.status==='paid').reduce((s,i)=>s+(+i.total||0),0)
+    const billed=w.invs.reduce((s,i)=>s+(+i.total||0),0)
+    h+=`<div class="ds-row">
+      <div class="ds-lbl" style="min-width:120px">${w.label}</div>
+      <div style="flex:1;display:flex;gap:12px;justify-content:flex-end;font-size:12px">
+        <span style="color:var(--g1)">${w.jobs.length} jobs</span>
+        <span style="color:var(--ok);font-weight:700">${fmt(rev)}</span>
+      </div>
+    </div>`
+  })
+  h+=`</div>`
+
+  // MONTHLY (current year)
+  h+=`<div class="ds"><div class="ds-t">Monthly — ${thisYear}</div>`
+  const monthNames=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+  months.forEach(key=>{
+    const mInvs=invsByMonth[key]||[]
+    const mJobs=jobsByMonth[key]||[]
+    const rev=mInvs.filter(i=>i.status==='paid').reduce((s,i)=>s+(+i.total||0),0)
+    const billed=mInvs.reduce((s,i)=>s+(+i.total||0),0)
+    const mi=parseInt(key.split('-')[1])-1
+    h+=`<div class="ds-row">
+      <div class="ds-lbl" style="min-width:50px;font-weight:700">${monthNames[mi]}</div>
+      <div style="flex:1;display:flex;gap:10px;justify-content:flex-end;font-size:12px">
+        <span style="color:var(--g1)">${mJobs.length} jobs</span>
+        <span style="color:var(--w2)">${fmt(billed)} billed</span>
+        <span style="color:var(--ok);font-weight:700">${fmt(rev)} collected</span>
+      </div>
+    </div>`
+  })
+  h+=`</div>`
+
+  // YEARLY
+  h+=`<div class="ds"><div class="ds-t">Yearly Summary</div>`
+  years.forEach(yr=>{
+    const yInvs=invsByYear[yr]||[]
+    const yJobs=jobsByYear[yr]||[]
+    const rev=yInvs.filter(i=>i.status==='paid').reduce((s,i)=>s+(+i.total||0),0)
+    const billed=yInvs.reduce((s,i)=>s+(+i.total||0),0)
+    const clients=new Set(yJobs.map(j=>j.location_id)).size
+    h+=`<div style="background:var(--c1);border:1px solid var(--b1);border-radius:var(--rs);padding:14px;margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <span style="font-size:18px;font-weight:900">${yr}</span>
+        <span style="font-size:18px;font-weight:900;color:var(--ok)">${fmt(rev)}</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;font-size:11px">
+        <div><div style="color:var(--g1)">Jobs</div><div style="font-weight:800;font-size:14px">${yJobs.length}</div></div>
+        <div><div style="color:var(--g1)">Billed</div><div style="font-weight:800;font-size:14px">${fmt(billed)}</div></div>
+        <div><div style="color:var(--g1)">Clients</div><div style="font-weight:800;font-size:14px">${clients}</div></div>
+      </div>
+    </div>`
+  })
+  h+=`</div>`
+
+  // TOP CLIENTS
+  h+=`<div class="ds"><div class="ds-t">Top Clients by Revenue</div>`
+  topClients.forEach((c,i)=>{
+    h+=`<div class="ds-row">
+      <div class="ds-lbl" style="flex:1"><span style="color:var(--fire);font-weight:800;margin-right:6px">${i+1}.</span>${esc(c.name)}${c.city?' <span style="color:var(--g2)">'+esc(c.city)+'</span>':''}</div>
+      <div class="ds-val" style="color:var(--ok);font-weight:800">${fmt(c.rev)}</div>
+    </div>`
+  })
+  h+=`</div>`
+
+  // RECURRING REVENUE INDICATOR
+  const recurringClients=new Set()
+  const jobsByLoc=groupBy(jobs.filter(j=>j.status==='completed'),j=>j.location_id)
+  Object.entries(jobsByLoc).forEach(([lid,jbs])=>{if(jbs.length>=2)recurringClients.add(lid)})
+  const recurringPct=totalClients?(recurringClients.size/totalClients*100).toFixed(0):0
+
+  h+=`<div class="ds"><div class="ds-t">Buyer Metrics</div>
+    <div class="ds-row"><div class="ds-lbl">Recurring Clients (2+ jobs)</div><div class="ds-val">${recurringClients.size} (${recurringPct}%)</div></div>
+    <div class="ds-row"><div class="ds-lbl">Avg Revenue per Client</div><div class="ds-val">${fmt(activeClients?totalRev/activeClients:0)}</div></div>
+    <div class="ds-row"><div class="ds-lbl">Equipment Under Management</div><div class="ds-val">${totalExt+totalSys} units</div></div>
+    <div class="ds-row"><div class="ds-lbl">Service Locations</div><div class="ds-val">${totalClients}</div></div>
+    <div class="ds-row"><div class="ds-lbl">Compliance Jurisdictions</div><div class="ds-val">${brycerLocs} Brycer</div></div>
+  </div>`
+
+  h+=`</div>`
+  push(h)
+}
+
 function rDash(){
   const t=td(),tj=D.jobs.filter(j=>j.scheduled_date===t),ov=D.jobs.filter(j=>j.status==='scheduled'&&j.scheduled_date<t)
   const ev=tj.reduce((s,j)=>s+est(j),0),ld=trkLoad(tj)
