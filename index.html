@@ -432,7 +432,7 @@ const unesc=s=>(s||'').replace(/&#39;/g,"'").replace(/&quot;/g,'"').replace(/&am
 function cart(s){const t=s.system_type||'';if(t.includes('R-102')||t.includes('Piranha'))return s.tank_count>1?'LT-30':'LT-10';if(t.includes('Pyro')||t.includes('Knight'))return '16g CO2';if(t.includes('Buck'))return 'Buckeye N2';if(t.includes('Kidde'))return 'Kidde XV N2';return 'Cart'}
 
 function est(j){
-  const l=j.location||{},rc=D.rc,sc=j.scope||[];let t=0
+  const l=D.locs?.find(x=>x.id===(j.location_id||j.location?.id))||j.location||{},rc=D.rc,sc=j.scope||[];let t=0
   if(sc.includes('extinguishers'))t+=(l.extinguishers?.length||0)*(rc.extinguisher_inspection||20)
   if(sc.includes('suppression'))for(const s of(l.suppression_systems||[])){
     let b=rc.suppression_standard||250
@@ -446,7 +446,7 @@ function est(j){
 
 function trkLoad(jobs){
   let tg=0,lk=0,cp=0,ct=[]
-  jobs.forEach(j=>{const l=j.location||{},sc=j.scope||[]
+  jobs.forEach(j=>{const l=D.locs?.find(x=>x.id===(j.location_id||j.location?.id))||j.location||{},sc=j.scope||[]
     if(sc.includes('extinguishers'))tg+=l.extinguishers?.length||0
     if(sc.includes('suppression'))for(const s of(l.suppression_systems||[])){lk+=s.fusible_link_count||0;cp+=s.nozzle_count||0;ct.push(cart(s))}
   })
@@ -1498,7 +1498,7 @@ function filterMoney(type){
 }
 
 function jCard(j,isOv=false){
-  const l=j.location||{},sc=j.scope||[],v=est(j),a=[l.address,l.city].filter(Boolean).join(', ')
+  const l=D.locs?.find(x=>x.id===(j.location_id||j.location?.id))||j.location||{},sc=j.scope||[],v=est(j),a=[l.address,l.city].filter(Boolean).join(', ')
   const ds=j.scheduled_date?new Date(j.scheduled_date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}):''
   const cls=isOv?'jrd':j.status==='active'?'jgn':j.status==='completed'?'jgy':'jbl'
   return`<div class="swipe-wrap" data-swipe-job="${j.id}">
@@ -1879,12 +1879,9 @@ async function compJ(id){
   // save any custom items for future reuse
   for(const ln of lines)await saveCustomItem(ln.description,ln.unit_price)
 
-  await SB.from('jobs').update({
-    status:'completed',
-    completed_at:new Date().toISOString(),
-    signature_data:sig,
-    notes:notes||null
-  }).eq('id',id)
+  const jobUpd={status:'completed',completed_at:new Date().toISOString(),notes:notes||null}
+  if(sig)jobUpd.signature_data=sig // only overwrite if sig exists (suppression report may have already saved owner sig)
+  await SB.from('jobs').update(jobUpd).eq('id',id)
 
   // save extinguisher results
   for(const[eid,st] of Object.entries(extR)){
@@ -1914,6 +1911,16 @@ async function compJ(id){
   await load()
   pop()
   showInv({num:inv?.invoice_number||'—',nm:l.name||'',addr:[l.address,l.city].filter(Boolean).join(', '),lines,total:sub,ro:false,iid:inv?.id,locId:l.id,jobId:id,scope:j.scope||[],syss:l.suppression_systems||[]})
+
+  // auto-send invoice email if customer has email on file
+  if(inv?.id&&l.contact_email){
+    setTimeout(async()=>{
+      try{
+        await sendInvoiceEmail(inv.id,l.contact_email,l.name||'',inv.invoice_number||invNum)
+        toast('Invoice auto-emailed to '+l.contact_email)
+      }catch(e){console.error('auto-email:',e)}
+    },500)
+  }
 }
 
 function setSt(btn,eid,st){
@@ -3957,7 +3964,7 @@ async function sendInvoiceEmailFromDetail(invId,custName,invNum){
           const suffix=rpts.length>1?'-'+(sysLoc||ri+1):''
           const bytes=new TextEncoder().encode(rHtml)
           let bin='';bytes.forEach(b2=>bin+=String.fromCharCode(b2))
-          attachments.push({filename:rType+suffix+'.html',content:btoa(bin)})
+          attachments.push({filename:'Stephens-Advanced-'+rType+suffix+'.html',content:btoa(bin)})
         })
       }
     }catch(e){console.error('report attach:',e)}
