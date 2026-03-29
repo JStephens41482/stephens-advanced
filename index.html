@@ -910,8 +910,163 @@ async function openReports(){
     <div class="ds-row"><div class="ds-lbl">Compliance Jurisdictions</div><div class="ds-val">${brycerLocs} Brycer</div></div>
   </div>`
 
+  // PRINT BUTTONS
+  h+=`<div class="ds"><div class="ds-t">Print / Export</div>
+    <button class="trk-btn trk-go" style="margin-bottom:8px;font-size:13px" onclick="printFullReport()">📄 Print Full Business Report</button>
+    <button class="trk-btn" style="margin-bottom:8px;background:var(--c2);border:1.5px solid var(--b1);color:var(--w2);font-size:12px" onclick="printSection('monthly')">📄 Monthly Revenue Report — ${thisYear}</button>
+    <button class="trk-btn" style="margin-bottom:8px;background:var(--c2);border:1.5px solid var(--b1);color:var(--w2);font-size:12px" onclick="printSection('ar')">📄 Accounts Receivable Report</button>
+    <button class="trk-btn" style="margin-bottom:8px;background:var(--c2);border:1.5px solid var(--b1);color:var(--w2);font-size:12px" onclick="printSection('clients')">📄 Client List</button>
+    <button class="trk-btn" style="margin-bottom:8px;background:var(--c2);border:1.5px solid var(--b1);color:var(--w2);font-size:12px" onclick="printSection('equipment')">📄 Equipment Inventory</button>
+  </div>`
+
+  // stash data for print functions
+  window._rptData={invs,jobs,locs,totalRev,totalOutstanding,totalJobs,completedJobs,activeClients,totalClients,avgJobValue,aging,weeks,months,invsByMonth,jobsByMonth,years,invsByYear,jobsByYear,topClients,recurringClients,recurringPct,totalExt,totalSys,totalLights,brycerLocs,thisYear,monthNames}
+
   h+=`</div>`
   push(h)
+}
+
+function printFullReport(){
+  const d=window._rptData;if(!d)return
+  const html=buildPrintReport('full',d)
+  const w=window.open('','_blank');if(w){w.document.write(html);w.document.close()}
+}
+
+function printSection(type){
+  const d=window._rptData;if(!d)return
+  const html=buildPrintReport(type,d)
+  const w=window.open('','_blank');if(w){w.document.write(html);w.document.close()}
+}
+
+function buildPrintReport(type,d){
+  const today=new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})
+  let body=''
+
+  if(type==='full'||type==='monthly'){
+    body+=`<h2>Revenue Report — ${d.thisYear}</h2>
+    <table><tr><th>Month</th><th style="text-align:right">Jobs</th><th style="text-align:right">Billed</th><th style="text-align:right">Collected</th></tr>`
+    let totalBilled=0,totalCollected=0,totalJobsYr=0
+    d.months.forEach(key=>{
+      const mInvs=d.invsByMonth[key]||[]
+      const mJobs=d.jobsByMonth[key]||[]
+      const rev=mInvs.filter(i=>i.status==='paid').reduce((s,i)=>s+(+i.total||0),0)
+      const billed=mInvs.reduce((s,i)=>s+(+i.total||0),0)
+      totalBilled+=billed;totalCollected+=rev;totalJobsYr+=mJobs.length
+      const mi=parseInt(key.split('-')[1])-1
+      body+=`<tr><td>${d.monthNames[mi]} ${d.thisYear}</td><td style="text-align:right">${mJobs.length}</td><td style="text-align:right">$${billed.toFixed(2)}</td><td style="text-align:right">$${rev.toFixed(2)}</td></tr>`
+    })
+    body+=`<tr style="font-weight:900;border-top:2px solid #000"><td>TOTAL</td><td style="text-align:right">${totalJobsYr}</td><td style="text-align:right">$${totalBilled.toFixed(2)}</td><td style="text-align:right">$${totalCollected.toFixed(2)}</td></tr></table>`
+  }
+
+  if(type==='full'){
+    body+=`<div style="page-break-before:always"></div>`
+    body+=`<h2>Yearly Summary</h2><table><tr><th>Year</th><th style="text-align:right">Jobs</th><th style="text-align:right">Revenue</th><th style="text-align:right">Clients</th></tr>`
+    d.years.forEach(yr=>{
+      const yInvs=d.invsByYear[yr]||[]
+      const yJobs=d.jobsByYear[yr]||[]
+      const rev=yInvs.filter(i=>i.status==='paid').reduce((s,i)=>s+(+i.total||0),0)
+      const clients=new Set(yJobs.map(j=>j.location_id)).size
+      body+=`<tr><td>${yr}</td><td style="text-align:right">${yJobs.length}</td><td style="text-align:right">$${rev.toFixed(2)}</td><td style="text-align:right">${clients}</td></tr>`
+    })
+    body+=`</table>`
+  }
+
+  if(type==='full'||type==='ar'){
+    if(type==='full')body+=`<div style="page-break-before:always"></div>`
+    body+=`<h2>Accounts Receivable Aging</h2>
+    <table><tr><th>Period</th><th style="text-align:right">Amount</th></tr>
+    <tr><td>Current (0-30 days)</td><td style="text-align:right">$${d.aging.current.toFixed(2)}</td></tr>
+    <tr><td>31-60 days</td><td style="text-align:right">$${d.aging.d30.toFixed(2)}</td></tr>
+    <tr><td>61-90 days</td><td style="text-align:right">$${d.aging.d60.toFixed(2)}</td></tr>
+    <tr><td>90+ days</td><td style="text-align:right">$${d.aging.over90.toFixed(2)}</td></tr>
+    <tr style="font-weight:900;border-top:2px solid #000"><td>TOTAL</td><td style="text-align:right">$${(d.aging.current+d.aging.d30+d.aging.d60+d.aging.over90).toFixed(2)}</td></tr></table>`
+    // unpaid invoice detail
+    const unpaid=d.invs.filter(i=>!['paid','void','record'].includes(i.status)&&i.date).sort((a,b)=>a.date.localeCompare(b.date))
+    if(unpaid.length){
+      body+=`<h3>Unpaid Invoice Detail</h3><table><tr><th>Invoice</th><th>Customer</th><th>Date</th><th style="text-align:right">Amount</th><th style="text-align:right">Days</th></tr>`
+      unpaid.forEach(i=>{
+        const loc=d.locs.find(l=>l.id===i.location_id)
+        const days=Math.round((new Date()-new Date(i.date+'T12:00:00'))/86400000)
+        body+=`<tr><td>${i.invoice_number||'—'}</td><td>${loc?.name||'Unknown'}</td><td>${i.date}</td><td style="text-align:right">$${(+i.total).toFixed(2)}</td><td style="text-align:right">${days}</td></tr>`
+      })
+      body+=`</table>`
+    }
+  }
+
+  if(type==='full'||type==='clients'){
+    if(type==='full')body+=`<div style="page-break-before:always"></div>`
+    body+=`<h2>Client List — ${d.totalClients} Locations</h2>
+    <table><tr><th>Client</th><th>City</th><th>Ext</th><th>Systems</th><th>Brycer</th><th style="text-align:right">Revenue</th></tr>`
+    d.locs.sort((a,b)=>(a.name||'').localeCompare(b.name||'')).forEach(l=>{
+      const rev=d.invs.filter(i=>i.status==='paid'&&i.location_id===l.id).reduce((s,i)=>s+(+i.total||0),0)
+      body+=`<tr><td>${l.name||''}</td><td>${l.city||''}</td><td style="text-align:center">${l.extinguishers?.length||0}</td><td style="text-align:center">${l.suppression_systems?.length||0}</td><td style="text-align:center">${l.is_brycer_jurisdiction?'Yes':''}</td><td style="text-align:right">$${rev.toFixed(2)}</td></tr>`
+    })
+    body+=`</table>`
+  }
+
+  if(type==='full'||type==='equipment'){
+    if(type==='full')body+=`<div style="page-break-before:always"></div>`
+    body+=`<h2>Equipment Inventory</h2>`
+    d.locs.filter(l=>(l.extinguishers?.length||0)+(l.suppression_systems?.length||0)>0).sort((a,b)=>(a.name||'').localeCompare(b.name||'')).forEach(l=>{
+      body+=`<h3>${l.name||'Unknown'}${l.city?' — '+l.city:''}</h3>`
+      if(l.suppression_systems?.length){
+        body+=`<table><tr><th>Suppression System</th><th>Tanks</th><th>Nozzles</th><th>Links</th></tr>`
+        l.suppression_systems.forEach(s=>{
+          body+=`<tr><td>${s.system_type||'—'}</td><td style="text-align:center">${s.tank_count}</td><td style="text-align:center">${s.nozzle_count}</td><td style="text-align:center">${s.fusible_link_count}</td></tr>`
+        })
+        body+=`</table>`
+      }
+      if(l.extinguishers?.length){
+        body+=`<table><tr><th>Extinguisher</th><th>Size</th><th>Location</th><th>Mfg Date</th></tr>`
+        l.extinguishers.forEach(e=>{
+          body+=`<tr><td>${e.type||''}</td><td>${e.size||''}</td><td>${e.location_in_building||''}</td><td>${e.manufacture_date||''}</td></tr>`
+        })
+        body+=`</table>`
+      }
+    })
+  }
+
+  if(type==='full'){
+    body+=`<div style="page-break-before:always"></div>`
+    body+=`<h2>Business Valuation Metrics</h2>
+    <table>
+    <tr><td>Total Revenue (All Time)</td><td style="text-align:right;font-weight:700">$${d.totalRev.toFixed(2)}</td></tr>
+    <tr><td>Average Job Value</td><td style="text-align:right">$${d.avgJobValue.toFixed(2)}</td></tr>
+    <tr><td>Active Clients (12 months)</td><td style="text-align:right">${d.activeClients}</td></tr>
+    <tr><td>Total Service Locations</td><td style="text-align:right">${d.totalClients}</td></tr>
+    <tr><td>Recurring Clients (2+ jobs)</td><td style="text-align:right">${d.recurringClients.size} (${d.recurringPct}%)</td></tr>
+    <tr><td>Equipment Under Management</td><td style="text-align:right">${d.totalExt+d.totalSys} units</td></tr>
+    <tr><td>Avg Revenue per Client</td><td style="text-align:right">$${(d.activeClients?d.totalRev/d.activeClients:0).toFixed(2)}</td></tr>
+    <tr><td>Compliance Jurisdictions</td><td style="text-align:right">${d.brycerLocs} (Brycer/Fort Worth)</td></tr>
+    <tr><td>Total Jobs Completed</td><td style="text-align:right">${d.completedJobs}</td></tr>
+    <tr><td>Outstanding Receivables</td><td style="text-align:right">$${d.totalOutstanding.toFixed(2)}</td></tr>
+    </table>`
+  }
+
+  return`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Stephens Advanced — ${type==='full'?'Business Report':type==='monthly'?'Monthly Revenue':type==='ar'?'AR Aging':type==='clients'?'Client List':'Equipment Inventory'}</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:Arial,sans-serif;font-size:10pt;color:#000;padding:24px;max-width:800px;margin:0 auto}
+h1{font-size:20pt;margin-bottom:4px}
+h2{font-size:14pt;margin:20px 0 8px;padding-bottom:4px;border-bottom:2px solid #000}
+h3{font-size:11pt;margin:14px 0 6px;color:#333}
+table{width:100%;border-collapse:collapse;margin-bottom:16px;font-size:9pt}
+th{text-align:left;padding:6px 8px;border-bottom:2px solid #333;font-size:8pt;text-transform:uppercase;letter-spacing:.5px;color:#666}
+td{padding:5px 8px;border-bottom:1px solid #ddd}
+.hdr{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:20px;padding-bottom:12px;border-bottom:3px solid #f05a28}
+.co{font-size:22pt;font-weight:900;letter-spacing:-1px}
+.co span{color:#f05a28}
+.sub{font-size:9pt;color:#888;margin-top:2px}
+.date{font-size:9pt;color:#888;text-align:right}
+@media print{body{padding:12px}button{display:none}}
+</style></head><body>
+<div class="hdr">
+  <div><div class="co">Stephens <span>Advanced</span> LLC</div><div class="sub">Fire Suppression & Safety · (214) 994-4799 · jonathan@stephensadvanced.com</div></div>
+  <div class="date">Generated ${today}</div>
+</div>
+${body}
+<script>window.print()<\/script>
+</body></html>`
 }
 
 function rDash(){
