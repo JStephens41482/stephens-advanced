@@ -1,3 +1,21 @@
+<!--
+  SUPABASE SQL — run this if brycer_queue table does not exist:
+
+  create table brycer_queue (
+    id uuid default gen_random_uuid() primary key,
+    job_id uuid references jobs(id),
+    location_id uuid references locations(id),
+    location_name text,
+    system_type text,
+    job_date date,
+    report_generated boolean default false,
+    submitted boolean default false,
+    submitted_date date,
+    created_at timestamptz default now()
+  );
+  alter table brycer_queue enable row level security;
+  create policy "allow all" on brycer_queue for all using (true) with check (true);
+-->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -278,7 +296,7 @@ document.addEventListener('touchend',e=>{
 document.getElementById('invOv').addEventListener('click',function(e){if(e.target===this)this.classList.remove('open')})
 
 async function load(){
-  const[j,l,i,b,r,ci,td2,mz]=await Promise.all([
+  const[j,l,i,b,r,ci,td2,mz,bq]=await Promise.all([
     SB.from('jobs').select('*,location:locations(*)').order('scheduled_date').order('scheduled_time'),
     SB.from('locations').select('*,extinguishers(id,type,size,serial_number,location_in_building,manufacture_date),suppression_systems(id,system_type,category,tank_count,nozzle_count,fusible_link_count),emergency_lights(id,fixture_count),billing_account:billing_accounts(*)').order('name'),
     SB.from('invoices').select('*').order('date',{ascending:false}).limit(100),
@@ -286,7 +304,8 @@ async function load(){
     SB.from('rate_card').select('key,price'),
     SB.from('custom_items').select('description,unit_price').order('description'),
     SB.from('todos').select('*').eq('done',false).order('created_at'),
-    SB.from('mazon_queue').select('*').order('created_at',{ascending:false})
+    SB.from('mazon_queue').select('*').order('created_at',{ascending:false}),
+    SB.from('brycer_queue').select('*').eq('submitted',false).order('created_at')
   ])
   if(j.error)console.error('jobs error:',j.error)
   if(l.error)console.error('locations error:',l.error)
@@ -294,6 +313,7 @@ async function load(){
   if(r.error)console.error('rate_card error:',r.error)
   if(td2.error)console.error('todos error:',td2.error)
   if(mz.error)console.error('mazon_queue error:',mz.error)
+  if(bq.error)console.error('brycer_queue error:',bq.error)
   if(ci.error)console.error('custom_items error:',ci.error)
   console.log('loaded:',j.data?.length,'jobs,',l.data?.length,'locs,',i.data?.length,'invs,',td2.data?.length,'todos')
   D.jobs=j.data||[];D.locs=l.data||[];D.invs=i.data||[];D.bas=b.data||[]
@@ -301,6 +321,7 @@ async function load(){
   D.customItems=ci.data||[]
   D.todos=td2.data||[]
   D.mazonQueue=mz.data||[]
+  D.brycerQueue=bq.data||[]
 }
 
 const td=()=>new Date().toISOString().split('T')[0]
@@ -381,6 +402,62 @@ function showItemsNeeded(){
   }
   h+=`</div>`
   push(h)
+}
+
+async function openBrycerQueue(){
+  const{data:queue}=await SB.from('brycer_queue').select('*').eq('submitted',false).order('created_at')
+  const items=queue||[]
+  let h=`<div class="ov-hdr"><button class="ov-back" onclick="pop()">‹</button><div class="ov-title">Brycer Compliance Queue</div></div><div class="ov-body">
+    <div style="background:var(--warns);border:1.5px solid var(--warn);border-radius:var(--r);padding:12px;margin-bottom:16px">
+      <div style="font-size:12px;font-weight:700;color:var(--warn)">Fort Worth Fire Department — The Compliance Engine</div>
+      <div style="font-size:11px;color:var(--w2);margin-top:4px">Submit each completed inspection to TCE. Tap Submit to open the portal with pre-filled info.</div>
+    </div>`
+  if(!items.length){
+    h+=`<div class="ey" style="padding:30px"><div class="ey-t">No pending Brycer submissions.</div></div>`
+  }else{
+    items.forEach(q=>{
+      const loc=D.locs.find(x=>x.id===q.location_id)||{}
+      const addr=[loc.address,loc.city,loc.state,loc.zip].filter(Boolean).join(', ')
+      h+=`<div style="background:var(--c1);border:1px solid var(--b1);border-radius:var(--r);padding:14px;margin-bottom:8px">
+        <div style="font-size:15px;font-weight:700;margin-bottom:4px">${esc(q.location_name||loc.name||'')}</div>
+        <div style="font-size:11px;color:var(--g1);margin-bottom:2px">${esc(addr)}</div>
+        <div style="font-size:12px;color:var(--w2);margin-bottom:2px">System: ${esc(q.system_type||'—')}</div>
+        <div style="font-size:12px;color:var(--w2);margin-bottom:8px">Inspected: ${q.job_date||'—'}</div>
+        <button class="trk-btn trk-go" style="font-size:12px" onclick="submitBrycer('${q.id}','${esc(q.location_name||loc.name||'')}','${esc(addr)}','${esc(q.system_type||'')}','${q.job_date||''}')">Submit to TCE</button>
+      </div>`
+    })
+  }
+  h+=`</div>`
+  push(h)
+}
+
+function submitBrycer(qId,locName,addr,sysType,jobDate){
+  // open TCE in new tab
+  window.open('https://tce-pwa.thecomplianceengine.com','_blank')
+  // show overlay with pre-filled info to copy
+  push(`<div class="ov-hdr"><button class="ov-back" onclick="pop()">‹</button><div class="ov-title">TCE Submission Info</div></div><div class="ov-body">
+    <div style="background:var(--infos);border:1.5px solid var(--info);border-radius:var(--r);padding:14px;margin-bottom:16px">
+      <div style="font-size:12px;font-weight:700;color:var(--info);margin-bottom:8px">Enter this info in The Compliance Engine:</div>
+    </div>
+    <div class="ds">
+      <div class="ds-row"><div class="ds-lbl">Location</div><div class="ds-val">${esc(locName)}</div></div>
+      <div class="ds-row"><div class="ds-lbl">Address</div><div class="ds-val">${esc(addr)}</div></div>
+      <div class="ds-row"><div class="ds-lbl">System Type</div><div class="ds-val">${esc(sysType)}</div></div>
+      <div class="ds-row"><div class="ds-lbl">Inspection Date</div><div class="ds-val">${esc(jobDate)}</div></div>
+      <div class="ds-row"><div class="ds-lbl">Technician</div><div class="ds-val">Jon Stephens</div></div>
+      <div class="ds-row"><div class="ds-lbl">Company</div><div class="ds-val">Stephens Advanced LLC</div></div>
+    </div>
+    <button class="btn-p" style="margin-top:16px;background:var(--ok)" onclick="markBrycerSubmitted('${qId}')">Mark as Submitted</button>
+    <button class="btn-dim" style="margin-top:6px" onclick="pop()">Not Yet — Go Back</button>
+  </div>`)
+}
+
+async function markBrycerSubmitted(qId){
+  await SB.from('brycer_queue').update({submitted:true,submitted_date:td()}).eq('id',qId)
+  await load()
+  toast('Marked as submitted')
+  pop();pop() // close info overlay + queue
+  openBrycerQueue() // refresh queue
 }
 
 function openTruckLoad(){
@@ -636,6 +713,18 @@ function rDash(){
       <span style="font-size:20px">📝</span><span style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:${todos.length?'var(--fire)':'var(--g1)'}">To-Do${todos.length?' · '+todos.length:''}</span>
     </button>
   </div>`
+  // Brycer compliance badge
+  const brycerPending=D.brycerQueue||[]
+  if(brycerPending.length){
+    h+=`<div style="background:var(--warns);border:1.5px solid var(--warn);border-radius:var(--r);padding:12px 14px;margin-bottom:16px;cursor:pointer" onclick="openBrycerQueue()">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div><span style="font-size:13px;font-weight:800;color:var(--warn)">Brycer Compliance</span>
+          <div style="font-size:11px;color:var(--w2);margin-top:2px">${brycerPending.length} pending submission${brycerPending.length>1?'s':''}</div>
+        </div>
+        <span style="background:var(--warn);color:#000;font-size:13px;font-weight:900;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center">${brycerPending.length}</span>
+      </div>
+    </div>`
+  }
   if(tj.length){h+=`<div class="sec"><div class="sec-t">Today</div></div>`;tj.forEach(j=>h+=jCard(j))}
   if(ov.length){h+=`<div class="sec"><div class="sec-t" style="color:var(--bad)">Overdue · ${ov.length}</div></div>`;ov.slice(0,5).forEach(j=>h+=jCard(j,true))}
   if(!tj.length&&!ov.length)h+=`<div class="ey"><div class="ey-i">⚡</div><div class="ey-t">No jobs today. Tap + to schedule one.</div></div>`
@@ -1046,6 +1135,14 @@ async function compJ(id){
       await SB.from('jobs').insert({location_id:l.id,billing_account_id:l.billing_account_id||null,type:j.type||'inspection',scope:sc,scheduled_date:nds,scheduled_time:j.scheduled_time||'09:00',status:'scheduled',notes:'Auto-scheduled follow-up (semi-annual suppression)'})
       toast('Follow-up scheduled for '+new Date(nds+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}))
     }catch(e){console.error('auto-reschedule:',e)}
+  }
+
+  // auto-add to Brycer queue if Fort Worth jurisdiction
+  if(l.is_brycer_jurisdiction){
+    const sysTypes=(l.suppression_systems||[]).map(s=>s.system_type).filter(Boolean).join(', ')||'Suppression System'
+    try{
+      await SB.from('brycer_queue').insert({job_id:id,location_id:l.id,location_name:l.name||'',system_type:sysTypes,job_date:td(),report_generated:false,submitted:false})
+    }catch(e){console.error('brycer queue:',e)}
   }
 
   await load()
