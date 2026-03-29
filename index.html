@@ -1,0 +1,2311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0d0f14">
+<title>Stephens Advanced</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+:root{--bg:#0d0f14;--c1:#151820;--c2:#1c1f2a;--c3:#252937;--b1:#2a2f3e;--b2:#353b4d;--w:#f0f1f4;--w2:#c8ccd6;--g1:#7c8497;--g2:#555d72;--g3:#3d4456;--fire:#f05a28;--fires:rgba(240,90,40,.08);--ok:#10b981;--oks:rgba(16,185,129,.08);--warn:#f59e0b;--warns:rgba(245,158,11,.08);--bad:#ef4444;--bads:rgba(239,68,68,.08);--info:#6366f1;--infos:rgba(99,102,241,.08);--r:12px;--rs:8px}
+html,body{height:100%;overflow:hidden;overscroll-behavior:none}
+body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--w);font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased}
+button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+input,select,textarea{font-family:inherit;color:var(--w);background:var(--c1);border:1.5px solid var(--b1);border-radius:var(--rs);padding:11px 13px;font-size:14px;outline:none;width:100%;transition:border-color .15s}
+input:focus,select:focus,textarea:focus{border-color:var(--fire)}
+input::placeholder,textarea::placeholder{color:var(--g2)}
+textarea{resize:none;min-height:60px}
+select{-webkit-appearance:none;appearance:none}
+::-webkit-scrollbar{width:0;height:0}
+#app{display:flex;flex-direction:column;height:100dvh}
+.hdr{padding:max(env(safe-area-inset-top),10px) 16px 10px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;border-bottom:1px solid var(--b1);background:var(--bg)}
+.hdr-logo{display:flex;align-items:center;gap:8px;font-size:17px;font-weight:900;letter-spacing:-.4px}
+.hdr-logo span{color:var(--fire)}
+.hdr-date{font-size:11px;color:var(--g1);font-weight:600}
+.nav{display:flex;border-top:1px solid var(--b1);background:var(--c1);padding:4px 0 max(env(safe-area-inset-bottom),20px);flex-shrink:0}
+.nav button{flex:1;display:flex;flex-direction:column;align-items:center;gap:1px;padding:8px 0;color:var(--g2);transition:color .15s}
+.nav button.on{color:var(--fire)}
+.ni{font-size:20px;line-height:1}
+.nt{font-size:9px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;margin-top:2px}
+.vw{display:none;flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.vw.on{display:block}
+.vw-pad{padding:12px 16px 140px}
+.stats{display:grid;gap:8px;margin-bottom:16px}
+.s3{grid-template-columns:repeat(3,1fr)}.s2{grid-template-columns:repeat(2,1fr)}
+.st{background:var(--c1);border:1px solid var(--b1);border-radius:var(--r);padding:14px 8px;text-align:center}
+.sn{font-size:22px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums}
+.sn.o{color:var(--fire)}.sn.g{color:var(--ok)}.sn.y{color:var(--warn)}.sn.r{color:var(--bad)}.sn.i{color:var(--info)}
+.sl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:var(--g1);margin-top:5px}
+.sec{margin:20px 0 10px;display:flex;align-items:center;justify-content:space-between}
+.sec-t{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1.8px;color:var(--g2)}
+.sec-a{font-size:13px;font-weight:700;color:var(--fire)}
+.trk{background:var(--c1);border:1px solid var(--b1);border-radius:var(--r);padding:14px;margin-bottom:16px}
+.trk-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.trk-t{font-size:14px;font-weight:700}
+.pill{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;padding:4px 12px;border-radius:20px}
+.pok{background:var(--oks);color:var(--ok)}.pchk{background:var(--warns);color:var(--warn)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.chip{display:inline-flex;align-items:center;gap:5px;background:var(--c2);border:1px solid var(--b1);border-radius:var(--rs);padding:7px 11px;font-size:12px;font-weight:500}
+.chip b{font-weight:800;color:var(--fire);font-variant-numeric:tabular-nums}
+.trk-btn{width:100%;padding:12px;border-radius:var(--rs);font-size:13px;font-weight:800;letter-spacing:.3px;transition:all .15s}
+.trk-go{background:var(--fire);color:#fff}.trk-ok{background:var(--ok);color:#fff}
+.jc{background:var(--c1);border:1px solid var(--b1);border-radius:var(--r);padding:14px 14px 14px 18px;margin-bottom:8px;position:relative;overflow:hidden;cursor:pointer;transition:border-color .12s}
+.jc:active{border-color:var(--fire)}
+.jc::after{content:'';position:absolute;left:0;top:0;bottom:0;width:3.5px;border-radius:0 2px 2px 0}
+.jc.jbl::after{background:var(--info)}.jc.jgn::after{background:var(--ok)}.jc.jrd::after{background:var(--bad)}.jc.jgy::after{background:var(--g3)}
+.jc-r1{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px}
+.jc-nm{font-size:15px;font-weight:700;line-height:1.25;flex:1;margin-right:8px}
+.jc-tm{font-size:11px;font-weight:600;color:var(--g1);white-space:nowrap}
+.jc-addr{font-size:11px;color:var(--g1);margin-bottom:8px}
+.jc-tags{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px}
+.tg{font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;padding:3.5px 8px;border-radius:4px}
+.ts{background:var(--fires);color:var(--fire)}.te{background:var(--oks);color:var(--ok)}.tl{background:var(--warns);color:var(--warn)}.th{background:var(--infos);color:var(--info)}.to2{background:var(--bads);color:var(--bad)}.tb{background:rgba(168,85,247,.08);color:#a78bfa}
+.jc-val{font-size:15px;font-weight:800;color:var(--ok);font-variant-numeric:tabular-nums;margin-bottom:10px}
+.jc-btns{display:flex;gap:8px}
+.jb{flex:1;padding:12px 8px;border-radius:var(--rs);font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;min-height:44px;display:flex;align-items:center;justify-content:center;transition:opacity .1s}
+.jb:active{opacity:.7}
+.jb-n{background:var(--c2);border:1px solid var(--b1);color:var(--w2)}
+.jb-g{background:var(--fire);color:#fff}
+.cc{background:var(--c1);border:1px solid var(--b1);border-radius:var(--r);padding:14px;margin-bottom:8px;cursor:pointer;transition:border-color .12s;display:flex;align-items:center;gap:12px}
+.cc:active{border-color:var(--fire)}
+.cc-l{flex:1;min-width:0}
+.cc-nm{font-size:15px;font-weight:700}
+.cc-addr{font-size:11px;color:var(--g1);margin-top:3px}
+.cc-meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;font-size:11px;color:var(--g1)}
+.cc-meta b{color:var(--w2);font-weight:700}
+.cc-bry{color:var(--warn);font-weight:700}
+.cc-arr{font-size:22px;color:var(--g2);flex-shrink:0}
+.ic{background:var(--c1);border:1px solid var(--b1);border-radius:var(--r);padding:14px;margin-bottom:8px;cursor:pointer;transition:border-color .12s}
+.ic:active{border-color:var(--fire)}
+.ic-r1{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px}
+.ic-nm{font-size:14px;font-weight:700}
+.ic-sub{font-size:11px;color:var(--g1);margin-top:2px}
+.ic-amt{font-size:18px;font-weight:800;margin-top:4px;font-variant-numeric:tabular-nums}
+.badge{font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;padding:3.5px 10px;border-radius:20px}
+.bpaid{background:var(--oks);color:var(--ok)}.bsent{background:var(--infos);color:var(--info)}.bover{background:var(--bads);color:var(--bad)}.bdraft{background:rgba(124,132,151,.08);color:var(--g1)}.brec{background:rgba(124,132,151,.08);color:var(--g1)}.bfact{background:rgba(99,102,241,.15);color:var(--info)}
+.srch{margin-bottom:12px}
+.ey{text-align:center;padding:60px 24px;color:var(--g2)}
+.ey-i{font-size:44px;margin-bottom:12px;opacity:.2}
+.ey-t{font-size:13px;line-height:1.6}
+.fab{position:fixed;bottom:78px;right:16px;width:54px;height:54px;border-radius:16px;background:var(--fire);color:#fff;font-size:28px;font-weight:300;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 24px rgba(240,90,40,.3);z-index:80;transition:transform .1s}
+.fab:active{transform:scale(.9)}
+.ov{display:none;position:fixed;inset:0;z-index:100;background:var(--bg);flex-direction:column;transform:translateX(100%);transition:transform .22s cubic-bezier(.4,0,.2,1)}
+.ov.open{display:flex;transform:translateX(0)}
+.ov-hdr{display:flex;align-items:center;gap:4px;padding:max(env(safe-area-inset-top),10px) 16px 10px;border-bottom:1px solid var(--b1);flex-shrink:0;background:var(--bg)}
+.ov-back{font-size:26px;color:var(--fire);line-height:1;padding:4px 8px 4px 0;min-width:44px;min-height:44px;display:flex;align-items:center}
+.ov-title{font-size:17px;font-weight:700;flex:1}
+.ov-act{font-size:13px;font-weight:700;color:var(--fire);padding:8px 0;min-height:44px;display:flex;align-items:center}
+.ov-body{flex:1;overflow-y:auto;padding:16px 16px 160px;-webkit-overflow-scrolling:touch}
+.ov-foot{position:fixed;bottom:0;left:0;right:0;padding:12px 16px max(env(safe-area-inset-bottom),20px);background:var(--c1);border-top:1px solid var(--b1);z-index:101}
+.ds{margin-bottom:20px}
+.ds-t{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1.8px;color:var(--g2);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--b1)}
+.ds-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid rgba(42,47,62,.6);gap:12px}
+.ds-row:last-child{border-bottom:none}
+.ds-lbl{font-size:11px;color:var(--g1);flex-shrink:0}
+.ds-val{font-size:13px;font-weight:600;color:var(--w);text-align:right;flex:1;word-break:break-word}
+.ds-info{font-size:13px;color:var(--g1);line-height:1.6}
+.eq{background:var(--c1);border:1px solid var(--b1);border-radius:10px;padding:12px;margin-bottom:6px}
+.eq-r1{display:flex;justify-content:space-between;align-items:flex-start}
+.eq-nm{font-size:13px;font-weight:700}
+.eq-sub{font-size:11px;color:var(--g1);margin-top:2px;line-height:1.4}
+.eq-pr{font-size:14px;font-weight:800;color:var(--ok);font-variant-numeric:tabular-nums;white-space:nowrap}
+.sb-row{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+.sb{padding:10px 12px;border-radius:var(--rs);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;border:1.5px solid var(--b1);background:var(--c2);color:var(--g2);transition:all .1s;min-height:44px;display:flex;align-items:center}
+.sb:active{transform:scale(.95)}
+.sb.sp{background:var(--oks);color:var(--ok);border-color:var(--ok)}.sb.ss{background:var(--warns);color:var(--warn);border-color:var(--warn)}.sb.sr{background:var(--fires);color:var(--fire);border-color:var(--fire)}.sb.sc2{background:var(--bads);color:var(--bad);border-color:var(--bad)}.sb.sx{background:rgba(124,132,151,.1);color:var(--g1);border-color:var(--g2)}
+.sig-wrap{background:#fff;border-radius:var(--r);height:140px;position:relative;touch-action:none}
+.sig-wrap canvas{width:100%;height:100%;border-radius:var(--r);display:block}
+.sig-ph{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#b0b0b0;font-size:13px;font-weight:500;pointer-events:none}
+.sig-clr{position:absolute;top:7px;right:7px;background:rgba(0,0,0,.4);color:#fff;border-radius:6px;padding:6px 12px;font-size:10px;font-weight:700;min-height:36px;display:flex;align-items:center}
+.btn-p{width:100%;padding:16px;border-radius:var(--r);background:var(--fire);color:#fff;font-size:15px;font-weight:800;letter-spacing:.2px;transition:all .15s;min-height:52px;display:flex;align-items:center;justify-content:center;gap:8px}
+.btn-p:active{transform:scale(.98);opacity:.9}
+.btn-p.loading{opacity:.6;pointer-events:none}
+.btn-ok{width:100%;padding:14px;border-radius:var(--r);background:var(--ok);color:#fff;font-size:14px;font-weight:800;min-height:50px;display:flex;align-items:center;justify-content:center;gap:8px;transition:opacity .15s}
+.btn-ok:active{opacity:.7}
+.btn-dim{width:100%;padding:14px;border-radius:var(--r);background:var(--c2);color:var(--g1);font-size:14px;font-weight:700;border:1px solid var(--b1);margin-top:10px;min-height:48px;display:flex;align-items:center;justify-content:center;gap:6px;transition:opacity .1s}
+.btn-dim:active{opacity:.7}
+.fg{margin-bottom:14px}
+.fg-l{display:block;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:var(--g2);margin-bottom:6px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.row3{display:grid;grid-template-columns:2fr 1fr 1fr;gap:6px}
+.tgl{display:flex;flex-wrap:wrap;gap:6px}
+.tgl button{padding:10px 15px;border-radius:var(--rs);font-size:12px;font-weight:700;border:1.5px solid var(--b1);background:var(--c1);color:var(--g2);transition:all .1s;min-height:44px}
+.tgl button:active{transform:scale(.96)}
+.tgl button.on{border-color:var(--fire);background:var(--fires);color:var(--fire)}
+.tgl button.gn{border-color:var(--ok);background:var(--oks);color:var(--ok)}
+.ac{position:relative}
+.ac-dd{position:absolute;left:0;right:0;top:100%;margin-top:4px;background:var(--c2);border:1px solid var(--b1);border-radius:var(--r);max-height:240px;overflow-y:auto;z-index:20;box-shadow:0 12px 40px rgba(0,0,0,.5);display:none}
+.ac-dd.vis{display:block}
+.ac-it{padding:13px 14px;border-bottom:1px solid var(--b1);min-height:48px;display:flex;flex-direction:column;justify-content:center}
+.ac-it:last-child{border-bottom:none}
+.ac-it:active{background:var(--c3)}
+.ac-n{font-size:14px;font-weight:600}
+.ac-d{font-size:11px;color:var(--g1);margin-top:2px}
+.ac-new{background:var(--fires)}
+.ac-new .ac-n{color:var(--fire);font-weight:700}
+.inl{background:var(--c1);border:1.5px solid rgba(240,90,40,.2);border-radius:var(--r);padding:14px;margin-top:6px}
+.inl-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.inl-hdr span{font-size:10px;font-weight:800;color:var(--fire);text-transform:uppercase;letter-spacing:1.2px}
+.inl-hdr button{font-size:11px;color:var(--g1);padding:4px 8px;min-height:36px}
+.inl input{margin-bottom:8px;background:var(--c2);font-size:13px;padding:10px 12px}
+.inv-ov{display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.92);overflow-y:auto;padding:16px}
+.inv-ov.open{display:block}
+.inv-p{background:#fff;color:#111;border-radius:16px;padding:28px 22px;max-width:440px;margin:20px auto}
+.inv-p h2{font-size:20px;font-weight:900}
+.inv-p .co{font-size:11px;color:#888;margin-bottom:16px}
+.inv-p .dt{font-size:12px;color:#999;margin-bottom:4px}
+.inv-p .to{font-size:14px;padding-bottom:12px;border-bottom:1px solid #eee;margin-bottom:10px}
+.inv-p .to strong{display:block;font-size:15px;font-weight:700}
+.inv-ln{display:flex;justify-content:space-between;padding:8px 0;font-size:13px;border-bottom:1px solid #f5f5f5}
+.inv-ln .d{flex:1;padding-right:8px;line-height:1.4}.inv-ln .a{font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums}
+.inv-tot{display:flex;justify-content:space-between;margin-top:14px;padding-top:14px;border-top:2.5px solid #111;font-size:20px;font-weight:900}
+.inv-acts{display:flex;gap:8px;margin-top:20px}
+.inv-acts button{flex:1;padding:14px;border-radius:var(--r);font-size:14px;font-weight:700;min-height:50px}
+.inv-close{background:#f0f0f0;color:#333}
+.inv-fwd{background:var(--fire);color:#fff}
+.toast{position:fixed;bottom:90px;left:50%;transform:translateX(-50%) translateY(12px);background:var(--ok);color:#fff;padding:11px 28px;border-radius:30px;font-size:13px;font-weight:700;z-index:400;opacity:0;transition:all .2s;pointer-events:none;white-space:nowrap;max-width:90vw;text-align:center}
+.toast.vis{opacity:1;transform:translateX(-50%) translateY(0)}
+.mode-card{background:var(--c1);border:1.5px solid var(--b1);border-radius:var(--r);padding:18px;margin-bottom:10px;cursor:pointer;display:flex;align-items:center;gap:14px;min-height:72px}
+.mode-card:active{border-color:var(--fire)}
+.mode-icon{font-size:28px;flex-shrink:0}
+.mode-title{font-size:15px;font-weight:800;color:var(--w);margin-bottom:3px}
+.mode-desc{font-size:12px;color:var(--g1);line-height:1.4}
+.photo-drop{border:2px dashed var(--b2);border-radius:var(--r);padding:40px 20px;text-align:center;cursor:pointer;margin-bottom:16px}
+.photo-drop:active{border-color:var(--fire)}
+.photo-prev{width:100%;border-radius:var(--r);margin-bottom:16px;max-height:280px;object-fit:contain;display:none;background:var(--c2)}
+.ai-box{background:var(--c2);border:1.5px solid var(--info);border-radius:var(--r);padding:14px;margin-bottom:16px}
+.ai-lbl{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:var(--info);margin-bottom:6px}
+.ai-txt{font-size:13px;color:var(--g1);line-height:1.6}
+.spin{display:inline-block;width:16px;height:16px;border:2px solid var(--b2);border-top-color:var(--fire);border-radius:50%;animation:sp .7s linear infinite;vertical-align:middle;margin-right:6px}
+@keyframes sp{to{transform:rotate(360deg)}}
+.li-row{display:flex;gap:6px;margin-bottom:8px;align-items:center}
+.li-row input{flex:1;min-height:44px}
+.li-qty{width:58px!important;flex:none!important}
+.li-price{width:88px!important;flex:none!important}
+.li-del{background:var(--c2);border:1px solid var(--b1);border-radius:var(--rs);color:var(--g1);padding:0 12px;font-size:16px;flex-shrink:0;min-height:44px;display:flex;align-items:center}
+.qa{display:flex;gap:8px;margin:14px 0}
+.qa-btn{flex:1;padding:11px 8px;border-radius:var(--rs);font-size:12px;font-weight:700;border:1px solid var(--b1);background:var(--c2);color:var(--w2);min-height:44px;display:flex;align-items:center;justify-content:center;gap:5px;transition:opacity .1s}
+.qa-btn:active{opacity:.7}
+.qa-btn.pri{background:var(--fire);border-color:var(--fire);color:#fff}
+.qa-btn.ok2{background:var(--ok);border-color:var(--ok);color:#fff}
+.err{color:var(--bad);font-size:12px;margin-top:8px;text-align:center}
+.del-btn{font-size:13px;font-weight:700;color:var(--bad);padding:8px 0;min-height:44px;display:flex;align-items:center}
+.del-confirm{background:var(--bads);border:1.5px solid var(--bad);border-radius:var(--r);padding:14px;margin-bottom:16px;display:none}
+.del-confirm.vis{display:block}
+.del-confirm-msg{font-size:13px;font-weight:600;color:var(--bad);margin-bottom:12px;line-height:1.4}
+.del-confirm-btns{display:flex;gap:8px}
+.del-yes{flex:1;padding:12px;border-radius:var(--rs);background:var(--bad);color:#fff;font-size:13px;font-weight:800;min-height:44px;display:flex;align-items:center;justify-content:center}
+.del-no{flex:1;padding:12px;border-radius:var(--rs);background:var(--c2);color:var(--g1);font-size:13px;font-weight:700;border:1px solid var(--b1);min-height:44px;display:flex;align-items:center;justify-content:center}
+.del-eq{padding:6px 10px;border-radius:var(--rs);background:var(--bads);color:var(--bad);font-size:11px;font-weight:800;border:1px solid var(--bad);min-height:36px;display:flex;align-items:center}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="hdr">
+    <div class="hdr-logo">
+      <svg width="26" height="30" viewBox="0 0 32 38" fill="none"><path d="M16 2C16 2 6 10 6 20C6 26 10 30 16 30C22 30 26 26 26 20C26 10 16 2 16 2Z" fill="#f05a28"/><path d="M16 8C16 8 10 14 10 20C10 23 12 25 14 26C13 23 14 20 16 18C18 20 19 23 18 26C20 25 22 23 22 20C22 14 16 8 16 8Z" fill="#ff7847"/><ellipse cx="16" cy="30" rx="5" ry="6" fill="#3498db"/><ellipse cx="16" cy="29" rx="3" ry="3.5" fill="#5dade2"/></svg>
+      Stephens <span>Advanced</span>
+    </div>
+    <div class="hdr-date" id="hdrDate"></div>
+  </div>
+  <div class="vw on" id="vDash"><div class="vw-pad" id="dashC"></div></div>
+  <div class="vw" id="vJobs"><div class="vw-pad" id="jobsC"></div></div>
+  <div class="vw" id="vCust"><div class="vw-pad" id="custC"></div></div>
+  <div class="vw" id="vMoney"><div class="vw-pad" id="moneyC"></div></div>
+  <button class="fab" onclick="openNew()">+</button>
+  <div class="nav">
+    <button class="on" data-v="vDash" onclick="go(this)"><span class="ni">⚡</span><span class="nt">Today</span></button>
+    <button data-v="vJobs" onclick="go(this)"><span class="ni">📋</span><span class="nt">Jobs</span></button>
+    <button data-v="vCust" onclick="go(this)"><span class="ni">👤</span><span class="nt">Clients</span></button>
+    <button data-v="vMoney" onclick="go(this)"><span class="ni">💰</span><span class="nt">Money</span></button>
+  </div>
+</div>
+<div class="ov" id="ov1"></div>
+<div class="ov" id="ov2"></div>
+<div class="ov" id="ov3"></div>
+<div class="ov" id="ov4"></div>
+<div class="inv-ov" id="invOv"></div>
+<div class="toast" id="toast"></div>
+<input type="file" id="camInput" accept="image/*" capture="environment" style="display:none" onchange="handlePhoto(event)">
+<script>
+const SB=supabase.createClient('https://motjasdokoxwiodwzyps.supabase.co','sb_publishable_9lsQtlPsnPjeODdys7EKMw_cpXeppYb',{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}})
+document.getElementById('hdrDate').textContent=new Date().toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric'})
+let D={jobs:[],locs:[],invs:[],bas:[],rc:{}},extR={},manLines=[],recOnly=false,_aiN=0
+
+// NAV STACK
+const OVS=['ov1','ov2','ov3','ov4']
+let stk=[]
+
+function push(html){
+  let slot=OVS.find(o=>!stk.includes(o))||OVS[OVS.length-1]
+  const el=document.getElementById(slot)
+  el.innerHTML=html
+  el.style.display='flex'
+  requestAnimationFrame(()=>el.classList.add('open'))
+  stk.push(slot)
+  return slot
+}
+
+function pop(){
+  if(!stk.length)return
+  const id=stk.pop()
+  const el=document.getElementById(id)
+  el.classList.remove('open')
+  setTimeout(()=>{el.style.display='none';el.innerHTML=''},250)
+}
+
+function popAll(){
+  while(stk.length)pop()
+  document.getElementById('invOv').classList.remove('open')
+}
+
+// iOS swipe back
+let _tx=0,_ty=0
+document.addEventListener('touchstart',e=>{_tx=e.touches[0].clientX;_ty=e.touches[0].clientY},{passive:true})
+document.addEventListener('touchend',e=>{
+  const dx=e.changedTouches[0].clientX-_tx,dy=Math.abs(e.changedTouches[0].clientY-_ty)
+  if(_tx<35&&dx>55&&dy<80&&stk.length)pop()
+},{passive:true})
+
+document.getElementById('invOv').addEventListener('click',function(e){if(e.target===this)this.classList.remove('open')})
+
+async function load(){
+  const[j,l,i,b,r]=await Promise.all([
+    SB.from('jobs').select('*,location:locations(*)').order('scheduled_date').order('scheduled_time'),
+    SB.from('locations').select('*,extinguishers(id,type,size,serial_number,location_in_building,manufacture_date),suppression_systems(id,system_type,category,tank_count,nozzle_count,fusible_link_count),emergency_lights(id,fixture_count),billing_account:billing_accounts(*)').order('name'),
+    SB.from('invoices').select('*').order('date',{ascending:false}).limit(100),
+    SB.from('billing_accounts').select('*').order('name'),
+    SB.from('rate_card').select('key,price')
+  ])
+  D.jobs=j.data||[];D.locs=l.data||[];D.invs=i.data||[];D.bas=b.data||[]
+  const rc={};(r.data||[]).forEach(x=>rc[x.key]=+x.price);D.rc=rc
+}
+
+const td=()=>new Date().toISOString().split('T')[0]
+const $=id=>document.getElementById(id)
+const fmt=n=>'$'+Math.round(n||0).toLocaleString()
+const fmtD=n=>isNaN(+n)?'$0.00':('$'+(+n).toFixed(2))
+const esc=s=>(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')
+const unesc=s=>(s||'').replace(/&#39;/g,"'").replace(/&quot;/g,'"').replace(/&amp;/g,'&')
+
+function cart(s){const t=s.system_type||'';if(t.includes('R-102')||t.includes('Piranha'))return s.tank_count>1?'LT-30':'LT-10';if(t.includes('Pyro')||t.includes('Knight'))return '16g CO2';if(t.includes('Buck'))return 'Buckeye N2';if(t.includes('Kidde'))return 'Kidde XV N2';return 'Cart'}
+
+function est(j){
+  const l=j.location||{},rc=D.rc,sc=j.scope||[];let t=0
+  if(sc.includes('extinguishers'))t+=(l.extinguishers?.length||0)*(rc.extinguisher_inspection||20)
+  if(sc.includes('suppression'))for(const s of(l.suppression_systems||[])){
+    let b=rc.suppression_standard||250
+    if(s.category==='captiveaire_tank')b=rc.suppression_captiveaire_tank||450
+    if(s.category==='captiveaire_core')b=rc.suppression_captiveaire_core||650
+    t+=b+((s.tank_count-1)*(rc.suppression_additional_tank||50))+(s.fusible_link_count||0)*(rc.fusible_link||25)+(s.nozzle_count||0)*(rc.metal_blowoff_cap||25)
+  }
+  if(sc.includes('elights'))t+=(l.emergency_lights?.[0]?.fixture_count||0)*(rc.emergency_light||20)
+  return t
+}
+
+function trkLoad(jobs){
+  let tg=0,lk=0,cp=0,ct=[]
+  jobs.forEach(j=>{const l=j.location||{},sc=j.scope||[]
+    if(sc.includes('extinguishers'))tg+=l.extinguishers?.length||0
+    if(sc.includes('suppression'))for(const s of(l.suppression_systems||[])){lk+=s.fusible_link_count||0;cp+=s.nozzle_count||0;ct.push(cart(s))}
+  })
+  return{tg,lk,cp,ct}
+}
+
+function go(btn){
+  const v=btn.dataset.v
+  document.querySelectorAll('.vw').forEach(e=>e.classList.remove('on'));$(v).classList.add('on')
+  document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('on'));btn.classList.add('on')
+  if(v==='vDash')rDash();else if(v==='vJobs')rJobs();else if(v==='vCust')rCust();else rMoney()
+}
+
+function toast(m,ok=true){
+  const t=$('toast');t.textContent=m;t.style.background=ok?'var(--ok)':'var(--bad)'
+  t.classList.add('vis');setTimeout(()=>t.classList.remove('vis'),2800)
+}
+
+function setLoad(id,on,orig){
+  const b=$(id);if(!b)return
+  if(on){b.dataset.orig=b.innerHTML;b.innerHTML='<span class="spin"></span> Saving...';b.classList.add('loading')}
+  else{b.innerHTML=b.dataset.orig||orig||'Save';b.classList.remove('loading')}
+}
+
+// DASHBOARD
+function rDash(){
+  const t=td(),tj=D.jobs.filter(j=>j.scheduled_date===t),ov=D.jobs.filter(j=>j.status==='scheduled'&&j.scheduled_date<t)
+  const ev=tj.reduce((s,j)=>s+est(j),0),ld=trkLoad(tj)
+  let h=`<div class="stats s3">
+    <div class="st" style="cursor:pointer;active:opacity:.7" onclick="showStatDrill('today')"><div class="sn o">${tj.length}</div><div class="sl">Today ›</div></div>
+    <div class="st" style="cursor:pointer" onclick="showStatDrill('estimated')"><div class="sn g">${fmt(ev)}</div><div class="sl">Estimated ›</div></div>
+    <div class="st" style="cursor:pointer" onclick="showStatDrill('overdue')"><div class="sn ${ov.length?'r':'g'}">${ov.length}</div><div class="sl">Overdue ›</div></div>
+  </div>
+  <div class="trk"><div class="trk-top"><div class="trk-t">🔧 Truck Load</div><span class="pill pchk" id="trkP">Check</span></div>
+  <div class="chips">`
+  if(!tj.length)h+=`<span class="chip">No jobs today</span>`
+  else{if(ld.tg)h+=`<span class="chip"><b>${ld.tg}</b> Tags</span>`;if(ld.lk)h+=`<span class="chip"><b>${ld.lk}</b> Links</span>`;if(ld.cp)h+=`<span class="chip"><b>${ld.cp}</b> Caps</span>`;ld.ct.forEach(c=>h+=`<span class="chip"><b>1</b> ${c}</span>`)}
+  h+=`</div><button class="trk-btn trk-go" onclick="this.textContent='Ready';this.className='trk-btn trk-ok';$('trkP').className='pill pok';$('trkP').textContent='Ready';toast('Truck confirmed')">I have everything</button></div>`
+  if(tj.length){h+=`<div class="sec"><div class="sec-t">Today</div></div>`;tj.forEach(j=>h+=jCard(j))}
+  if(ov.length){h+=`<div class="sec"><div class="sec-t" style="color:var(--bad)">Overdue · ${ov.length}</div></div>`;ov.slice(0,5).forEach(j=>h+=jCard(j,true))}
+  if(!tj.length&&!ov.length)h+=`<div class="ey"><div class="ey-i">⚡</div><div class="ey-t">No jobs today. Tap + to schedule one.</div></div>`
+  $('dashC').innerHTML=h
+}
+
+function showStatDrill(type){
+  const t=td()
+  let title='',jobs=[]
+  if(type==='today'){
+    title='Today\'s Jobs'
+    jobs=D.jobs.filter(j=>j.scheduled_date===t)
+  }else if(type==='estimated'){
+    // this week
+    const wEnd=new Date();wEnd.setDate(wEnd.getDate()+7)
+    const wEndStr=wEnd.toISOString().split('T')[0]
+    title='This Week\'s Jobs'
+    jobs=D.jobs.filter(j=>j.status==='scheduled'&&j.scheduled_date>=t&&j.scheduled_date<=wEndStr)
+  }else if(type==='overdue'){
+    title='Overdue Jobs'
+    jobs=D.jobs.filter(j=>j.status==='scheduled'&&j.scheduled_date<t)
+  }
+  if(!jobs.length){toast('No jobs in this category');return}
+  let h=`<div class="ov-hdr">
+    <button class="ov-back" onclick="pop()">‹</button>
+    <div class="ov-title">${title} · ${jobs.length}</div>
+  </div><div class="ov-body">`
+  jobs.forEach(j=>h+=jCard(j,type==='overdue'))
+  h+=`</div>`
+  push(h)
+}
+
+function filterMoney(type){
+  const now=new Date()
+  const monthStart=new Date(now.getFullYear(),now.getMonth(),1).toISOString().split('T')[0]
+  const monthEnd=new Date(now.getFullYear(),now.getMonth()+1,0).toISOString().split('T')[0]
+  let title='',invs=[]
+  if(type==='paid'){
+    title='Collected This Month'
+    invs=D.invs.filter(i=>i.status==='paid'&&i.date>=monthStart&&i.date<=monthEnd)
+  }else{
+    title='Outstanding'
+    invs=D.invs.filter(i=>!['paid','void','record'].includes(i.status))
+  }
+  const total=invs.reduce((s,i)=>s+(+i.total),0)
+  let h=`<div class="ov-hdr">
+    <button class="ov-back" onclick="pop()">‹</button>
+    <div class="ov-title">${title}</div>
+    <div class="ov-act" style="color:var(--ok);font-size:14px;font-weight:800">${fmt(total)}</div>
+  </div><div class="ov-body">`
+  if(!invs.length){h+=`<div class="ey"><div class="ey-i">💰</div><div class="ey-t">No invoices in this category.</div></div>`}
+  else invs.forEach(i=>{
+    const loc=D.locs.find(l=>l.id===i.location_id)
+    const bc=i.status==='paid'?'bpaid':i.status==='sent'?'bsent':i.status==='overdue'?'bover':'bdraft'
+    h+=`<div class="ic" onclick="openInvDetail('${i.id}')">
+      <div class="ic-r1"><div><div class="ic-nm">${esc(loc?.name||'Unknown')}</div><div class="ic-sub">${i.invoice_number||'—'}</div></div><span class="badge ${bc}">${i.status}</span></div>
+      <div class="ic-sub">${i.date?new Date(i.date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):''}</div>
+      <div class="ic-amt">${fmt(+i.total)}</div>
+    </div>`
+  })
+  h+=`</div>`
+  push(h)
+}
+
+function jCard(j,isOv=false){
+  const l=j.location||{},sc=j.scope||[],v=est(j),a=[l.address,l.city].filter(Boolean).join(', ')
+  const ds=j.scheduled_date?new Date(j.scheduled_date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}):''
+  const cls=isOv?'jrd':j.status==='active'?'jgn':j.status==='completed'?'jgy':'jbl'
+  return`<div class="jc ${cls}" onclick="openJob('${j.id}')">
+    <div class="jc-r1"><div class="jc-nm">${esc(l.name||'Unknown')}</div><div class="jc-tm">${ds}${j.scheduled_time?' '+j.scheduled_time.slice(0,5):''}</div></div>
+    <div class="jc-addr">${esc(a)||'No address'}</div>
+    <div class="jc-tags">${sc.includes('suppression')?'<span class="tg ts">Suppression</span>':''}${sc.includes('extinguishers')?'<span class="tg te">Ext</span>':''}${sc.includes('elights')?'<span class="tg tl">E-Lights</span>':''}${sc.includes('hydro')?'<span class="tg th">Hydro</span>':''}${isOv?'<span class="tg to2">Overdue</span>':''}${l.is_brycer_jurisdiction?'<span class="tg tb">Brycer</span>':''}</div>
+    <div class="jc-val">${v?fmt(v):'Rate card not set'}</div>
+    <div class="jc-btns">
+      <button class="jb jb-n" onclick="event.stopPropagation();window.open('https://maps.apple.com/?daddr='+encodeURIComponent('${esc(a)}'))">🗺 Nav</button>
+      <button class="jb jb-g" onclick="event.stopPropagation();openJob('${j.id}')">Open Job →</button>
+    </div>
+  </div>`
+}
+
+// JOBS LIST
+function rJobs(){
+  const t=td(),all=D.jobs.filter(j=>j.status!=='cancelled')
+  const ov=all.filter(j=>j.status==='scheduled'&&j.scheduled_date<t)
+  const up=all.filter(j=>j.status==='scheduled'&&j.scheduled_date>=t)
+  const done=all.filter(j=>j.status==='completed').slice(0,20)
+  let h=`<div class="sec" style="margin-top:8px"><div class="sec-t">Jobs</div></div>`
+  if(ov.length){h+=`<div class="sec"><div class="sec-t" style="color:var(--bad)">Overdue · ${ov.length}</div></div>`;ov.forEach(j=>h+=jCard(j,true))}
+  if(up.length){h+=`<div class="sec"><div class="sec-t">Scheduled · ${up.length}</div></div>`;up.forEach(j=>h+=jCard(j))}
+  if(done.length){h+=`<div class="sec"><div class="sec-t">Completed</div></div>`;done.forEach(j=>h+=jCard(j))}
+  if(!all.length)h=`<div class="ey"><div class="ey-i">📋</div><div class="ey-t">No jobs yet. Tap + to create one.</div></div>`
+  $('jobsC').innerHTML=h
+}
+
+// JOB WORK ORDER — live editable invoice during the job
+let jobLines=[] // [{desc,qty,price,id}]
+let jobNotes=''
+
+function buildJobLines(j){
+  const l=j.location||{},rc=D.rc,sc=j.scope||[]
+  const lines=[]
+  // suppression
+  if(sc.includes('suppression'))for(const s of(l.suppression_systems||[])){
+    let bv=rc.suppression_standard||250
+    if(s.category==='captiveaire_tank')bv=rc.suppression_captiveaire_tank||450
+    if(s.category==='captiveaire_core')bv=rc.suppression_captiveaire_core||650
+    const p=bv+((s.tank_count-1)*(rc.suppression_additional_tank||50))
+    lines.push({desc:`${s.system_type} Semi-Annual (${s.tank_count}T)`,qty:1,price:p})
+    if(s.fusible_link_count)lines.push({desc:`Fusible Links`,qty:s.fusible_link_count,price:rc.fusible_link||25})
+    if(s.nozzle_count)lines.push({desc:`Blow-Off Caps`,qty:s.nozzle_count,price:rc.metal_blowoff_cap||25})
+  }
+  // extinguishers
+  if(sc.includes('extinguishers')&&l.extinguishers?.length){
+    lines.push({desc:`Extinguisher Inspection`,qty:l.extinguishers.length,price:rc.extinguisher_inspection||20})
+  }
+  // elights
+  if(sc.includes('elights')&&l.emergency_lights?.[0]?.fixture_count){
+    const fc=l.emergency_lights[0].fixture_count
+    lines.push({desc:`E-Light Annual Test`,qty:fc,price:rc.emergency_light||20})
+  }
+  // fallback — nothing auto-populated, start with blank
+  return lines.length?lines:[{desc:'',qty:1,price:0}]
+}
+
+async function openJob(id){
+  await load()
+  const j=D.jobs.find(x=>x.id===id);if(!j)return
+  extR={}
+  const l=j.location||{},sc=j.scope||[],rc=D.rc,a=[l.address,l.city,l.state,l.zip].filter(Boolean).join(', ')
+  const locInvs=D.invs.filter(i=>i.location_id===l.id).slice(0,3)
+  const statC={scheduled:'var(--info)',active:'var(--ok)',completed:'var(--g1)'}[j.status]||'var(--g1)'
+  const isActive=j.status!=='completed'
+
+  // pre-populate job lines from equipment on file
+  if(isActive){
+    jobLines=buildJobLines(j).map((l2,i)=>({...l2,id:'jl'+i}))
+    jobNotes=j.notes||''
+  }
+
+  // parts catalog for quick-add dropdown
+  const PARTS=[
+    {label:'— Quick Add —',value:''},
+    {label:'Extinguisher Inspection',value:`Extinguisher Inspection|1|${rc.extinguisher_inspection||20}`},
+    {label:'Suppression Semi-Annual (Standard)',value:`Suppression Semi-Annual|1|${rc.suppression_standard||250}`},
+    {label:'Suppression Semi-Annual (CA Tank)',value:`Suppression CA Tank|1|${rc.suppression_captiveaire_tank||450}`},
+    {label:'Suppression Semi-Annual (CA CORE)',value:`Suppression CA CORE|1|${rc.suppression_captiveaire_core||650}`},
+    {label:'Fusible Link',value:`Fusible Link|1|${rc.fusible_link||25}`},
+    {label:'Metal Blow-Off Cap',value:`Blow-Off Cap|1|${rc.metal_blowoff_cap||25}`},
+    {label:'Silicone Cap',value:`Silicone Cap|1|9`},
+    {label:'Nozzle',value:`Nozzle|1|${rc.nozzle||92.5}`},
+    {label:'Ansul LT-10 Cartridge',value:`Ansul LT-10 Cartridge|1|0`},
+    {label:'Ansul LT-30 Cartridge',value:`Ansul LT-30 Cartridge|1|0`},
+    {label:'16g CO2 Cartridge',value:`16g CO2 Cartridge|1|0`},
+    {label:'New 5lb ABC Extinguisher',value:`New 5lb ABC Extinguisher|1|${rc.new_5lb_ext||102.5}`},
+    {label:'New 10lb ABC Extinguisher',value:`New 10lb ABC Extinguisher|1|${rc.new_10lb_ext||141.5}`},
+    {label:'New Class K Extinguisher',value:`New Class K Extinguisher|1|0`},
+    {label:'E-Light Annual Test',value:`E-Light Annual Test|1|${rc.emergency_light||20}`},
+    {label:'Hydro — Class K',value:`Hydrostatic Test Class K|1|275`},
+    {label:'Hydro — CO2',value:`Hydrostatic Test CO2|1|72`},
+    {label:'Hydro — H2O',value:`Hydrostatic Test H2O|1|57`},
+    {label:'Hydro — ABC',value:`Hydrostatic Test ABC|1|68`},
+    {label:'Dry Chem Internal Inspection',value:`Dry Chem Internal Inspection|1|68`},
+    {label:'Labor (per hour)',value:`Labor|1|${rc.labor||200}`},
+    {label:'Emergency Call',value:`Emergency Call|1|500`},
+    {label:'After-Hours Call',value:`After-Hours Call|1|750`},
+    {label:'Holiday/Weekend Call',value:`Holiday Weekend Call|1|1000`},
+    {label:'Custom item...',value:'CUSTOM'},
+  ]
+  const partsOpts=PARTS.map(p=>`<option value="${esc(p.value)}">${esc(p.label)}</option>`).join('')
+
+  let h=`<div class="ov-hdr">
+    <button class="ov-back" onclick="pop()">‹</button>
+    <div class="ov-title">${esc(l.name||'Job')}</div>
+    <button class="ov-act" onclick="openCust('${l.id}')">Client ›</button>
+    <button class="del-btn" style="margin-left:4px" onclick="toggleDelConfirm('del-job-${j.id}')">🗑</button>
+  </div><div class="ov-body">
+  <div class="del-confirm" id="del-job-${j.id}">
+    <div class="del-confirm-msg">Delete this job for ${esc(l.name||'')}?</div>
+    <div class="del-confirm-btns">
+      <button class="del-no" onclick="toggleDelConfirm('del-job-${j.id}')">Cancel</button>
+      <button class="del-yes" onclick="delJob('${j.id}')">Delete Job</button>
+    </div>
+  </div>
+
+  <!-- STATUS BAR -->
+  <div style="background:var(--c1);border:1px solid var(--b1);border-radius:var(--r);padding:12px 14px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center">
+    <div style="font-size:13px;color:var(--g1)">${j.scheduled_date||'No date'}${j.scheduled_time?' · '+j.scheduled_time.slice(0,5):''}</div>
+    <span style="font-size:11px;font-weight:800;text-transform:uppercase;color:${statC}">${j.status}</span>
+  </div>
+
+  <!-- LOCATION -->
+  <div class="ds"><div class="ds-t">Location</div>
+    <div class="ds-info">${esc(a)||'No address'}${l.contact_name?'<br>'+esc(l.contact_name)+(l.contact_phone?' · '+l.contact_phone:''):''}${l.is_brycer_jurisdiction?'<br><span style="color:var(--warn);font-weight:700">⚡ Brycer — '+esc(l.brycer_ahj_name||'Fort Worth FD')+'</span>':''}</div>
+    <div class="qa">
+      ${a?`<button class="qa-btn" onclick="window.open('https://maps.apple.com/?daddr='+encodeURIComponent('${esc(a)}'))">🗺 Navigate</button>`:''}
+      ${l.contact_phone?`<button class="qa-btn" onclick="window.open('tel:${l.contact_phone}')">📞 Call</button>`:''}
+    </div>
+  </div>`
+
+  // EXTINGUISHER STATUS (only when active)
+  if(isActive&&sc.includes('suppression')&&l.suppression_systems?.length){
+    h+=`<div class="qa" style="margin-bottom:12px">`
+    l.suppression_systems.forEach(s=>{
+      h+=`<button class="qa-btn" style="flex:1" onclick="openSuppReport('${j.id}','${s.id}')">📋 Fill Report — ${esc(s.system_type)}</button>`
+    })
+    h+=`</div>`
+  }
+  if(isActive&&sc.includes('extinguishers')&&l.extinguishers?.length){
+    h+=`<div class="ds"><div class="ds-t">Extinguisher Status</div>`
+    l.extinguishers.forEach(e=>{
+      h+=`<div class="eq"><div class="eq-r1"><div><div class="eq-nm">${esc(e.type)} ${esc(e.size||'')}</div><div class="eq-sub">${esc(e.location_in_building||'')}${e.serial_number?' · SN:'+e.serial_number:''}</div></div></div>
+        <div class="sb-row">`
+      ;['Pass','Swap','Replace','Condemn','Remove'].forEach(s=>h+=`<button class="sb" onclick="setSt(this,'${e.id}','${s.toLowerCase()}')">${s}</button>`)
+      h+=`</div></div>`
+    })
+    h+=`</div>`
+  }
+
+  // WORK ORDER / LINE ITEMS (editable when active)
+  if(isActive){
+    h+=`<div class="ds"><div class="ds-t" style="display:flex;justify-content:space-between;align-items:center">
+      <span>Work Order</span>
+      <span id="wo-total" style="font-size:13px;font-weight:800;color:var(--ok)">$0</span>
+    </div>
+
+    <!-- QUICK ADD DROPDOWN -->
+    <div style="margin-bottom:12px">
+      <select id="parts-dd" style="background:var(--c2);border-color:var(--fire);color:var(--fire);font-weight:700" onchange="addPartLine(this)">
+        ${partsOpts}
+      </select>
+    </div>
+
+    <!-- LINE ITEMS -->
+    <div id="wo-lines"></div>
+
+    <!-- TECH NOTES -->
+    <div style="margin-top:12px">
+      <label class="fg-l">Tech Notes / Deficiencies</label>
+      <textarea id="job-notes" placeholder="What was found, what was done, deficiencies noted..." style="min-height:80px" oninput="jobNotes=this.value">${esc(jobNotes)}</textarea>
+    </div>
+    </div>`
+
+    // SIGNATURE
+    h+=`<div class="ds"><div class="ds-t">Customer Signature</div><div class="sig-wrap"><canvas id="sigC"></canvas><div class="sig-ph" id="sigPh">Sign here</div><button class="sig-clr" onclick="clrSig()">Clear</button></div></div>`
+
+  }else{
+    // COMPLETED — show read-only summary
+    if(locInvs.length){
+      h+=`<div class="ds"><div class="ds-t">Invoices</div>`
+      locInvs.forEach(i=>{
+        const bc=i.status==='paid'?'bpaid':i.status==='sent'?'bsent':i.status==='record'?'brec':'bdraft'
+        h+=`<div class="ic" onclick="openInvDetail('${i.id}')"><div class="ic-r1"><div class="ic-nm">${i.invoice_number||'—'}</div><span class="badge ${bc}">${i.status}</span></div><div class="ic-sub">${i.date?new Date(i.date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):''}</div><div class="ic-amt">${fmt(+i.total)}</div></div>`
+      })
+      h+=`</div>`
+    }
+    if(j.notes)h+=`<div class="ds"><div class="ds-t">Notes</div><div class="ds-info">${esc(j.notes)}</div></div>`
+  }
+
+  h+=`</div>`
+
+  if(isActive){
+    h+=`<div class="ov-foot"><button class="btn-p" id="compBtn" onclick="compJ('${j.id}')">✓ Complete Job — Generate Invoice</button></div>`
+  }else{
+    h+=`<div class="ov-foot"><button class="btn-dim" onclick="pop()">← Back</button></div>`
+  }
+
+  push(h)
+  if(isActive){
+    setTimeout(()=>{renderJobLines();initSig()},80)
+  }
+}
+
+function renderJobLines(){
+  const wrap=$('wo-lines');if(!wrap)return
+  wrap.innerHTML=jobLines.map((l2,i)=>`
+    <div class="li-row" data-jli="${i}">
+      <input placeholder="Description" value="${esc(l2.desc||'')}" oninput="jlEdit(${i},'desc',this.value)" style="flex:2">
+      <input class="li-qty" type="number" value="${l2.qty||1}" min="0.5" step="0.5" oninput="jlEdit(${i},'qty',this.value)">
+      <input class="li-price" type="number" value="${+(l2.price||0)}" step="0.01" oninput="jlEdit(${i},'price',this.value)">
+      <button class="li-del" onclick="jlDel(${i})">✕</button>
+    </div>`).join('')
+  updateWoTotal()
+}
+
+function jlEdit(i,field,val){
+  if(!jobLines[i])return
+  if(field==='desc')jobLines[i].desc=val
+  else if(field==='qty')jobLines[i].qty=parseFloat(val)||1
+  else if(field==='price')jobLines[i].price=parseFloat(val)||0
+  updateWoTotal()
+}
+
+function jlDel(i){
+  jobLines.splice(i,1)
+  renderJobLines()
+}
+
+function updateWoTotal(){
+  const total=jobLines.reduce((s,l2)=>s+(+(l2.qty||1))*(+(l2.price||0)),0)
+  const el=$('wo-total');if(el)el.textContent=fmtD(total)
+}
+
+function addPartLine(sel){
+  const v=sel.value;if(!v)return
+  sel.value='' // reset dropdown
+  if(v==='CUSTOM'){
+    jobLines.push({desc:'',qty:1,price:0,id:'jl'+Date.now()})
+    renderJobLines()
+    // focus last description field
+    setTimeout(()=>{const inputs=$('wo-lines')?.querySelectorAll('input[placeholder="Description"]');if(inputs?.length)inputs[inputs.length-1].focus()},50)
+    return
+  }
+  const parts=v.split('|')
+  const desc=parts[0]||'',qty=parseFloat(parts[1])||1,price=parseFloat(parts[2])||0
+  // check if same item already exists — increment qty instead
+  const existing=jobLines.find(l2=>l2.desc===desc)
+  if(existing){existing.qty=(+existing.qty||1)+1;renderJobLines();return}
+  jobLines.push({desc,qty,price,id:'jl'+Date.now()})
+  renderJobLines()
+}
+
+async function compJ(id){
+  setLoad('compBtn',true)
+  const j=D.jobs.find(x=>x.id===id);if(!j)return
+  const l=j.location||{}
+
+  // read lines from jobLines state
+  const lines=jobLines.filter(l2=>(l2.desc||'').trim()).map(l2=>({
+    description:l2.desc.trim(),
+    quantity:+(l2.qty)||1,
+    unit_price:+(l2.price)||0,
+    total:(+(l2.qty)||1)*(+(l2.price)||0)
+  }))
+  if(!lines.length){toast('Add at least one line item',false);setLoad('compBtn',false,'✓ Complete Job — Generate Invoice');return}
+
+  const sub=lines.reduce((s,l2)=>s+l2.total,0)
+  const notes=($('job-notes')?.value||jobNotes||'').trim()
+  const sig=$('sigC')?.toDataURL()||null
+
+  const{data:inv,error}=await SB.from('invoices').insert({
+    job_id:id,location_id:l.id,billing_account_id:l.billing_account_id,
+    subtotal:sub,total:sub,status:'draft',date:td(),
+    notes:notes||null
+  }).select().single()
+  if(error){toast('Error generating invoice',false);setLoad('compBtn',false,'✓ Complete Job — Generate Invoice');return}
+
+  if(inv&&lines.length)await SB.from('invoice_lines').insert(lines.map((ln,i2)=>({invoice_id:inv.id,...ln,sort_order:i2})))
+
+  await SB.from('jobs').update({
+    status:'completed',
+    completed_at:new Date().toISOString(),
+    signature_data:sig,
+    notes:notes||null
+  }).eq('id',id)
+
+  // save extinguisher results
+  for(const[eid,st] of Object.entries(extR)){
+    try{await SB.from('extinguisher_results').insert({job_id:id,extinguisher_id:eid,status:st})}catch(e){}
+  }
+
+  await load()
+  pop()
+  showInv({num:inv?.invoice_number||'—',nm:l.name||'',addr:[l.address,l.city].filter(Boolean).join(', '),lines,total:sub,ro:false,iid:inv?.id,locId:l.id})
+}
+
+function setSt(btn,eid,st){
+  extR[eid]=st
+  btn.parentElement.querySelectorAll('.sb').forEach(b=>b.className='sb')
+  const map={pass:'sp',swap:'ss',replace:'sr',condemn:'sc2',remove:'sx'}
+  btn.classList.add(map[st]||'')
+}
+
+let sigCtx=null,sigOn=false
+function initSig(){
+  const c=$('sigC');if(!c)return
+  const r=c.parentElement.getBoundingClientRect();c.width=r.width;c.height=r.height
+  sigCtx=c.getContext('2d');sigCtx.strokeStyle='#222';sigCtx.lineWidth=2.5;sigCtx.lineCap='round';sigCtx.lineJoin='round'
+  const sp=e=>{e.preventDefault();sigOn=true;if($('sigPh'))$('sigPh').style.display='none';const p=gp(e);sigCtx.beginPath();sigCtx.moveTo(p.x,p.y)}
+  const sm=e=>{if(!sigOn)return;e.preventDefault();const p=gp(e);sigCtx.lineTo(p.x,p.y);sigCtx.stroke()}
+  const se=()=>{sigOn=false}
+  c.addEventListener('touchstart',sp,{passive:false});c.addEventListener('touchmove',sm,{passive:false});c.addEventListener('touchend',se)
+  c.addEventListener('mousedown',sp);c.addEventListener('mousemove',sm);c.addEventListener('mouseup',se)
+}
+function gp(e){const c=$('sigC'),r=c.getBoundingClientRect(),t=e.touches?e.touches[0]:e;return{x:t.clientX-r.left,y:t.clientY-r.top}}
+function clrSig(){if(sigCtx){const c=$('sigC');sigCtx.clearRect(0,0,c.width,c.height)}if($('sigPh'))$('sigPh').style.display=''}
+
+// CLIENT DETAIL
+async function openCust(id){
+  const l=D.locs.find(x=>x.id===id);if(!l)return
+  const locJobs=D.jobs.filter(j=>j.location_id===id||j.location?.id===id)
+  const locInvs=D.invs.filter(i=>i.location_id===id)
+  const owed=locInvs.filter(i=>!['paid','void','record'].includes(i.status)).reduce((s,i)=>s+(+i.total),0)
+  const a=[l.address,l.city,l.state,l.zip].filter(Boolean).join(', ')
+
+  let h=`<div class="ov-hdr">
+    <button class="ov-back" onclick="pop()">‹</button>
+    <div class="ov-title">${esc(l.name)}</div>
+    <button class="ov-act" onclick="editCust('${l.id}')">Edit</button>
+    <button class="del-btn" style="margin-left:4px" onclick="toggleDelConfirm('del-cust-${l.id}')">🗑</button>
+  </div><div class="ov-body">
+  <div class="del-confirm" id="del-cust-${l.id}">
+    <div class="del-confirm-msg">Delete ${esc(l.name)}? This will also delete all linked jobs, invoices, and equipment. Cannot be undone.</div>
+    <div class="del-confirm-btns">
+      <button class="del-no" onclick="toggleDelConfirm('del-cust-${l.id}')">Cancel</button>
+      <button class="del-yes" onclick="delCust('${l.id}')">Delete Client</button>
+    </div>
+  </div>
+  <div class="stats s3" style="margin-bottom:16px">
+    <div class="st"><div class="sn i">${locJobs.length}</div><div class="sl">Jobs</div></div>
+    <div class="st"><div class="sn">${locInvs.length}</div><div class="sl">Invoices</div></div>
+    <div class="st"><div class="sn ${owed>0?'r':'g'}">${fmt(owed)}</div><div class="sl">Owed</div></div>
+  </div>
+  <div class="ds"><div class="ds-t">Contact Info</div>`
+  if(a)h+=`<div class="ds-row"><div class="ds-lbl">Address</div><div class="ds-val">${esc(a)}</div></div>`
+  if(l.contact_name)h+=`<div class="ds-row"><div class="ds-lbl">Contact</div><div class="ds-val">${esc(l.contact_name)}</div></div>`
+  if(l.contact_phone)h+=`<div class="ds-row"><div class="ds-lbl">Phone</div><div class="ds-val"><a href="tel:${l.contact_phone}" style="color:var(--fire)">${l.contact_phone}</a></div></div>`
+  if(l.contact_email)h+=`<div class="ds-row"><div class="ds-lbl">Email</div><div class="ds-val"><a href="mailto:${esc(l.contact_email)}" style="color:var(--fire)">${esc(l.contact_email)}</a></div></div>`
+  if(l.is_brycer_jurisdiction)h+=`<div class="ds-row"><div class="ds-lbl">Brycer</div><div class="ds-val" style="color:var(--warn)">⚡ ${esc(l.brycer_ahj_name||'Fort Worth FD')}</div></div>`
+  if(l.notes)h+=`<div class="ds-row"><div class="ds-lbl">Notes</div><div class="ds-val">${esc(l.notes)}</div></div>`
+  h+=`</div>
+  <div class="qa">
+    ${a?`<button class="qa-btn" onclick="window.open('https://maps.apple.com/?daddr='+encodeURIComponent('${esc(a)}'))">🗺 Navigate</button>`:''}
+    ${l.contact_phone?`<button class="qa-btn" onclick="window.open('tel:${l.contact_phone}')">📞 Call</button>`:''}
+    <button class="qa-btn pri" onclick="schedFor('${l.id}','${esc(l.name)}','${esc(l.address||'')}','${esc(l.city||'')}')">+ New Job</button>
+  </div>`
+
+  if(l.suppression_systems?.length){
+    h+=`<div class="ds"><div class="ds-t" style="display:flex;justify-content:space-between;align-items:center"><span>Suppression Systems · ${l.suppression_systems.length}</span><button style="font-size:11px;font-weight:700;color:var(--fire)" onclick="openAddSupp('${l.id}')">+ Add</button></div>`
+    l.suppression_systems.forEach(s=>{
+      const sid=s.id
+      h+=`<div class="eq">
+        <div class="eq-r1">
+          <div><div class="eq-nm">${esc(s.system_type)}</div><div class="eq-sub">${s.tank_count}T · ${s.nozzle_count} nozzles · ${s.fusible_link_count} links</div></div>
+          <button class="del-eq" onclick="toggleDelConfirm('dsupp-${sid}')">Delete</button>
+        </div>
+        <div class="del-confirm" id="dsupp-${sid}" style="margin-top:10px;margin-bottom:0">
+          <div class="del-confirm-msg">Delete ${esc(s.system_type)}?</div>
+          <div class="del-confirm-btns">
+            <button class="del-no" onclick="toggleDelConfirm('dsupp-${sid}')">Cancel</button>
+            <button class="del-yes" onclick="delSuppSystem('${sid}','${l.id}')">Delete</button>
+          </div>
+        </div>
+      </div>`
+    })
+    h+=`</div>`
+  }else{
+    h+=`<div class="ds"><div class="ds-t" style="display:flex;justify-content:space-between;align-items:center"><span>Suppression Systems</span><button style="font-size:11px;font-weight:700;color:var(--fire)" onclick="openAddSupp('${l.id}')">+ Add</button></div><div class="ds-info">None on file</div></div>`
+  }
+  if(l.extinguishers?.length){
+    h+=`<div class="ds"><div class="ds-t" style="display:flex;justify-content:space-between;align-items:center"><span>Extinguishers · ${l.extinguishers.length}</span><button style="font-size:11px;font-weight:700;color:var(--fire)" onclick="openAddExt('${l.id}')">+ Add</button></div>`
+    l.extinguishers.forEach(e=>{
+      const eid=e.id
+      h+=`<div class="eq">
+        <div class="eq-r1">
+          <div><div class="eq-nm">${esc(e.type)} ${esc(e.size||'')}</div><div class="eq-sub">${esc(e.location_in_building||'')}${e.serial_number?' · SN:'+e.serial_number:''}</div></div>
+          <button class="del-eq" onclick="toggleDelConfirm('dext-${eid}')">Delete</button>
+        </div>
+        <div class="del-confirm" id="dext-${eid}" style="margin-top:10px;margin-bottom:0">
+          <div class="del-confirm-msg">Delete ${esc(e.type)} ${esc(e.size||'')}?</div>
+          <div class="del-confirm-btns">
+            <button class="del-no" onclick="toggleDelConfirm('dext-${eid}')">Cancel</button>
+            <button class="del-yes" onclick="delExtinguisher('${eid}','${l.id}')">Delete</button>
+          </div>
+        </div>
+      </div>`
+    })
+    h+=`</div>`
+  }else{
+    h+=`<div class="ds"><div class="ds-t" style="display:flex;justify-content:space-between;align-items:center"><span>Extinguishers</span><button style="font-size:11px;font-weight:700;color:var(--fire)" onclick="openAddExt('${l.id}')">+ Add</button></div><div class="ds-info">None on file</div></div>`
+  }
+  if(l.emergency_lights?.[0]?.fixture_count){
+    h+=`<div class="ds"><div class="ds-t" style="display:flex;justify-content:space-between;align-items:center"><span>Emergency Lighting</span><button style="font-size:11px;font-weight:700;color:var(--fire)" onclick="openAddELight('${l.id}')">Edit</button></div><div class="eq"><div class="eq-nm">${l.emergency_lights[0].fixture_count} fixtures</div></div></div>`
+  }else{
+    h+=`<div class="ds"><div class="ds-t" style="display:flex;justify-content:space-between;align-items:center"><span>Emergency Lighting</span><button style="font-size:11px;font-weight:700;color:var(--fire)" onclick="openAddELight('${l.id}')">+ Add</button></div><div class="ds-info">None on file</div></div>`
+  }
+
+  if(locJobs.length){
+    h+=`<div class="ds"><div class="ds-t">Job History · ${locJobs.length}</div>`
+    locJobs.slice(0,15).forEach(j=>{
+      const statC={scheduled:'var(--info)',active:'var(--ok)',completed:'var(--g1)'}[j.status]||'var(--g1)'
+      h+=`<div class="ic" onclick="openJob('${j.id}')"><div class="ic-r1"><div class="ic-nm">${j.scheduled_date||'No date'}</div><span style="font-size:10px;font-weight:800;text-transform:uppercase;color:${statC}">${j.status}</span></div><div class="ic-sub">${(j.scope||[]).join(' · ')}</div></div>`
+    })
+    h+=`</div>`
+  }
+
+  if(locInvs.length){
+    h+=`<div class="ds"><div class="ds-t">Invoices · ${locInvs.length}</div>`
+    locInvs.slice(0,20).forEach(i=>{
+      const bc=i.status==='paid'?'bpaid':i.status==='sent'?'bsent':i.status==='record'?'brec':'bdraft'
+      h+=`<div class="ic" onclick="openInvDetail('${i.id}')"><div class="ic-r1"><div class="ic-nm">${i.invoice_number||'—'}</div><span class="badge ${bc}">${i.status}</span></div><div class="ic-sub">${i.date?new Date(i.date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):''}</div><div class="ic-amt">${fmt(+i.total)}</div></div>`
+    })
+    h+=`</div>`
+  }
+  h+=`</div>`
+  push(h)
+}
+
+// EDIT CLIENT
+function editCust(id){
+  const l=D.locs.find(x=>x.id===id);if(!l)return
+  push(`<div class="ov-hdr">
+    <button class="ov-back" onclick="pop()">‹</button>
+    <div class="ov-title">Edit Client</div>
+    <button class="ov-act" id="saveCBtn" onclick="saveCustEdit('${id}')">Save</button>
+  </div><div class="ov-body">
+    <div class="fg"><label class="fg-l">Business Name *</label><input id="ec-name" value="${esc(l.name||'')}"></div>
+    <div class="fg"><label class="fg-l">Contact Name</label><input id="ec-contact" value="${esc(l.contact_name||'')}"></div>
+    <div class="fg"><label class="fg-l">Phone</label><input id="ec-phone" type="tel" value="${esc(l.contact_phone||'')}"></div>
+    <div class="fg"><label class="fg-l">Email</label><input id="ec-email" type="email" value="${esc(l.contact_email||'')}"></div>
+    <div class="fg"><label class="fg-l">Address</label><input id="ec-addr" value="${esc(l.address||'')}"></div>
+    <div class="row2">
+      <div class="fg"><label class="fg-l">City</label><input id="ec-city" value="${esc(l.city||'')}"></div>
+      <div class="fg"><label class="fg-l">ZIP</label><input id="ec-zip" value="${esc(l.zip||'')}"></div>
+    </div>
+    <div class="fg"><label class="fg-l">Notes</label><textarea id="ec-notes">${esc(l.notes||'')}</textarea></div>
+    <div class="fg"><label class="fg-l">Brycer / Fort Worth FD</label>
+      <select id="ec-bry"><option value="false"${!l.is_brycer_jurisdiction?' selected':''}>No</option><option value="true"${l.is_brycer_jurisdiction?' selected':''}>Yes — Fort Worth FD</option></select>
+    </div>
+    <div class="err" id="ec-err"></div>
+    <div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--b1)">
+      <div class="del-confirm" id="del-cust2-${id}" style="margin-bottom:0">
+        <div class="del-confirm-msg">Delete ${esc(l.name)}? This will also delete all linked jobs, invoices, and equipment. Cannot be undone.</div>
+        <div class="del-confirm-btns">
+          <button class="del-no" onclick="toggleDelConfirm('del-cust2-${id}')">Cancel</button>
+          <button class="del-yes" onclick="delCust('${id}')">Delete Client</button>
+        </div>
+      </div>
+      <button style="width:100%;padding:14px;border-radius:var(--r);background:var(--bads);color:var(--bad);font-size:14px;font-weight:700;border:1.5px solid var(--bad);min-height:48px;margin-top:8px" onclick="toggleDelConfirm('del-cust2-${id}')">Delete This Client…</button>
+    </div>
+  </div>`)
+}
+
+async function saveCustEdit(id){
+  const b=$('saveCBtn');if(b){b.textContent='Saving...';b.style.opacity='.5';b.style.pointerEvents='none'}
+  const bry=$('ec-bry').value==='true'
+  const{error}=await SB.from('locations').update({
+    name:$('ec-name')?.value?.trim(),contact_name:$('ec-contact')?.value?.trim()||null,
+    contact_phone:$('ec-phone')?.value?.trim()||null,contact_email:$('ec-email')?.value?.trim()||null,
+    address:$('ec-addr')?.value?.trim()||null,city:$('ec-city')?.value?.trim()||null,
+    zip:$('ec-zip')?.value?.trim()||null,notes:$('ec-notes')?.value?.trim()||null,
+    is_brycer_jurisdiction:bry,brycer_ahj_name:bry?'Fort Worth Fire Department':null
+  }).eq('id',id)
+  if(error){if($('ec-err'))$('ec-err').textContent='Error: '+error.message;if(b){b.textContent='Save';b.style.opacity='';b.style.pointerEvents=''}return}
+  await load();toast('Client updated')
+  pop();pop();openCust(id)
+}
+
+// INVOICE DETAIL
+async function openInvDetail(id){
+  const inv=D.invs.find(x=>x.id===id);if(!inv){toast('Invoice not found',false);return}
+  const loc=D.locs.find(l=>l.id===inv.location_id)||{}
+  const{data:lines}=await SB.from('invoice_lines').select('*').eq('invoice_id',id).order('sort_order')
+  const ls=lines||[]
+  const total=ls.reduce((s,l)=>s+(+l.total||0),0)||+inv.total||0
+  const bc=inv.status==='paid'?'bpaid':inv.status==='sent'?'bsent':inv.status==='record'?'brec':inv.status==='factored'?'bfact':'bdraft'
+
+  let h=`<div class="ov-hdr">
+    <button class="ov-back" onclick="pop()">‹</button>
+    <div class="ov-title">${inv.invoice_number||'Invoice'}</div>
+    <button class="del-btn" onclick="toggleDelConfirm('del-inv-${id}')">🗑</button>
+  </div><div class="ov-body">
+  <div class="del-confirm" id="del-inv-${id}">
+    <div class="del-confirm-msg">Delete invoice ${inv.invoice_number||''}? This cannot be undone.</div>
+    <div class="del-confirm-btns">
+      <button class="del-no" onclick="toggleDelConfirm('del-inv-${id}')">Cancel</button>
+      <button class="del-yes" onclick="delInvoice('${id}')">Delete Invoice</button>
+    </div>
+  </div>
+  <div style="background:var(--c1);border:1px solid var(--b1);border-radius:var(--r);padding:14px;margin-bottom:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <div style="font-size:24px;font-weight:800;font-variant-numeric:tabular-nums">${fmtD(total)}</div>
+      <span class="badge ${bc}">${inv.status}</span>
+    </div>
+    <div style="font-size:11px;color:var(--g1)">${inv.date?'Issued '+new Date(inv.date).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):''} ${inv.due_date?' · Due '+new Date(inv.due_date).toLocaleDateString('en-US',{month:'short',day:'numeric'}):''}</div>
+    ${inv.paid_at?`<div style="font-size:11px;color:var(--ok);margin-top:4px">Paid ${new Date(inv.paid_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}${inv.payment_method?' · '+inv.payment_method:''}</div>`:''}
+  </div>`
+
+  if(loc.id){
+    h+=`<div class="ds"><div class="ds-t">Customer</div>
+      <div class="ds-row"><div class="ds-lbl">Name</div><div class="ds-val" style="color:var(--fire);cursor:pointer" onclick="openCust('${loc.id}')">${esc(loc.name||'—')} ›</div></div>
+      ${loc.address?`<div class="ds-row"><div class="ds-lbl">Address</div><div class="ds-val">${esc([loc.address,loc.city].filter(Boolean).join(', '))}</div></div>`:''}
+    </div>`
+  }
+
+  if(ls.length){
+    h+=`<div class="ds"><div class="ds-t">Line Items</div>`
+    ls.forEach(l2=>h+=`<div class="ds-row"><div class="ds-lbl" style="flex:1;font-size:12px;color:var(--w2)">${esc(l2.description)}${l2.quantity>1?' ×'+l2.quantity:''}</div><div class="ds-val" style="font-variant-numeric:tabular-nums;flex-shrink:0">${fmtD(+l2.total)}</div></div>`)
+    h+=`<div class="ds-row" style="padding-top:12px;border-top:2px solid var(--b1)"><div class="ds-lbl" style="font-weight:800;color:var(--w)">Total</div><div class="ds-val" style="font-size:18px;font-weight:800;color:var(--fire)">${fmtD(total)}</div></div>`
+    h+=`</div>`
+  }
+  if(inv.notes)h+=`<div class="ds"><div class="ds-t">Notes</div><div class="ds-info">${esc(inv.notes)}</div></div>`
+  h+=`</div>`
+
+  if(!['paid','record'].includes(inv.status)){
+    h+=`<div class="ov-foot" style="display:flex;flex-direction:column;gap:8px">
+      <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:var(--g2);margin-bottom:2px">Collect Payment</div>
+      <div style="display:flex;gap:6px">
+        <button class="qa-btn ok2" style="flex:1;font-size:11px" onclick="markPaid('${id}','check')">✓ Check</button>
+        <button class="qa-btn ok2" style="flex:1;font-size:11px" onclick="markPaid('${id}','cash')">💵 Cash</button>
+        <button class="qa-btn ok2" style="flex:1;font-size:11px" onclick="markPaid('${id}','card')">💳 Card</button>
+        <button class="qa-btn" style="flex:1;font-size:11px;background:rgba(99,102,241,.15);color:var(--info);border-color:var(--info)" onclick="openMazonFlow('${id}','${esc(loc.name||'')}',${+inv.total||0})">📋 Mazon</button>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input id="det-email-to" type="email" placeholder="${esc(loc.contact_email||'Customer email')}" value="${esc(loc.contact_email||'')}" style="flex:1;min-height:44px;font-size:13px;background:var(--c1);color:var(--w);border:1.5px solid var(--b1);border-radius:var(--rs);padding:0 12px">
+        <button id="det-send-btn" style="background:var(--info);color:#fff;padding:0 16px;border-radius:var(--rs);font-size:13px;font-weight:800;min-height:44px;white-space:nowrap;flex-shrink:0" onclick="sendInvoiceEmailFromDetail('${id}','${esc(loc.name||'')}','${esc(inv.invoice_number||'')}')">✉️ Send</button>
+      </div>
+      <div id="det-email-status" style="font-size:12px;color:var(--g1);text-align:center;min-height:16px"></div>
+      <button class="btn-dim" style="margin-top:0" onclick="pop()">← Back</button>
+    </div>`
+  }else{
+    h+=`<div class="ov-foot" style="display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;gap:8px;align-items:center">
+        <input id="det-email-to" type="email" placeholder="${esc(loc.contact_email||'Customer email')}" value="${esc(loc.contact_email||'')}" style="flex:1;min-height:44px;font-size:13px;background:var(--c1);color:var(--w);border:1.5px solid var(--b1);border-radius:var(--rs);padding:0 12px">
+        <button id="det-send-btn" style="background:var(--info);color:#fff;padding:0 16px;border-radius:var(--rs);font-size:13px;font-weight:800;min-height:44px;white-space:nowrap;flex-shrink:0" onclick="sendInvoiceEmailFromDetail('${id}','${esc(loc.name||'')}','${esc(inv.invoice_number||'')}')">✉️ Send</button>
+      </div>
+      <div id="det-email-status" style="font-size:12px;color:var(--g1);text-align:center;min-height:16px"></div>
+      <button class="btn-dim" style="margin-top:0" onclick="pop()">← Back</button>
+    </div>`
+  }
+  push(h)
+}
+
+async function markPaid(id,method){
+  const{error}=await SB.from('invoices').update({status:'paid',payment_method:method,paid_at:new Date().toISOString()}).eq('id',id)
+  if(error){toast('Error',false);return}
+  await load();toast('Marked as paid ✓')
+  pop();openInvDetail(id)
+}
+
+// MAZON FACTORING FLOW
+function openMazonFlow(invId,custName,total){
+  const h=`<div class="ov-hdr">
+    <button class="ov-back" onclick="pop()">‹</button>
+    <div class="ov-title">Mazon Factoring</div>
+  </div><div class="ov-body">
+  <div style="background:var(--infos);border:1.5px solid var(--info);border-radius:var(--r);padding:14px;margin-bottom:16px">
+    <div style="font-size:13px;font-weight:700;color:var(--info);margin-bottom:4px">Mazon Invoice Factoring</div>
+    <div style="font-size:12px;color:var(--g1)">Client #1410 · PIN 4182<br>Customer: ${esc(custName)}<br>Amount: ${fmt(total)}</div>
+  </div>
+  <div class="ds"><div class="ds-t">Customer Agreement</div>
+  <div class="ds-info" style="font-size:12px;line-height:1.8">
+    By signing below, the customer authorizes Stephens Advanced LLC to assign this invoice to Mazon Capital for factoring. The customer agrees to make payment directly to Mazon Capital and acknowledges that Stephens Advanced LLC has performed the services described in this invoice.<br><br>
+    <b>Mazon Capital</b> · Client #1410<br>
+    Remit payment to Mazon Capital as directed on the invoice.
+  </div></div>
+  <div class="ds"><div class="ds-t">Customer Signature</div>
+    <div class="sig-wrap" id="mazonSigWrap"><canvas id="mazonSigC"></canvas><div class="sig-ph" id="mazonSigPh">Customer signs here</div><button class="sig-clr" onclick="clrMazonSig()">Clear</button></div>
+  </div>
+  <div class="fg"><label class="fg-l">Printed Name</label><input id="mazon-name" placeholder="Customer printed name"></div>
+  <button class="btn-p" id="mazonSubmitBtn" onclick="submitMazon('${invId}','${esc(custName)}',${total})">Submit to Mazon</button>
+  </div>`
+  push(h)
+  setTimeout(initMazonSig,80)
+}
+
+let mazonSigCtx=null,mazonSigOn=false
+function initMazonSig(){
+  const c=$('mazonSigC');if(!c)return
+  const r=c.parentElement.getBoundingClientRect();c.width=r.width;c.height=r.height
+  mazonSigCtx=c.getContext('2d');mazonSigCtx.strokeStyle='#222';mazonSigCtx.lineWidth=2.5;mazonSigCtx.lineCap='round';mazonSigCtx.lineJoin='round'
+  const sp=e=>{e.preventDefault();mazonSigOn=true;if($('mazonSigPh'))$('mazonSigPh').style.display='none';const p=gp2(e);mazonSigCtx.beginPath();mazonSigCtx.moveTo(p.x,p.y)}
+  const sm=e=>{if(!mazonSigOn)return;e.preventDefault();const p=gp2(e);mazonSigCtx.lineTo(p.x,p.y);mazonSigCtx.stroke()}
+  const se=()=>{mazonSigOn=false}
+  c.addEventListener('touchstart',sp,{passive:false});c.addEventListener('touchmove',sm,{passive:false});c.addEventListener('touchend',se)
+  c.addEventListener('mousedown',sp);c.addEventListener('mousemove',sm);c.addEventListener('mouseup',se)
+}
+function gp2(e){const c=$('mazonSigC'),r=c.getBoundingClientRect(),t=e.touches?e.touches[0]:e;return{x:t.clientX-r.left,y:t.clientY-r.top}}
+function clrMazonSig(){if(mazonSigCtx){const c=$('mazonSigC');mazonSigCtx.clearRect(0,0,c.width,c.height)}if($('mazonSigPh'))$('mazonSigPh').style.display=''}
+
+async function submitMazon(invId,custName,total){
+  const sig=$('mazonSigC')?.toDataURL()||null
+  const name=$('mazon-name')?.value?.trim()||''
+  const b=$('mazonSubmitBtn');if(b){b.innerHTML='<span class="spin"></span> Submitting...';b.classList.add('loading')}
+  const{error}=await SB.from('invoices').update({
+    status:'paid',payment_method:'mazon',paid_at:new Date().toISOString(),
+    notes:'Mazon Factoring — Client #1410. Customer: '+(name||custName)+'. Signature on file.'
+  }).eq('id',invId)
+  if(error){toast('Error',false);if(b){b.innerHTML='Submit to Mazon';b.classList.remove('loading')}return}
+  await load()
+  toast('Submitted to Mazon ✓')
+  popAll()
+  rMoney()
+  go(document.querySelector('[data-v="vMoney"]'))
+}
+
+// CLIENTS LIST
+function rCust(){
+  $('custC').innerHTML=`<div class="sec" style="margin-top:8px"><div class="sec-t">Clients · ${D.locs.length}</div><button class="sec-a" onclick="addNewCust()">+ Add</button></div>
+    <input class="srch" placeholder="Search by name, city, or address..." oninput="fC(this.value)">
+    <div id="cL">${cHtml(D.locs)}</div>`
+}
+function cHtml(ls){
+  if(!ls.length)return`<div class="ey"><div class="ey-i">👤</div><div class="ey-t">No clients yet. Tap + Add to create one.</div></div>`
+  return ls.map(l=>`<div class="cc" onclick="openCust('${l.id}')">
+    <div class="cc-l">
+      <div class="cc-nm">${esc(l.name)}</div>
+      <div class="cc-addr">${esc([l.address,l.city].filter(Boolean).join(', '))||'No address'}</div>
+      <div class="cc-meta">
+        <span><b>${l.extinguishers?.length||0}</b> ext</span>
+        <span><b>${l.suppression_systems?.length||0}</b> sys</span>
+        ${l.emergency_lights?.[0]?.fixture_count?`<span><b>${l.emergency_lights[0].fixture_count}</b> lights</span>`:''}
+        ${l.is_brycer_jurisdiction?'<span class="cc-bry">BRYCER</span>':''}
+      </div>
+    </div><div class="cc-arr">›</div>
+  </div>`).join('')
+}
+function fC(q){$('cL').innerHTML=cHtml(D.locs.filter(l=>l.name.toLowerCase().includes(q.toLowerCase())||(l.city||'').toLowerCase().includes(q.toLowerCase())||(l.address||'').toLowerCase().includes(q.toLowerCase())))}
+
+function addNewCust(){
+  push(`<div class="ov-hdr">
+    <button class="ov-back" onclick="pop()">‹</button>
+    <div class="ov-title">New Client</div>
+    <button class="ov-act" id="saveNCBtn" onclick="saveNewCust()">Save</button>
+  </div><div class="ov-body">
+    <div class="fg"><label class="fg-l">Business Name *</label><input id="nc-name" placeholder="e.g. Primo Brothers Pizza" autocomplete="off"></div>
+    <div class="fg"><label class="fg-l">Contact Name</label><input id="nc-contact"></div>
+    <div class="fg"><label class="fg-l">Phone</label><input id="nc-phone" type="tel"></div>
+    <div class="fg"><label class="fg-l">Email</label><input id="nc-email" type="email"></div>
+    <div class="fg"><label class="fg-l">Address</label><input id="nc-addr" autocomplete="off"></div>
+    <div class="row2">
+      <div class="fg"><label class="fg-l">City</label><input id="nc-city"></div>
+      <div class="fg"><label class="fg-l">ZIP</label><input id="nc-zip" maxlength="5"></div>
+    </div>
+    <div class="fg"><label class="fg-l">Notes</label><textarea id="nc-notes" placeholder="Gate codes, parking, etc."></textarea></div>
+    <div class="fg"><label class="fg-l">Brycer / Fort Worth FD</label>
+      <select id="nc-bry"><option value="false">No</option><option value="true">Yes — Fort Worth FD</option></select>
+    </div>
+    <div class="err" id="nc-err"></div>
+  </div>`)
+}
+
+async function saveNewCust(){
+  const name=$('nc-name')?.value?.trim()
+  if(!name){if($('nc-err'))$('nc-err').textContent='Business name required.';return}
+  const b=$('saveNCBtn');if(b){b.textContent='Saving...';b.style.opacity='.5';b.style.pointerEvents='none'}
+  const bry=$('nc-bry').value==='true'
+  const{data,error}=await SB.from('locations').insert({
+    name,state:'TX',contact_name:$('nc-contact')?.value?.trim()||null,contact_phone:$('nc-phone')?.value?.trim()||null,
+    contact_email:$('nc-email')?.value?.trim()||null,address:$('nc-addr')?.value?.trim()||null,
+    city:$('nc-city')?.value?.trim()||null,zip:$('nc-zip')?.value?.trim()||null,
+    notes:$('nc-notes')?.value?.trim()||null,is_brycer_jurisdiction:bry,
+    brycer_ahj_name:bry?'Fort Worth Fire Department':null
+  }).select().single()
+  if(error){if($('nc-err'))$('nc-err').textContent='Error: '+error.message;if(b){b.textContent='Save';b.style.opacity='';b.style.pointerEvents=''}return}
+  await load();toast('Client added')
+  pop();rCust();openCust(data.id)
+}
+
+// MONEY
+function rMoney(){
+  const pd=D.invs.filter(i=>i.status==='paid').reduce((s,i)=>s+(+i.total),0)
+  const ow=D.invs.filter(i=>!['paid','void','record'].includes(i.status)).reduce((s,i)=>s+(+i.total),0)
+  $('moneyC').innerHTML=`<div class="stats s2">
+    <div class="st" style="cursor:pointer" onclick="filterMoney('paid')"><div class="sn g">${fmt(pd)}</div><div class="sl">Collected ›</div></div>
+    <div class="st" style="cursor:pointer" onclick="filterMoney('unpaid')"><div class="sn r">${fmt(ow)}</div><div class="sl">Outstanding ›</div></div>
+  </div>
+  <div class="sec"><div class="sec-t">Invoices</div></div>
+  <input class="srch" placeholder="Search by customer or invoice #..." oninput="fI(this.value)">
+  <div id="iL">${iHtml(D.invs)}</div>`
+}
+function iHtml(invs){
+  if(!invs.length)return`<div class="ey"><div class="ey-i">💰</div><div class="ey-t">No invoices yet.</div></div>`
+  return invs.map(i=>{
+    const loc=D.locs.find(l=>l.id===i.location_id)
+    const bc=i.status==='paid'?'bpaid':i.status==='sent'?'bsent':i.status==='overdue'?'bover':i.status==='record'?'brec':i.status==='factored'?'bfact':'bdraft'
+    return`<div class="ic" onclick="openInvDetail('${i.id}')">
+      <div class="ic-r1"><div><div class="ic-nm">${esc(loc?.name||'Unknown')}</div><div class="ic-sub">${i.invoice_number||'—'}</div></div><span class="badge ${bc}">${i.status}</span></div>
+      <div class="ic-sub">${i.date?new Date(i.date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):''}</div>
+      <div class="ic-amt">${fmt(+i.total)}</div>
+    </div>`
+  }).join('')
+}
+function fI(q){
+  const ql=q.toLowerCase()
+  $('iL').innerHTML=iHtml(D.invs.filter(i=>{const loc=D.locs.find(l=>l.id===i.location_id);return(loc?.name||'').toLowerCase().includes(ql)||(i.invoice_number||'').toLowerCase().includes(ql)}))
+}
+
+// MODE SELECTOR
+function openNew(){
+  push(`<div class="ov-hdr">
+    <button class="ov-back" onclick="pop()">‹</button>
+    <div class="ov-title">What do you want to do?</div>
+  </div><div class="ov-body">
+    <div class="mode-card" onclick="pop();openPhotoFlow()"><div class="mode-icon">📸</div><div><div class="mode-title">Photo / AI</div><div class="mode-desc">Snap a work order or note. Claude reads it and builds the invoice.</div></div></div>
+    <div class="mode-card" onclick="pop();openManual(false)"><div class="mode-icon">✏️</div><div><div class="mode-title">Build Invoice</div><div class="mode-desc">Pick a customer, add line items, save or send.</div></div></div>
+    <div class="mode-card" onclick="pop();openManual(true)"><div class="mode-icon">🗂️</div><div><div class="mode-title">Record Only</div><div class="mode-desc">Log a past job or invoice. Nothing sent to customer.</div></div></div>
+    <div class="mode-card" onclick="pop();openSchedJob()"><div class="mode-icon">📋</div><div><div class="mode-title">Schedule a Job</div><div class="mode-desc">Create a new job on the schedule.</div></div></div>
+    <div class="mode-card" onclick="pop();addNewCust()"><div class="mode-icon">👤</div><div><div class="mode-title">Add Client</div><div class="mode-desc">Add a new service location.</div></div></div>
+  </div>`)
+}
+
+// PHOTO FLOW
+function openPhotoFlow(){
+  push(`<div class="ov-hdr">
+    <button class="ov-back" onclick="pop()">‹</button>
+    <div class="ov-title">Photo → Invoice</div>
+  </div><div class="ov-body">
+    <div class="photo-drop" onclick="$('camInput').click()">
+      <div style="font-size:40px;margin-bottom:10px">📷</div>
+      <div style="font-size:15px;font-weight:700;color:var(--w);margin-bottom:4px">Tap to take a photo</div>
+      <div style="font-size:12px;color:var(--g1)">Work order, handwritten note, envelope — anything with job details</div>
+    </div>
+    <img id="photoPrev" class="photo-prev">
+    <div id="aiStatus" style="display:none;text-align:center;padding:24px;color:var(--g1)"><span class="spin"></span><span id="aiTxt">Reading your photo...</span></div>
+    <div id="aiResult"></div>
+  </div>`)
+}
+
+function handlePhoto(ev){
+  const file=ev.target.files[0];if(!file)return
+  const reader=new FileReader()
+  reader.onload=e=>{
+    const prev=$('photoPrev');if(prev){prev.src=e.target.result;prev.style.display='block'}
+    const st=$('aiStatus');if(st)st.style.display='block'
+    $('camInput').value=''
+    const img=new Image()
+    img.onload=async()=>{
+      const canvas=document.createElement('canvas')
+      const max=1600;let w=img.width,h2=img.height
+      if(w>max||h2>max){if(w>h2){h2=Math.round(h2*max/w);w=max}else{w=Math.round(w*max/h2);h2=max}}
+      canvas.width=w;canvas.height=h2
+      canvas.getContext('2d').drawImage(img,0,0,w,h2)
+      await runPhotoAI(canvas.toDataURL('image/jpeg',0.85).split(',')[1],'image/jpeg')
+    }
+    img.src=e.target.result
+  }
+  reader.readAsDataURL(file)
+}
+
+async function runPhotoAI(b64,mtype){
+  const locList=D.locs.map(l=>({id:l.id,name:l.name,city:l.city||''}))
+  try{
+    const res=await fetch('/api/claude',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        model:'claude-sonnet-4-20250514',max_tokens:2000,
+        messages:[{role:'user',content:[
+          {type:'image',source:{type:'base64',media_type:mtype,data:b64}},
+          {type:'text',text:`You are the AI assistant for Stephens Advanced LLC, a fire suppression contractor in DFW Texas. Extract ALL invoice and job details from this image. Scan the ENTIRE image top to bottom.
+
+RULES:
+- LINE ITEMS: Only items with a dollar amount written next to them. No price = notes field only.
+- Copy dollar amounts EXACTLY as written. Never recalculate or change math.
+- Copy customer name, address, phone, email exactly as written.
+- SUB TOTAL and TOTAL at the bottom are most important — copy exactly.
+- Note payment method if visible (check, cash, card, PAID).
+- Include work order number and date if visible.
+
+Known customers: ${JSON.stringify(locList)}
+
+Return ONLY valid JSON, no markdown:
+{"customer_name":"","matched_location_id":null,"is_new_customer":true,"new_customer":{"name":"","address":"","city":"","state":"TX","zip":"","contact_name":"","contact_phone":"","email":""},"service_date":null,"work_order_number":"","service_type":"","line_items":[{"description":"","quantity":1,"unit_price":0,"total_as_written":""}],"subtotal_as_written":"","total_as_written":"","payment_method":"","notes":"","confidence":"high/medium/low"}`}
+        ]}]
+      })
+    })
+    const data=await res.json()
+    const txt=data.content?.[0]?.text||''
+    let p;try{p=JSON.parse(txt.replace(/```json|```/g,'').trim())}catch{throw new Error('parse')}
+    const st=$('aiStatus');if(st)st.style.display='none'
+    renderAIResult(p)
+  }catch(err){
+    const tx=$('aiTxt');if(tx)tx.textContent='Could not read photo — try again or build manually.'
+    console.error(err)
+  }
+}
+
+function renderAIResult(p){
+  const today=td(),due=new Date();due.setDate(due.getDate()+15);const dueStr=due.toISOString().split('T')[0]
+  const lines=p.line_items?.length?p.line_items:[{description:'',quantity:1,unit_price:0,total_as_written:''}]
+  _aiN=lines.length
+  const locOpts=D.locs.map(l=>`<option value="${l.id}"${l.id===p.matched_location_id?' selected':''}>${esc(l.name)}${l.city?' — '+esc(l.city):''}</option>`).join('')
+  const nc=p.new_customer||{}
+  const newCust=p.is_new_customer&&!p.matched_location_id?`<div class="inl">
+    <div class="inl-hdr"><span>New Customer — Confirm</span></div>
+    <input id="ai-nc-name" placeholder="Business name" value="${esc(nc.name||p.customer_name||'')}">
+    <input id="ai-nc-addr" placeholder="Address" value="${esc(nc.address||'')}">
+    <div class="row3" style="gap:6px"><input id="ai-nc-city" placeholder="City" value="${esc(nc.city||'')}"><input id="ai-nc-st" placeholder="ST" value="TX"><input id="ai-nc-zip" placeholder="Zip" value="${esc(nc.zip||'')}"></div>
+    <div class="row2" style="gap:6px"><input id="ai-nc-contact" placeholder="Contact" value="${esc(nc.contact_name||'')}"><input id="ai-nc-phone" placeholder="Phone" value="${esc(nc.contact_phone||'')}"></div>
+    <input id="ai-nc-email" placeholder="Email" value="${esc(nc.email||'')}">
+  </div>`:''
+  const ar=$('aiResult');if(!ar)return
+  ar.innerHTML=`
+    <div class="ai-box"><div class="ai-lbl">AI Extracted · Confidence: ${p.confidence||'?'}</div>
+    <div class="ai-txt">${esc(p.customer_name||'Unknown')} · ${esc(p.service_type||'')}${p.service_date?' · '+p.service_date:''}${p.work_order_number?' · WO#'+p.work_order_number:''}${p.total_as_written?' · Total: '+p.total_as_written:''}${p.payment_method?' · '+p.payment_method:''}</div></div>
+    <div class="fg"><label class="fg-l">Customer</label>
+      <select id="ai-loc"><option value="">-- Select --</option>${locOpts}</select>
+      ${p.customer_name?`<div style="font-size:11px;color:var(--g1);margin-top:4px">AI read: "${esc(p.customer_name)}"</div>`:''}
+    </div>
+    ${newCust}
+    <div class="fg"><label class="fg-l">Service Date</label><input type="date" id="ai-date" value="${p.service_date||today}"></div>
+    <div class="fg"><label class="fg-l">Due Date</label><input type="date" id="ai-due" value="${dueStr}"></div>
+    <div class="fg"><label class="fg-l">Service Type</label><input id="ai-type" value="${esc(p.service_type||'')}"></div>
+    <div class="fg"><label class="fg-l">Line Items <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--g1)">(all editable)</span></label>
+      <div id="ai-li-wrap">${lines.map((l2,i)=>`<div class="li-row">
+        <input placeholder="Description" id="ald${i}" value="${esc(l2.description||'')}">
+        <input class="li-qty" type="number" id="alq${i}" value="${l2.quantity||1}">
+        <input class="li-price" type="number" id="alp${i}" value="${l2.total_as_written?parseFloat((l2.total_as_written+'').replace(/[$,]/g,''))||0:l2.unit_price||0}" placeholder="$">
+      </div>`).join('')}</div>
+      <button class="btn-dim" style="margin-top:6px;width:auto;padding:10px 16px;font-size:13px" onclick="addAILine()">+ Add Line</button>
+    </div>
+    <div class="fg"><label class="fg-l">Notes</label><textarea id="ai-notes" placeholder="Optional...">${esc(p.notes||'')}</textarea></div>
+    <button class="btn-p" id="aiSaveBtn" onclick="saveAIInv(false)">Save Invoice</button>
+    <button class="btn-dim" onclick="saveAIInv(true)">Record Only — Don't Send</button>`
+}
+
+function addAILine(){
+  const wrap=$('ai-li-wrap');if(!wrap)return
+  const i=_aiN++
+  const d=document.createElement('div');d.className='li-row'
+  d.innerHTML=`<input placeholder="Description" id="ald${i}"><input class="li-qty" type="number" id="alq${i}" value="1"><input class="li-price" type="number" id="alp${i}" value="0" placeholder="$">`
+  wrap.appendChild(d)
+}
+
+async function saveAIInv(ro){
+  setLoad('aiSaveBtn',true)
+  const locId=$('ai-loc').value
+  let finalLocId=locId
+  if(!locId){
+    const nm=$('ai-nc-name')?.value?.trim()
+    if(!nm){toast('Select or confirm a customer',false);setLoad('aiSaveBtn',false,'Save Invoice');return}
+    const city=$('ai-nc-city')?.value?.trim()||''
+    const{data:newLoc,error}=await SB.from('locations').insert({
+      name:nm,address:$('ai-nc-addr')?.value?.trim()||null,city:city||null,
+      state:$('ai-nc-st')?.value?.trim()||'TX',zip:$('ai-nc-zip')?.value?.trim()||null,
+      contact_name:$('ai-nc-contact')?.value?.trim()||null,contact_phone:$('ai-nc-phone')?.value?.trim()||null,
+      contact_email:$('ai-nc-email')?.value?.trim()||null,
+      is_brycer_jurisdiction:city.toLowerCase().includes('fort worth'),
+      brycer_ahj_name:city.toLowerCase().includes('fort worth')?'Fort Worth Fire Department':null
+    }).select().single()
+    if(error){toast('Error saving customer',false);setLoad('aiSaveBtn',false,'Save Invoice');return}
+    finalLocId=newLoc.id;await load()
+  }
+  const lines=[]
+  for(let i=0;i<_aiN;i++){
+    const d=($('ald'+i)?.value||'').trim();if(!d)continue
+    const q=parseFloat($('alq'+i)?.value)||1,pp=parseFloat($('alp'+i)?.value)||0
+    lines.push({description:d,quantity:q,unit_price:pp,total:q*pp})
+  }
+  if(!lines.length){toast('Add at least one line item',false);setLoad('aiSaveBtn',false,'Save Invoice');return}
+  const total=lines.reduce((s,l2)=>s+l2.total,0)
+  const invNum='INV-'+Date.now().toString().slice(-6)
+  const{data:inv,error}=await SB.from('invoices').insert({
+    location_id:finalLocId,invoice_number:invNum,date:$('ai-date')?.value||td(),
+    due_date:ro?null:($('ai-due')?.value||null),status:ro?'record':'sent',subtotal:total,total,
+    notes:$('ai-notes')?.value?.trim()||null
+  }).select().single()
+  if(error){toast('Error saving invoice',false);setLoad('aiSaveBtn',false,'Save Invoice');return}
+  await SB.from('invoice_lines').insert(lines.map((l2,i)=>({invoice_id:inv.id,description:l2.description,quantity:l2.quantity,unit_price:l2.unit_price,total:l2.total,sort_order:i})))
+  await load();popAll()
+  const loc=D.locs.find(x=>x.id===finalLocId)||{name:'Customer',address:'',city:''}
+  showInv({num:invNum,nm:loc.name,addr:[loc.address,loc.city].filter(Boolean).join(', '),lines,total,ro,iid:inv.id,locId:finalLocId})
+}
+
+// MANUAL INVOICE
+function openManual(ro){
+  recOnly=ro;manLines=[{desc:'',qty:1,price:0}]
+  const today=td(),due=new Date();due.setDate(due.getDate()+15);const dueStr=due.toISOString().split('T')[0]
+  const locOpts=D.locs.map(l=>`<option value="${l.id}">${esc(l.name)}${l.city?' — '+esc(l.city):''}</option>`).join('')
+  push(`<div class="ov-hdr">
+    <button class="ov-back" onclick="pop()">‹</button>
+    <div class="ov-title">${ro?'Record Invoice':'Build Invoice'}</div>
+  </div><div class="ov-body">
+    <div class="fg"><label class="fg-l">Customer *</label><select id="man-loc"><option value="">-- Select --</option>${locOpts}</select></div>
+    <div class="fg"><label class="fg-l">Service Date</label><input type="date" id="man-date" value="${today}"></div>
+    ${!ro?`<div class="fg"><label class="fg-l">Due Date</label><input type="date" id="man-due" value="${dueStr}"></div>`:''}
+    <div class="fg"><label class="fg-l">Service Type</label><select id="man-type"><option>Semi-Annual Inspection</option><option>Annual Inspection</option><option>Emergency Service</option><option>Installation</option><option>Repair</option><option>Hydrostatic Test</option><option>Other</option></select></div>
+    <div class="fg"><label class="fg-l">Line Items</label><div id="man-li"></div><button class="btn-dim" onclick="addManLine()" style="margin-top:6px;width:auto;padding:10px 16px;font-size:13px">+ Add Line</button></div>
+    <div class="fg"><label class="fg-l">Notes</label><textarea id="man-notes" placeholder="Optional..."></textarea></div>
+    <button class="btn-p" id="manSaveBtn" onclick="saveManInv()">${ro?'Record Invoice':'Save Invoice'}</button>
+    <div class="err" id="man-err"></div>
+  </div>`)
+  renderManLines()
+}
+
+function renderManLines(){
+  const w=$('man-li');if(!w)return
+  w.innerHTML=manLines.map((l2,i)=>`<div class="li-row">
+    <input placeholder="Description" value="${esc(l2.desc||'')}" oninput="manLines[${i}].desc=this.value">
+    <input class="li-qty" type="number" value="${l2.qty||1}" oninput="manLines[${i}].qty=parseFloat(this.value)||1">
+    <input class="li-price" type="number" value="${l2.price||0}" placeholder="$" oninput="manLines[${i}].price=parseFloat(this.value)||0">
+    ${manLines.length>1?`<button class="li-del" onclick="manLines.splice(${i},1);renderManLines()">✕</button>`:''}
+  </div>`).join('')
+}
+function addManLine(){manLines.push({desc:'',qty:1,price:0});renderManLines()}
+
+async function saveManInv(){
+  const locId=$('man-loc').value;if(!locId){if($('man-err'))$('man-err').textContent='Select a customer.';return}
+  const lines=manLines.filter(l2=>(l2.desc||'').trim()).map(l2=>({description:l2.desc,quantity:l2.qty||1,unit_price:l2.price||0,total:(l2.qty||1)*(l2.price||0)}))
+  if(!lines.length){if($('man-err'))$('man-err').textContent='Add at least one line item.';return}
+  setLoad('manSaveBtn',true)
+  const total=lines.reduce((s,l2)=>s+l2.total,0),invNum='INV-'+Date.now().toString().slice(-6)
+  const{data:inv,error}=await SB.from('invoices').insert({
+    location_id:locId,invoice_number:invNum,date:$('man-date')?.value||td(),
+    due_date:recOnly?null:($('man-due')?.value||null),status:recOnly?'record':'sent',subtotal:total,total,
+    notes:$('man-notes')?.value?.trim()||null
+  }).select().single()
+  if(error){if($('man-err'))$('man-err').textContent='Error: '+error.message;setLoad('manSaveBtn',false,recOnly?'Record Invoice':'Save Invoice');return}
+  await SB.from('invoice_lines').insert(lines.map((l2,i)=>({invoice_id:inv.id,description:l2.description,quantity:l2.quantity,unit_price:l2.unit_price,total:l2.total,sort_order:i})))
+  await load()
+  const loc=D.locs.find(x=>x.id===locId)||{}
+  popAll()
+  showInv({num:invNum,nm:loc.name||'',addr:[loc.address,loc.city].filter(Boolean).join(', '),lines,total,ro:recOnly,iid:inv.id,locId:locId})
+}
+
+// INVOICE DISPLAY
+function showInv(d){
+  const loc=D.locs.find(x=>x.id===d.locId)||{}
+  const toEmail=loc.contact_email||d.email||null
+  let h=`<div class="inv-p"><h2>Invoice ${d.num}</h2>
+    <div class="co">Stephens Advanced LLC · Fire Suppression &amp; Safety · (214) 994-4799</div>
+    <div class="dt">${new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</div>
+    <div class="to"><strong>${esc(d.nm)}</strong>${d.addr?'<br>'+esc(d.addr):''}</div>`
+  d.lines.forEach(l2=>h+=`<div class="inv-ln"><div class="d">${esc(l2.description||l2.d||'')}</div><div class="a">${fmtD(+l2.total)}</div></div>`)
+  h+=`<div class="inv-tot"><div>Total</div><div>${fmtD(d.total)}</div></div>`
+  if(d.ro)h+=`<div style="background:#f0f4f8;border-radius:8px;padding:10px 14px;margin-top:14px;font-size:12px;color:#777;text-align:center">Recorded — not sent to customer</div>`
+  h+=`<div class="inv-acts">
+    <button class="inv-close" onclick="$('invOv').classList.remove('open');rDash()">Done</button>
+    ${!d.ro&&d.iid?`<button class="inv-fwd" id="invSendBtn" onclick="sendInvoiceEmail('${d.iid}','${esc(toEmail||'')}','${esc(d.nm)}','${esc(d.num)}',this)">✉️ Send Email</button>`:''}
+  </div>
+  <div id="inv-email-row" style="margin-top:12px;display:${!d.ro&&d.iid?'block':'none'}">
+    <input id="inv-email-to" type="email" placeholder="Customer email" value="${esc(toEmail||'')}" style="background:#f5f5f5;color:#111;border:1.5px solid #ddd;border-radius:8px;padding:10px 12px;font-size:13px;width:100%">
+    <div id="inv-email-status" style="font-size:12px;color:#888;margin-top:6px;text-align:center"></div>
+  </div>
+  </div>`
+  $('invOv').innerHTML=h;$('invOv').classList.add('open')
+}
+
+async function sendInvoiceEmail(invId,toEmail,custName,invNum,btn){
+  // use whatever is in the editable field if present
+  const emailField=$('inv-email-to')
+  const to=emailField?emailField.value.trim():toEmail
+  if(!to){
+    const st=$('inv-email-status');if(st){st.textContent='No email address — enter one above.';st.style.color='var(--bad)'}
+    return
+  }
+  if(btn){btn.innerHTML='<span class="spin"></span> Sending...';btn.style.pointerEvents='none'}
+  const st=$('inv-email-status');if(st){st.textContent='Sending...';st.style.color='#888'}
+
+  // fetch full invoice data — reload from DB to ensure fresh state
+  const{data:invFresh}=await SB.from('invoices').select('*').eq('id',invId).single()
+  const inv=invFresh||D.invs.find(x=>x.id===invId)||{}
+  const{data:lines}=await SB.from('invoice_lines').select('*').eq('invoice_id',invId).order('sort_order')
+  const ls=lines||[]
+  const total=ls.reduce((s,l)=>s+(+l.total||0),0)||+inv.total||0
+  const loc=D.locs.find(x=>x.id===inv.location_id)||{}
+
+  const html=buildInvoiceEmailHtml({
+    invNum:inv.invoice_number||invNum,
+    custName:custName||loc.name||'',
+    addr:[loc.address,loc.city,loc.state,loc.zip].filter(Boolean).join(', '),
+    date:inv.date?new Date(inv.date).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):'',
+    dueDate:inv.due_date?new Date(inv.due_date).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):'',
+    lines:ls,
+    total
+  })
+
+  try{
+    const res=await fetch('/api/send-email',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        to,
+        subject:`Invoice ${inv.invoice_number||invNum} — Stephens Advanced LLC`,
+        html,
+        invoiceNumber:inv.invoice_number||invNum,
+        customerName:custName||loc.name||''
+      })
+    })
+    const data=await res.json()
+    if(data.success){
+      // update invoice status to sent + record email
+      await SB.from('invoices').update({status:'sent'}).eq('id',invId)
+      await load()
+      if(st){st.textContent='✓ Email sent to '+to;st.style.color='var(--ok)'}
+      if(btn){btn.innerHTML='✓ Sent';btn.style.background='var(--ok)'}
+      toast('Invoice emailed ✓')
+    }else{
+      throw new Error(data.error||'Send failed')
+    }
+  }catch(err){
+    if(st){st.textContent='Error: '+err.message;st.style.color='var(--bad)'}
+    if(btn){btn.innerHTML='✉️ Send Email';btn.style.pointerEvents=''}
+    toast('Email failed — check credentials',false)
+    console.error(err)
+  }
+}
+
+function buildInvoiceEmailHtml({invNum,custName,addr,date,dueDate,lines,total}){
+  const lineRows=lines.map(l=>`
+    <tr>
+      <td style="padding:10px 0;border-bottom:1px solid #f0f0f0;font-size:14px;color:#333">${l.description||''}${l.quantity>1?' ×'+l.quantity:''}</td>
+      <td style="padding:10px 0;border-bottom:1px solid #f0f0f0;font-size:14px;color:#333;text-align:right;white-space:nowrap;font-weight:600">$${(+l.total).toFixed(2)}</td>
+    </tr>`).join('')
+  return`<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
+  <table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;margin:32px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.08)">
+    <tr><td style="background:#f05a28;padding:28px 32px">
+      <div style="font-size:22px;font-weight:900;color:#fff;letter-spacing:-.5px">Stephens Advanced LLC</div>
+      <div style="font-size:13px;color:rgba(255,255,255,.8);margin-top:4px">Fire Suppression &amp; Safety · (214) 994-4799</div>
+    </td></tr>
+    <tr><td style="padding:28px 32px">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#999;margin-bottom:6px">Invoice</div>
+      <div style="font-size:28px;font-weight:900;color:#111;margin-bottom:4px">${invNum}</div>
+      <div style="font-size:13px;color:#888">${date}${dueDate?' &nbsp;·&nbsp; Due '+dueDate:''}</div>
+      <div style="margin-top:20px;padding:14px 16px;background:#fafafa;border-radius:8px">
+        <div style="font-size:13px;font-weight:700;color:#111">${custName}</div>
+        ${addr?`<div style="font-size:12px;color:#888;margin-top:2px">${addr}</div>`:''}
+      </div>
+      <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:24px">
+        <tr><th style="text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:#999;padding-bottom:8px;border-bottom:2px solid #111">Description</th>
+            <th style="text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:#999;padding-bottom:8px;border-bottom:2px solid #111">Amount</th></tr>
+        ${lineRows}
+        <tr><td style="padding-top:16px;font-size:18px;font-weight:900;color:#111;border-top:2px solid #111">Total</td>
+            <td style="padding-top:16px;font-size:18px;font-weight:900;color:#f05a28;text-align:right;border-top:2px solid #111">$${total.toFixed(2)}</td></tr>
+      </table>
+      <div style="margin-top:28px;padding:16px;background:#fff8f5;border-left:4px solid #f05a28;border-radius:0 8px 8px 0;font-size:13px;color:#555;line-height:1.5">
+        To pay by check, make payable to <strong>Stephens Advanced LLC</strong>.<br>
+        Questions? Reply to this email or call <strong>(214) 994-4799</strong>.
+      </div>
+    </td></tr>
+    <tr><td style="padding:20px 32px;background:#fafafa;font-size:11px;color:#aaa;text-align:center;border-top:1px solid #eee">
+      Stephens Advanced LLC · Fire Suppression &amp; Safety · DFW Texas<br>jonathan@stephensadvanced.com · (214) 994-4799
+    </td></tr>
+  </table></body></html>`
+}
+
+// SCHEDULE JOB
+let nSt={loc:null,mk:false}
+
+function schedFor(locId,locName,locAddr,locCity){
+  nSt={loc:{id:locId,name:unesc(locName||''),address:unesc(locAddr||''),city:unesc(locCity||''),ba:''},mk:false}
+  // don't push if job form is already on top
+  const top=stk[stk.length-1]
+  if(top&&document.getElementById(top)?.querySelector('#saveJobBtn'))return
+  openSchedJob()
+}
+
+function openSchedJob(){rNewJob()}
+
+function rNewJob(){
+  let h=`<div class="ov-hdr">
+    <button class="ov-back" onclick="pop()">‹</button>
+    <div class="ov-title">Schedule Job</div>
+  </div><div class="ov-body">
+  <div class="fg"><div class="fg-l">Customer</div>`
+  if(nSt.loc){
+    h+=`<div style="background:var(--c1);border:1.5px solid rgba(16,185,129,.2);border-radius:var(--r);padding:12px;display:flex;justify-content:space-between;align-items:center">
+      <div><div style="font-size:14px;font-weight:700;color:var(--ok)">${esc(nSt.loc.name)}</div><div style="font-size:11px;color:var(--g1);margin-top:2px">${esc([nSt.loc.address,nSt.loc.city].filter(Boolean).join(', '))}</div></div>
+      <button style="font-size:11px;color:var(--g1);min-height:36px;padding:0 8px" onclick="nSt.loc=null;pop();openSchedJob()">Change</button>
+    </div>`
+  }else if(!nSt.mk){
+    h+=`<div class="ac"><input id="nq" placeholder="Type customer name..." oninput="nSrch(this.value)" onfocus="nSrch(this.value)"><div class="ac-dd" id="nDd"></div></div>`
+  }else{
+    h+=`<div class="inl"><div class="inl-hdr"><span>New Customer</span><button onclick="nSt.mk=false;pop();openSchedJob()">Cancel</button></div>
+      <input id="nn" placeholder="Business name"><input id="na" placeholder="Address">
+      <div class="row3" style="gap:6px"><input id="nc2" placeholder="City"><input id="ns2" placeholder="ST" value="TX"><input id="nz2" placeholder="Zip"></div>
+      <div class="row2" style="gap:6px"><input id="nco2" placeholder="Contact"><input id="np2" placeholder="Phone"></div>
+    </div>`
+  }
+  h+=`</div>
+  <div class="fg"><div class="fg-l">Date &amp; Time</div><div class="row2">
+    <input type="date" id="ndt" value="${new Date(Date.now()+86400000).toISOString().split('T')[0]}">
+    <input type="time" id="ntm" value="09:00">
+  </div></div>
+  <div class="fg"><div class="fg-l">Type</div><div class="tgl" id="nTy">`
+  ;[['inspection','Inspection'],['emergency','Emergency'],['misc','Misc']].forEach(([k,v])=>h+=`<button data-k="${k}" ${k==='inspection'?'class="on"':''} onclick="document.querySelectorAll('#nTy button').forEach(b=>b.classList.remove('on'));this.classList.add('on')">${v}</button>`)
+  h+=`</div></div><div class="fg"><div class="fg-l">Scope</div><div class="tgl" id="nSc">`
+  ;[['extinguishers','Extinguishers'],['suppression','Suppression'],['elights','E-Lights'],['hydro','Hydro']].forEach(([k,v])=>h+=`<button data-k="${k}" ${(k==='extinguishers'||k==='suppression')?'class="gn"':''} onclick="this.classList.toggle('gn')">${v}</button>`)
+  h+=`</div></div>
+  <div class="fg"><div class="fg-l">Notes</div><textarea id="nnt" placeholder="Optional..."></textarea></div>
+  <button class="btn-p" id="saveJobBtn" onclick="saveJob()">Create Job</button></div>`
+  push(h)
+}
+
+function nSrch(q){
+  const dd=$('nDd');if(!dd)return;if(q.length<1){dd.classList.remove('vis');return}
+  const f=D.locs.filter(l=>l.name.toLowerCase().includes(q.toLowerCase())||(l.city||'').toLowerCase().includes(q.toLowerCase()))
+  const canMk=q.length>=2&&!f.some(l=>l.name.toLowerCase()===q.toLowerCase())
+  let h=''
+  f.forEach(l=>h+=`<div class="ac-it" onclick="nSt={loc:{id:'${l.id}',name:'${esc(l.name)}',address:'${esc(l.address||'')}',city:'${esc(l.city||'')}',ba:'${l.billing_account_id||''}'},mk:false};pop();openSchedJob()"><div class="ac-n">${esc(l.name)}</div><div class="ac-d">${esc([l.address,l.city].filter(Boolean).join(', '))}</div></div>`)
+  if(canMk)h+=`<div class="ac-it ac-new" onclick="nSt.mk=true;pop();rNewJob();setTimeout(()=>{const e=$('nn');if(e)e.value='${esc(q)}'},30)"><div class="ac-n">+ Create "${esc(q)}"</div><div class="ac-d">Add new customer</div></div>`
+  dd.innerHTML=h;dd.classList.add('vis')
+}
+
+async function saveJob(){
+  setLoad('saveJobBtn',true)
+  let lid=nSt.loc?.id,ba=nSt.loc?.ba||null
+  if(nSt.mk){
+    const nm=$('nn')?.value?.trim();if(!nm){toast('Enter business name',false);setLoad('saveJobBtn',false,'Create Job');return}
+    const city=$('nc2')?.value?.trim()||''
+    const{data,error}=await SB.from('locations').insert({name:nm,address:$('na')?.value?.trim()||null,city:city||null,state:$('ns2')?.value?.trim()||'TX',zip:$('nz2')?.value?.trim()||null,contact_name:$('nco2')?.value?.trim()||null,contact_phone:$('np2')?.value?.trim()||null,is_brycer_jurisdiction:city.toLowerCase().includes('fort worth'),brycer_ahj_name:city.toLowerCase().includes('fort worth')?'Fort Worth Fire Department':null}).select().single()
+    if(error){toast('Error creating customer',false);setLoad('saveJobBtn',false,'Create Job');return}
+    lid=data.id
+  }
+  if(!lid){toast('Select a customer',false);setLoad('saveJobBtn',false,'Create Job');return}
+  const ty=document.querySelector('#nTy button.on')?.dataset.k||'inspection'
+  const sc=Array.from(document.querySelectorAll('#nSc button.gn')).map(b=>b.dataset.k)
+  // capture form values BEFORE popAll destroys the DOM
+  const jobDate=$('ndt')?.value||new Date(Date.now()+86400000).toISOString().split('T')[0]
+  const jobTime=$('ntm')?.value||'09:00'
+  const jobNoteTxt=$('nnt')?.value?.trim()||''
+  const{error}=await SB.from('jobs').insert({location_id:lid,billing_account_id:ba,type:ty,scope:sc.length?sc:['extinguishers','suppression'],scheduled_date:jobDate,scheduled_time:jobTime,status:'scheduled',notes:jobNoteTxt||null})
+  if(error){toast('Error creating job',false);setLoad('saveJobBtn',false,'Create Job');return}
+  await load();toast('Job created ✓')
+  nSt={loc:null,mk:false}
+  popAll()
+  rJobs();rDash()
+  go(document.querySelector('[data-v="vJobs"]'))
+  // offer to add to iPhone calendar
+  const calLoc=D.locs.find(x=>x.id===lid)||{}
+  addToCalendar({
+    title:'Stephens Advanced — '+(calLoc.name||'Job'),
+    date:jobDate,time:jobTime,
+    addr:[calLoc.address,calLoc.city].filter(Boolean).join(', '),
+    notes:jobNoteTxt
+  })
+}
+
+function addToCalendar({title,date,time,addr,notes}){
+  const fmtDT=(d,t)=>(d+'T'+t+':00').replace(/-|:/g,'')
+  const endHr=(parseInt((time||'09').split(':')[0])+2).toString().padStart(2,'0')
+  const endTime=endHr+':'+(time||'09:00').split(':')[1]
+  const ics=[
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Stephens Advanced//App//EN',
+    'BEGIN:VEVENT',
+    'DTSTART:'+fmtDT(date,time),
+    'DTEND:'+fmtDT(date,endTime),
+    'SUMMARY:'+title,
+    addr?'LOCATION:'+addr:'',
+    notes?'DESCRIPTION:'+notes.replace(/\n/g,'\\n'):'',
+    'END:VEVENT',
+    'END:VCALENDAR'
+  ].filter(Boolean).join('\r\n')
+  const blob=new Blob([ics],{type:'text/calendar;charset=utf-8'})
+  const url=URL.createObjectURL(blob)
+  const a=document.createElement('a');a.href=url;a.download='stephens-job.ics';a.click()
+  setTimeout(()=>URL.revokeObjectURL(url),5000)
+}
+
+async function sendInvoiceEmailFromDetail(invId,custName,invNum){
+  const to=$('det-email-to')?.value?.trim()
+  const st=$('det-email-status')
+  const btn=$('det-send-btn')
+  if(!to){if(st){st.textContent='Enter an email address.';st.style.color='var(--bad)'}return}
+  if(btn){btn.innerHTML='<span class="spin"></span>';btn.style.pointerEvents='none'}
+  if(st){st.textContent='Sending...';st.style.color='var(--g1)'}
+  const{data:invFresh2}=await SB.from('invoices').select('*').eq('id',invId).single()
+  const inv=invFresh2||D.invs.find(x=>x.id===invId)||{}
+  const{data:lines}=await SB.from('invoice_lines').select('*').eq('invoice_id',invId).order('sort_order')
+  const ls=lines||[]
+  const total=ls.reduce((s,l)=>s+(+l.total||0),0)||+inv.total||0
+  const loc=D.locs.find(x=>x.id===inv.location_id)||{}
+  const html=buildInvoiceEmailHtml({
+    invNum:inv.invoice_number||invNum,custName:custName||loc.name||'',
+    addr:[loc.address,loc.city,loc.state,loc.zip].filter(Boolean).join(', '),
+    date:inv.date?new Date(inv.date).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):'',
+    dueDate:inv.due_date?new Date(inv.due_date).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'',
+    lines:ls,total
+  })
+  try{
+    const res=await fetch('/api/send-email',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({to,subject:`Invoice ${inv.invoice_number||invNum} — Stephens Advanced LLC`,html,invoiceNumber:inv.invoice_number||invNum,customerName:custName||loc.name||''})
+    })
+    const data=await res.json()
+    if(data.success){
+      await SB.from('invoices').update({status:'sent'}).eq('id',invId)
+      await load()
+      if(st){st.textContent='✓ Sent to '+to;st.style.color='var(--ok)'}
+      if(btn){btn.innerHTML='✓ Sent';btn.style.background='var(--ok)'}
+      toast('Invoice emailed ✓')
+    }else{throw new Error(data.error||'Send failed')}
+  }catch(err){
+    if(st){st.textContent='Error: '+err.message;st.style.color='var(--bad)'}
+    if(btn){btn.innerHTML='✉️ Send';btn.style.pointerEvents=''}
+    toast('Email failed',false)
+  }
+}
+
+// ═══ DELETE FUNCTIONS ═══
+function toggleDelConfirm(id){
+  const el=$(id);if(!el)return
+  el.classList.toggle('vis')
+  if(el.classList.contains('vis'))el.scrollIntoView({behavior:'smooth',block:'nearest'})
+}
+
+async function delInvoice(id){
+  await SB.from('invoice_lines').delete().eq('invoice_id',id)
+  const{error}=await SB.from('invoices').delete().eq('id',id)
+  if(error){toast('Error deleting invoice',false);return}
+  await load();toast('Invoice deleted')
+  popAll()
+  go(document.querySelector('[data-v="vMoney"]'))
+}
+
+async function delJob(id){
+  const{error}=await SB.from('jobs').delete().eq('id',id)
+  if(error){toast('Error deleting job',false);return}
+  await load();toast('Job deleted')
+  popAll()
+  rJobs();rDash()
+}
+
+async function delCust(id){
+  // cascade: extinguisher_results, suppression_results, invoice_lines, invoices, jobs, extinguishers, suppression_systems, emergency_lights, then location
+  const jobIds=D.jobs.filter(j=>j.location_id===id||j.location?.id===id).map(j=>j.id)
+  const invIds=D.invs.filter(i=>i.location_id===id).map(i=>i.id)
+  if(invIds.length)await SB.from('invoice_lines').delete().in('invoice_id',invIds)
+  if(invIds.length)await SB.from('invoices').delete().in('id',invIds)
+  if(jobIds.length){try{await SB.from('extinguisher_results').delete().in('job_id',jobIds)}catch(e){}}
+  if(jobIds.length)await SB.from('jobs').delete().in('id',jobIds)
+  try{await SB.from('extinguishers').delete().eq('location_id',id)}catch(e){}
+  try{await SB.from('suppression_systems').delete().eq('location_id',id)}catch(e){}
+  try{await SB.from('emergency_lights').delete().eq('location_id',id)}catch(e){}
+  const{error}=await SB.from('locations').delete().eq('id',id)
+  if(error){toast('Error deleting client',false);return}
+  await load();toast('Client deleted')
+  popAll();rCust()
+}
+
+async function delExtinguisher(eid,locId){
+  try{await SB.from('extinguisher_results').delete().eq('extinguisher_id',eid)}catch(e){}
+  const{error}=await SB.from('extinguishers').delete().eq('id',eid)
+  if(error){toast('Error deleting extinguisher',false);return}
+  await load()
+  toast('Extinguisher deleted')
+  const slot=stk[stk.length-1]
+  if(slot){
+    stk.pop()
+    document.getElementById(slot).classList.remove('open')
+    document.getElementById(slot).style.display='none'
+    document.getElementById(slot).innerHTML=''
+    setTimeout(()=>openCust(locId),50)
+  }
+}
+
+async function delSuppSystem(sid,locId){
+  const{error}=await SB.from('suppression_systems').delete().eq('id',sid)
+  if(error){toast('Error deleting system',false);return}
+  await load()
+  toast('System deleted')
+  const slot=stk[stk.length-1]
+  if(slot){
+    stk.pop()
+    document.getElementById(slot).classList.remove('open')
+    document.getElementById(slot).style.display='none'
+    document.getElementById(slot).innerHTML=''
+    setTimeout(()=>openCust(locId),50)
+  }
+}
+
+// ADD EQUIPMENT
+function openAddEquip(locId){
+  push(`<div class="ov-hdr">
+    <button class="ov-back" onclick="pop()">‹</button>
+    <div class="ov-title">Add Equipment</div>
+  </div><div class="ov-body">
+    <div class="mode-card" onclick="pop();openAddExt('${locId}')"><div class="mode-icon">🧯</div><div><div class="mode-title">Extinguisher</div><div class="mode-desc">Add a portable fire extinguisher to this location.</div></div></div>
+    <div class="mode-card" onclick="pop();openAddSupp('${locId}')"><div class="mode-icon">🔧</div><div><div class="mode-title">Suppression System</div><div class="mode-desc">Add a kitchen or commercial suppression system.</div></div></div>
+    <div class="mode-card" onclick="pop();openAddELight('${locId}')"><div class="mode-icon">💡</div><div><div class="mode-title">Emergency Lighting</div><div class="mode-desc">Add emergency light fixtures.</div></div></div>
+  </div>`)
+}
+
+function openAddExt(locId){
+  push(`<div class="ov-hdr">
+    <button class="ov-back" onclick="pop()">‹</button>
+    <div class="ov-title">Add Extinguisher</div>
+    <button class="ov-act" id="saveExtBtn" onclick="saveExt('${locId}')">Save</button>
+  </div><div class="ov-body">
+    <div class="fg"><label class="fg-l">Type *</label>
+      <select id="ext-type">
+        <option>ABC Dry Chemical</option>
+        <option>Class K</option>
+        <option>CO2</option>
+        <option>Water</option>
+        <option>Halotron</option>
+        <option>Purple K</option>
+      </select>
+    </div>
+    <div class="fg"><label class="fg-l">Size *</label>
+      <select id="ext-size">
+        <option>2.5lb</option><option>5lb</option><option>10lb</option><option>15lb</option><option>20lb</option><option>2.5gal</option><option>5gal</option>
+      </select>
+    </div>
+    <div class="fg"><label class="fg-l">Location in Building</label><input id="ext-loc" placeholder="e.g. Kitchen, Front Counter, Hood"></div>
+    <div class="fg"><label class="fg-l">Serial Number</label><input id="ext-sn" placeholder="Optional"></div>
+    <div class="fg"><label class="fg-l">Manufacture Date</label><input type="month" id="ext-mfg"></div>
+    <div class="err" id="ext-err"></div>
+  </div>`)
+}
+
+async function saveExt(locId){
+  const b=$('saveExtBtn');if(b){b.textContent='Saving...';b.style.opacity='.5';b.style.pointerEvents='none'}
+  const type=$('ext-type')?.value;if(!type){if($('ext-err'))$('ext-err').textContent='Select a type.';if(b){b.textContent='Save';b.style.opacity='';b.style.pointerEvents=''}return}
+  const{error}=await SB.from('extinguishers').insert({
+    location_id:locId,type,size:$('ext-size')?.value||null,
+    location_in_building:$('ext-loc')?.value?.trim()||null,
+    serial_number:$('ext-sn')?.value?.trim()||null,
+    manufacture_date:$('ext-mfg')?.value||null
+  })
+  if(error){if($('ext-err'))$('ext-err').textContent='Error: '+error.message;if(b){b.textContent='Save';b.style.opacity='';b.style.pointerEvents=''}return}
+  await load();toast('Extinguisher added')
+  pop()
+  // client detail is still on stack below — refresh it
+  const slot=stk[stk.length-1]
+  if(slot){stk.pop();document.getElementById(slot).classList.remove('open');document.getElementById(slot).style.display='none';document.getElementById(slot).innerHTML=''}
+  setTimeout(()=>openCust(locId),50)
+}
+
+function openAddSupp(locId){
+  push(`<div class="ov-hdr">
+    <button class="ov-back" onclick="pop()">‹</button>
+    <div class="ov-title">Add Suppression System</div>
+    <button class="ov-act" id="saveSuppBtn" onclick="saveSupp('${locId}')">Save</button>
+  </div><div class="ov-body">
+    <div class="fg"><label class="fg-l">System Type *</label>
+      <select id="supp-type">
+        <option>Ansul R-102</option>
+        <option>Ansul Piranha</option>
+        <option>Pyro-Chem Kitchen Knight II</option>
+        <option>Buckeye Kitchen Mister</option>
+        <option>Kidde WHDR</option>
+        <option>Captive-Aire</option>
+        <option>Other</option>
+      </select>
+    </div>
+    <div class="fg"><label class="fg-l">Category</label>
+      <select id="supp-cat">
+        <option value="standard">Standard</option>
+        <option value="captiveaire_tank">Captive-Aire Tank</option>
+        <option value="captiveaire_core">Captive-Aire CORE</option>
+      </select>
+    </div>
+    <div class="fg"><label class="fg-l">Tanks</label><input type="number" id="supp-tanks" value="1" min="1"></div>
+    <div class="fg"><label class="fg-l">Nozzles</label><input type="number" id="supp-nozzles" value="0" min="0"></div>
+    <div class="fg"><label class="fg-l">Fusible Links</label><input type="number" id="supp-links" value="0" min="0"></div>
+    <div class="err" id="supp-err"></div>
+  </div>`)
+}
+
+async function saveSupp(locId){
+  const b=$('saveSuppBtn');if(b){b.textContent='Saving...';b.style.opacity='.5';b.style.pointerEvents='none'}
+  const{error}=await SB.from('suppression_systems').insert({
+    location_id:locId,
+    system_type:$('supp-type')?.value,
+    category:$('supp-cat')?.value||'standard',
+    tank_count:parseInt($('supp-tanks')?.value)||1,
+    nozzle_count:parseInt($('supp-nozzles')?.value)||0,
+    fusible_link_count:parseInt($('supp-links')?.value)||0
+  })
+  if(error){if($('supp-err'))$('supp-err').textContent='Error: '+error.message;if(b){b.textContent='Save';b.style.opacity='';b.style.pointerEvents=''}return}
+  await load();toast('Suppression system added')
+  pop()
+  const slot=stk[stk.length-1]
+  if(slot){stk.pop();document.getElementById(slot).classList.remove('open');document.getElementById(slot).style.display='none';document.getElementById(slot).innerHTML=''}
+  setTimeout(()=>openCust(locId),50)
+}
+
+function openAddELight(locId){
+  push(`<div class="ov-hdr">
+    <button class="ov-back" onclick="pop()">‹</button>
+    <div class="ov-title">Add Emergency Lighting</div>
+    <button class="ov-act" id="saveELBtn" onclick="saveELight('${locId}')">Save</button>
+  </div><div class="ov-body">
+    <div class="fg"><label class="fg-l">Number of Fixtures *</label><input type="number" id="el-count" value="1" min="1"></div>
+    <div class="fg"><label class="fg-l">Notes</label><input id="el-notes" placeholder="Optional"></div>
+    <div class="err" id="el-err"></div>
+  </div>`)
+}
+
+async function saveELight(locId){
+  const b=$('saveELBtn');if(b){b.textContent='Saving...';b.style.opacity='.5';b.style.pointerEvents='none'}
+  const count=parseInt($('el-count')?.value)||0
+  if(!count){if($('el-err'))$('el-err').textContent='Enter fixture count.';if(b){b.textContent='Save';b.style.opacity='';b.style.pointerEvents=''}return}
+  // check if one already exists — update instead
+  const existing=D.locs.find(x=>x.id===locId)?.emergency_lights?.[0]
+  let error
+  if(existing){
+    const r=await SB.from('emergency_lights').update({fixture_count:count,notes:$('el-notes')?.value?.trim()||null}).eq('id',existing.id)
+    error=r.error
+  }else{
+    const r=await SB.from('emergency_lights').insert({location_id:locId,fixture_count:count,notes:$('el-notes')?.value?.trim()||null})
+    error=r.error
+  }
+  if(error){if($('el-err'))$('el-err').textContent='Error: '+error.message;if(b){b.textContent='Save';b.style.opacity='';b.style.pointerEvents=''}return}
+  await load();toast('Emergency lighting saved')
+  pop()
+  const slot=stk[stk.length-1]
+  if(slot){stk.pop();document.getElementById(slot).classList.remove('open');document.getElementById(slot).style.display='none';document.getElementById(slot).innerHTML=''}
+  setTimeout(()=>openCust(locId),50)
+}
+
+
+// ═══ STAT CARD DRILL-DOWN ═══
+function showJobList(filter){
+  const t=new Date().toISOString().split('T')[0]
+  let jobs=[]
+  let title=''
+  if(filter==='today'){jobs=D.jobs.filter(j=>j.scheduled_date===t);title='Today\'s Jobs'}
+  else if(filter==='overdue'){jobs=D.jobs.filter(j=>j.status==='scheduled'&&j.scheduled_date<t);title='Overdue Jobs'}
+  else if(filter==='estimated'){jobs=D.jobs.filter(j=>j.scheduled_date===t);title='Today\'s Estimated Revenue'}
+  let h=`<div class="ov-hdr"><button class="ov-back" onclick="pop()">‹</button><div class="ov-title">${title}</div></div><div class="ov-body">`
+  if(!jobs.length)h+=`<div class="ey"><div class="ey-i">📋</div><div class="ey-t">No jobs here.</div></div>`
+  else jobs.forEach(j=>h+=jCard(j,filter==='overdue'))
+  h+=`</div>`
+  push(h)
+}
+
+// ═══ MONEY FILTER ═══
+function filterInvs(filter){
+  const now=new Date()
+  const monthStart=new Date(now.getFullYear(),now.getMonth(),1).toISOString().split('T')[0]
+  const monthEnd=new Date(now.getFullYear(),now.getMonth()+1,0).toISOString().split('T')[0]
+  let invs=[]
+  let title=''
+  if(filter==='paid'){
+    invs=D.invs.filter(i=>i.status==='paid'&&i.date>=monthStart&&i.date<=monthEnd)
+    title='Collected This Month'
+  }else{
+    invs=D.invs.filter(i=>!['paid','void','record','factored'].includes(i.status))
+    title='Outstanding Invoices'
+  }
+  const total=invs.reduce((s,i)=>s+(+i.total),0)
+  let h=`<div class="ov-hdr"><button class="ov-back" onclick="pop()">‹</button><div class="ov-title">${title}</div></div><div class="ov-body">`
+  h+=`<div style="background:var(--c1);border:1px solid var(--b1);border-radius:var(--r);padding:14px;margin-bottom:16px;text-align:center"><div style="font-size:28px;font-weight:900;color:${filter==='paid'?'var(--ok)':'var(--bad)'}">${fmt(total)}</div><div style="font-size:11px;color:var(--g1);margin-top:4px">${invs.length} invoice${invs.length!==1?'s':''}</div></div>`
+  if(!invs.length)h+=`<div class="ey"><div class="ey-i">💰</div><div class="ey-t">No invoices here.</div></div>`
+  else h+=iHtml(invs)
+  h+=`</div>`
+  push(h)
+}
+
+// ═══ SUPPRESSION SYSTEM REPORT ═══
+function openSuppReport(jobId,sysId){
+  const j=D.jobs.find(x=>x.id===jobId)||{}
+  const l=j.location||{}
+  const sys=l.suppression_systems?.find(s=>s.id===sysId)||l.suppression_systems?.[0]||{}
+  const a=[l.address,l.city,l.state,l.zip].filter(Boolean).join(', ')
+  const checks=[
+    'All appliances properly covered w/correct nozzles',
+    'Duct and plenum covered w/correct nozzles',
+    'Positioning of all nozzles checked',
+    'System installed in accordance w/MFG UL listing',
+    'Hood/duct penetrations sealed w/weld or UL device',
+    'Checked for intact seals, evidence of tampering',
+    'Has system been discharged? report same',
+    'Pressure gauge in proper range',
+    'Cartridge weight checked',
+    'Cylinder and mount inspected',
+    'Operated system from terminal fusible link',
+    'Tested for proper operation from manual remote pull',
+    'Operation of micro switch checked',
+    'Operation of fuel shut-off checked',
+    'Nozzles clean and clear of debris',
+    'Proper nozzle covers in place',
+    'Replaced fusible links',
+    'Travel of cable nuts/S-hooks checked',
+    'Piping & conduit securely bracketed and clear of debris',
+    'Proper separation between fryers and flame',
+    'Proper clearance: flame to filters',
+    'Exhaust fan in operating order',
+    'All filters replaced',
+    'Fuel shut-off in on position',
+    'Manual & remote set/seals in place',
+    'Systems covers replaced',
+    'System operational & seals in place',
+    'Secondary system operational',
+    'Cylinder & mount cleaned',
+    'Fan warning sign on hood',
+    'Personnel instructed in manual operation of system',
+    'Proper hand portable extinguishers in place',
+    'Portable extinguishers properly serviced',
+    'Service & Certification tag on system'
+  ]
+  // split into two columns of 17
+  const col1=checks.slice(0,17)
+  const col2=checks.slice(17)
+  let checkState={} // id -> 'yes'|'no'|'na'
+  checks.forEach((_,i)=>checkState[i]='')
+
+  let h=`<div class="ov-hdr">
+    <button class="ov-back" onclick="pop()">‹</button>
+    <div class="ov-title">Suppression Report</div>
+    <button class="ov-act" id="rptSaveBtn" onclick="saveSuppReport('${jobId}','${sysId}')">Done</button>
+  </div><div class="ov-body" style="padding-bottom:200px">
+  
+  <!-- CUSTOMER INFO -->
+  <div class="ds"><div class="ds-t">Customer Information</div>
+    <div class="ds-row"><div class="ds-lbl">Business</div><div class="ds-val">${esc(l.name||'')}</div></div>
+    <div class="ds-row"><div class="ds-lbl">Address</div><div class="ds-val">${esc(a)}</div></div>
+    ${l.contact_phone?`<div class="ds-row"><div class="ds-lbl">Phone</div><div class="ds-val">${l.contact_phone}</div></div>`:''}
+    ${l.contact_email?`<div class="ds-row"><div class="ds-lbl">Email</div><div class="ds-val">${esc(l.contact_email)}</div></div>`:''}
+  </div>
+
+  <!-- SERVICE INFO -->
+  <div class="ds"><div class="ds-t">Service Information</div>
+    <div class="ds-row"><div class="ds-lbl">Date</div><div class="ds-val">${j.scheduled_date||td()}</div></div>
+    <div class="ds-row"><div class="ds-lbl">Time In</div><div class="ds-val"><input id="rpt-timein" type="time" value="${j.scheduled_time||'09:00'}" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600;width:100px"></div></div>
+    <div class="ds-row"><div class="ds-lbl">Time Out</div><div class="ds-val"><input id="rpt-timeout" type="time" value="" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600;width:100px"></div></div>
+    <div class="ds-row"><div class="ds-lbl">Type</div><div class="ds-val">
+      <div style="display:flex;gap:6px;justify-content:flex-end">
+        <button id="rpt-annual" style="padding:6px 10px;border-radius:6px;font-size:11px;font-weight:700;border:1.5px solid var(--b1);background:var(--c2);color:var(--g2)" onclick="toggleRptType('annual')">Annual</button>
+        <button id="rpt-semi" style="padding:6px 10px;border-radius:6px;font-size:11px;font-weight:700;border:1.5px solid var(--fire);background:var(--fires);color:var(--fire)" onclick="toggleRptType('semi')">Semi-Annual</button>
+        <button id="rpt-install" style="padding:6px 10px;border-radius:6px;font-size:11px;font-weight:700;border:1.5px solid var(--b1);background:var(--c2);color:var(--g2)" onclick="toggleRptType('install')">Installation</button>
+      </div>
+    </div></div>
+  </div>
+
+  <!-- SYSTEM INFO -->
+  <div class="ds"><div class="ds-t">System Information</div>
+    <div class="ds-row"><div class="ds-lbl">Manufacturer</div><div class="ds-val"><input id="rpt-mfg" placeholder="e.g. Ansul" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600" value="${esc(sys.system_type?.split(' ')[0]||'')}"></div></div>
+    <div class="ds-row"><div class="ds-lbl">System Name/Model</div><div class="ds-val"><input id="rpt-model" placeholder="e.g. R-102" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600" value="${esc(sys.system_type||'')}"></div></div>
+    <div class="ds-row"><div class="ds-lbl">Serial Number</div><div class="ds-val"><input id="rpt-serial" placeholder="Serial #" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600"></div></div>
+    <div class="ds-row"><div class="ds-lbl">Cylinder Size(s)</div><div class="ds-val"><input id="rpt-cyl" placeholder="Main, Secondary..." style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600"></div></div>
+    <div class="ds-row"><div class="ds-lbl">Last Hydro Test</div><div class="ds-val"><input id="rpt-hydro" type="date" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600"></div></div>
+    <div class="ds-row"><div class="ds-lbl">Last Recharge</div><div class="ds-val"><input id="rpt-recharge" type="date" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600"></div></div>
+    <div class="ds-row"><div class="ds-lbl">Fusible Links</div><div class="ds-val"><input id="rpt-links" placeholder="Qty & temp ratings" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600" value="${sys.fusible_link_count?sys.fusible_link_count+' links':''}"></div></div>
+    <div class="ds-row"><div class="ds-lbl">Fuel Shut-Off Type</div><div class="ds-val">
+      <div style="display:flex;gap:6px;justify-content:flex-end">
+        <button id="rpt-elec" style="padding:6px 10px;border-radius:6px;font-size:11px;font-weight:700;border:1.5px solid var(--b1);background:var(--c2);color:var(--g2)" onclick="toggleRptFuel('elec')">Electric</button>
+        <button id="rpt-mech" style="padding:6px 10px;border-radius:6px;font-size:11px;font-weight:700;border:1.5px solid var(--b1);background:var(--c2);color:var(--g2)" onclick="toggleRptFuel('mech')">Mechanical</button>
+      </div>
+    </div></div>
+  </div>
+
+  <!-- SYSTEM CHECKS -->
+  <div class="ds"><div class="ds-t">System Checks</div>
+  <div style="background:var(--c1);border:1px solid var(--b1);border-radius:var(--r);overflow:hidden">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;padding:8px 12px;border-bottom:1px solid var(--b1);background:var(--c2)">
+      <div style="font-size:10px;font-weight:800;color:var(--g2)">CHECK</div>
+      <div style="font-size:10px;font-weight:800;color:var(--ok);text-align:center">YES</div>
+      <div style="font-size:10px;font-weight:800;color:var(--bad);text-align:center">NO</div>
+    </div>
+    ${checks.map((c,i)=>`<div style="display:grid;grid-template-columns:1fr auto auto;gap:8px;padding:10px 12px;border-bottom:1px solid rgba(42,47,62,.5);align-items:center" id="chk-row-${i}">
+      <div style="font-size:11px;color:var(--w2);line-height:1.4">${i+1}. ${c}</div>
+      <button style="width:36px;height:36px;border-radius:8px;border:1.5px solid var(--b1);background:var(--c2);font-size:14px;color:var(--g2)" id="chk-y-${i}" onclick="setCheck(${i},'yes')">✓</button>
+      <button style="width:36px;height:36px;border-radius:8px;border:1.5px solid var(--b1);background:var(--c2);font-size:14px;color:var(--g2)" id="chk-n-${i}" onclick="setCheck(${i},'no')">✕</button>
+    </div>`).join('')}
+  </div></div>
+
+  <!-- COOKING APPLIANCE LOCATIONS -->
+  <div class="ds"><div class="ds-t">Cooking Appliance Locations (Left to Right)</div>
+    <textarea id="rpt-appliances" placeholder="List appliances left to right..." style="min-height:80px"></textarea>
+  </div>
+
+  <!-- COMMENTS / DEFICIENCIES -->
+  <div class="ds"><div class="ds-t">Comments / Discrepancies / Deficiencies</div>
+    <textarea id="rpt-deficiencies" placeholder="Note any deficiencies found..." style="min-height:100px"></textarea>
+  </div>
+
+  <!-- SIGNATURES -->
+  <div class="ds"><div class="ds-t">Service Technician Signature</div>
+    <div class="sig-wrap" id="rpt-tech-sig-wrap"><canvas id="rptTechSig"></canvas><div class="sig-ph" id="rptTechSigPh">Sign here</div><button class="sig-clr" onclick="clrRptSig('tech')">Clear</button></div>
+  </div>
+  <div class="fg"><label class="fg-l">Print Technician Name</label><input id="rpt-tech-name" placeholder="Jon Stephens" value="Jon Stephens"></div>
+  <div class="fg"><label class="fg-l">Permit No.</label><input id="rpt-permit" placeholder="Optional"></div>
+
+  <div class="ds"><div class="ds-t">Owner / Manager / Authorized Agent Signature</div>
+    <div class="sig-wrap" id="rpt-owner-sig-wrap"><canvas id="rptOwnerSig"></canvas><div class="sig-ph" id="rptOwnerSigPh">Sign here</div><button class="sig-clr" onclick="clrRptSig('owner')">Clear</button></div>
+  </div>
+  <div class="fg"><label class="fg-l">Print Owner / Manager Name</label><input id="rpt-owner-name" placeholder="${esc(l.contact_name||'')}"></div>
+
+  </div>
+  <div class="ov-foot">
+    <button class="btn-p" id="rptSaveBtn2" onclick="generateSuppReport('${jobId}','${sysId}')">📄 Generate Report PDF</button>
+  </div>`
+
+  window._rptCheckState={}
+  checks.forEach((_,i)=>window._rptCheckState[i]='')
+  window._rptServiceType='semi'
+  window._rptFuelType=''
+
+  push(h)
+  setTimeout(()=>{
+    initRptSig('tech','rptTechSig','rptTechSigPh')
+    initRptSig('owner','rptOwnerSig','rptOwnerSigPh')
+  },100)
+}
+
+function setCheck(i,val){
+  window._rptCheckState[i]=window._rptCheckState[i]===val?'':val
+  const y=$('chk-y-'+i),n=$('chk-n-'+i)
+  if(y)y.style.background=window._rptCheckState[i]==='yes'?'var(--oks)':'var(--c2)',y.style.borderColor=window._rptCheckState[i]==='yes'?'var(--ok)':'var(--b1)',y.style.color=window._rptCheckState[i]==='yes'?'var(--ok)':'var(--g2)'
+  if(n)n.style.background=window._rptCheckState[i]==='no'?'var(--bads)':'var(--c2)',n.style.borderColor=window._rptCheckState[i]==='no'?'var(--bad)':'var(--b1)',n.style.color=window._rptCheckState[i]==='no'?'var(--bad)':'var(--g2)'
+}
+
+function toggleRptType(t){
+  window._rptServiceType=t
+  ;['annual','semi','install'].forEach(k=>{
+    const b=$('rpt-'+k)
+    if(!b)return
+    const on=k===t
+    b.style.borderColor=on?'var(--fire)':'var(--b1)'
+    b.style.background=on?'var(--fires)':'var(--c2)'
+    b.style.color=on?'var(--fire)':'var(--g2)'
+  })
+}
+
+function toggleRptFuel(t){
+  window._rptFuelType=window._rptFuelType===t?'':t
+  ;['elec','mech'].forEach(k=>{
+    const b=$('rpt-'+k)
+    if(!b)return
+    const on=k===window._rptFuelType
+    b.style.borderColor=on?'var(--fire)':'var(--b1)'
+    b.style.background=on?'var(--fires)':'var(--c2)'
+    b.style.color=on?'var(--fire)':'var(--g2)'
+  })
+}
+
+let rptSigCtx={}
+function initRptSig(key,canvasId,phId){
+  const c=$(canvasId);if(!c)return
+  const r=c.parentElement.getBoundingClientRect();c.width=r.width;c.height=r.height
+  const ctx=c.getContext('2d');ctx.strokeStyle='#222';ctx.lineWidth=2.5;ctx.lineCap='round';ctx.lineJoin='round'
+  rptSigCtx[key]=ctx
+  let on=false
+  const sp=e=>{e.preventDefault();on=true;if($(phId))$(phId).style.display='none';const p=gpC(e,c);ctx.beginPath();ctx.moveTo(p.x,p.y)}
+  const sm=e=>{if(!on)return;e.preventDefault();const p=gpC(e,c);ctx.lineTo(p.x,p.y);ctx.stroke()}
+  const se=()=>{on=false}
+  c.addEventListener('touchstart',sp,{passive:false});c.addEventListener('touchmove',sm,{passive:false});c.addEventListener('touchend',se)
+  c.addEventListener('mousedown',sp);c.addEventListener('mousemove',sm);c.addEventListener('mouseup',se)
+}
+
+function gpC(e,c){const r=c.getBoundingClientRect(),t=e.touches?e.touches[0]:e;return{x:t.clientX-r.left,y:t.clientY-r.top}}
+
+function clrRptSig(key){
+  const canvasId=key==='tech'?'rptTechSig':'rptOwnerSig'
+  const phId=key==='tech'?'rptTechSigPh':'rptOwnerSigPh'
+  const c=$(canvasId)
+  if(c&&rptSigCtx[key])rptSigCtx[key].clearRect(0,0,c.width,c.height)
+  if($(phId))$(phId).style.display=''
+}
+
+function saveSuppReport(jobId,sysId){pop()}
+
+async function generateSuppReport(jobId,sysId){
+  const b=$('rptSaveBtn2');if(b){b.innerHTML='<span class="spin"></span> Generating...';b.classList.add('loading')}
+  
+  const j=D.jobs.find(x=>x.id===jobId)||{}
+  const l=j.location||{}
+  const sys=l.suppression_systems?.find(s=>s.id===sysId)||l.suppression_systems?.[0]||{}
+  const a=[l.address,l.city,l.state,l.zip].filter(Boolean).join(', ')
+
+  const checks=[
+    'All appliances properly covered w/correct nozzles',
+    'Duct and plenum covered w/correct nozzles',
+    'Positioning of all nozzles checked',
+    'System installed in accordance w/MFG UL listing',
+    'Hood/duct penetrations sealed w/weld or UL device',
+    'Checked for intact seals, evidence of tampering',
+    'Has system been discharged? report same',
+    'Pressure gauge in proper range',
+    'Cartridge weight checked',
+    'Cylinder and mount inspected',
+    'Operated system from terminal fusible link',
+    'Tested for proper operation from manual remote pull',
+    'Operation of micro switch checked',
+    'Operation of fuel shut-off checked',
+    'Nozzles clean and clear of debris',
+    'Proper nozzle covers in place',
+    'Replaced fusible links',
+    'Travel of cable nuts/S-hooks checked',
+    'Piping & conduit securely bracketed and clear of debris',
+    'Proper separation between fryers and flame',
+    'Proper clearance: flame to filters',
+    'Exhaust fan in operating order',
+    'All filters replaced',
+    'Fuel shut-off in on position',
+    'Manual & remote set/seals in place',
+    'Systems covers replaced',
+    'System operational & seals in place',
+    'Secondary system operational',
+    'Cylinder & mount cleaned',
+    'Fan warning sign on hood',
+    'Personnel instructed in manual operation of system',
+    'Proper hand portable extinguishers in place',
+    'Portable extinguishers properly serviced',
+    'Service & Certification tag on system'
+  ]
+
+  const cs=window._rptCheckState||{}
+  const techSig=$('rptTechSig')?.toDataURL()||''
+  const ownerSig=$('rptOwnerSig')?.toDataURL()||''
+  const serviceDate=j.scheduled_date?new Date(j.scheduled_date+'T12:00:00').toLocaleDateString('en-US',{month:'2-digit',day:'2-digit',year:'numeric'}):new Date().toLocaleDateString('en-US',{month:'2-digit',day:'2-digit',year:'numeric'})
+  const timeIn=$('rpt-timein')?.value||''
+  const timeOut=$('rpt-timeout')?.value||''
+  const svcType={annual:'Annual',semi:'Semi-Annual',install:'Installation'}[window._rptServiceType||'semi']
+  const fuelType={elec:'Electric',mech:'Mechanical'}[window._rptFuelType||'']||''
+
+  const checkRows=checks.map((c2,i)=>{
+    const st=cs[i]||''
+    const y=st==='yes'?'✓':''
+    const n=st==='no'?'✓':''
+    const col=i<17?'left':'right'
+    return{label:`${i+1}. ${c2}`,yes:y,no:n,col}
+  })
+  const leftChecks=checkRows.filter(r=>r.col==='left')
+  const rightChecks=checkRows.filter(r=>r.col==='right')
+
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:Arial,sans-serif;font-size:9pt;color:#000;background:#fff;padding:12px}
+.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;border-bottom:2px solid #000;padding-bottom:8px}
+.co-name{font-size:22pt;font-weight:900;letter-spacing:-1px}
+.co-name span{color:#f05a28}
+.co-sub{font-size:8pt;color:#555;margin-top:2px}
+.co-phone{font-size:14pt;font-weight:700;color:#f05a28;margin-top:4px}
+.title{font-size:14pt;font-weight:900;text-align:center;margin:8px 0;border:2px solid #000;padding:6px;background:#f0f0f0}
+.cust-box{border:2px solid #000;padding:8px;margin-bottom:6px}
+.cust-title{font-weight:700;font-size:9pt;background:#333;color:#fff;padding:2px 6px;margin:-8px -8px 6px -8px}
+.row{display:flex;gap:8px;margin-bottom:4px;align-items:flex-end}
+.field{flex:1;border-bottom:1px solid #888;min-height:16px;font-size:8pt;padding:1px 2px}
+.field-label{font-size:7pt;color:#666;margin-bottom:1px}
+.checks-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px}
+.check-col{}
+.check-title{font-weight:700;font-size:8pt;background:#333;color:#fff;padding:2px 6px;margin-bottom:2px}
+.check-row{display:flex;align-items:center;border-bottom:1px solid #ddd;padding:2px 0;gap:4px}
+.check-label{flex:1;font-size:7.5pt}
+.check-box{width:14px;height:14px;border:1.5px solid #333;display:flex;align-items:center;justify-content:center;font-size:9pt;font-weight:700;flex-shrink:0}
+.check-yn{font-size:6pt;color:#666;margin-right:2px}
+.sys-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px}
+.sig-box{display:flex;gap:12px;margin-top:8px;border-top:2px solid #000;padding-top:8px}
+.sig-side{flex:1}
+.sig-line{border-bottom:1px solid #000;height:40px;margin-bottom:4px;display:flex;align-items:flex-end}
+.sig-line img{max-height:38px;max-width:100%}
+.sig-label{font-size:7pt;color:#555}
+.section{border:2px solid #000;padding:6px;margin-bottom:6px}
+.section-title{font-weight:700;font-size:8pt;background:#333;color:#fff;padding:2px 6px;margin:-6px -6px 6px -6px}
+.textarea-box{border:1px solid #888;min-height:40px;padding:3px;font-size:8pt;margin-top:2px}
+@media print{body{padding:4px}button{display:none}}
+</style></head><body>
+<div class="header">
+  <div>
+    <div class="co-name">SAFE</div>
+    <div class="co-sub">STEPHENS ADVANCED FIRE EQUIPMENT</div>
+    <div class="co-phone">214-994-4799</div>
+  </div>
+  <div style="text-align:right">
+    <div style="font-size:8pt;font-weight:700">Pre-Engineered Restaurant</div>
+    <div style="font-size:11pt;font-weight:900">Fire Suppression Systems Report</div>
+  </div>
+</div>
+
+<div class="cust-box">
+  <div class="cust-title">Customer Information</div>
+  <div class="row"><div><div class="field-label">Business Name</div><div class="field">${l.name||''}</div></div></div>
+  <div class="row"><div style="flex:2"><div class="field-label">Address</div><div class="field">${a}</div></div><div><div class="field-label">Telephone</div><div class="field">${l.contact_phone||''}</div></div></div>
+  <div class="row"><div><div class="field-label">Email</div><div class="field">${l.contact_email||''}</div></div><div><div class="field-label">Owner/Manager</div><div class="field">${l.contact_name||''}</div></div></div>
+  <div class="row" style="margin-top:4px">
+    <div><div class="field-label">Date of Service</div><div class="field">${serviceDate}</div></div>
+    <div><div class="field-label">Time In</div><div class="field">${timeIn}</div></div>
+    <div><div class="field-label">Time Out</div><div class="field">${timeOut}</div></div>
+    <div style="display:flex;align-items:flex-end;gap:4px">
+      <div style="border:1.5px solid ${svcType==='Annual'?'#333':'#ccc'};width:10px;height:10px;display:inline-flex;align-items:center;justify-content:center;font-size:7pt">${svcType==='Annual'?'✓':''}</div><span style="font-size:7pt">Annual</span>&nbsp;&nbsp;
+      <div style="border:1.5px solid ${svcType==='Semi-Annual'?'#333':'#ccc'};width:10px;height:10px;display:inline-flex;align-items:center;justify-content:center;font-size:7pt">${svcType==='Semi-Annual'?'✓':''}</div><span style="font-size:7pt">Semi-Annual</span>&nbsp;&nbsp;
+      <div style="border:1.5px solid ${svcType==='Installation'?'#333':'#ccc'};width:10px;height:10px;display:inline-flex;align-items:center;justify-content:center;font-size:7pt">${svcType==='Installation'?'✓':''}</div><span style="font-size:7pt">Installation</span>
+    </div>
+  </div>
+</div>
+
+<div class="sys-grid">
+  <div class="section">
+    <div class="section-title">System Information</div>
+    <div class="row"><div><div class="field-label">Manufacturer</div><div class="field">${$('rpt-mfg')?.value||''}</div></div></div>
+    <div class="row"><div><div class="field-label">System Name/Model</div><div class="field">${$('rpt-model')?.value||''}</div></div></div>
+    <div class="row"><div><div class="field-label">Serial Number</div><div class="field">${$('rpt-serial')?.value||''}</div></div></div>
+    <div class="row"><div><div class="field-label">Cylinder Size(s)</div><div class="field">${$('rpt-cyl')?.value||''}</div></div></div>
+    <div class="row"><div><div class="field-label">Last Hydro Test Date</div><div class="field">${$('rpt-hydro')?.value||''}</div></div></div>
+    <div class="row"><div><div class="field-label">Last Recharge Date</div><div class="field">${$('rpt-recharge')?.value||''}</div></div></div>
+    <div class="row"><div><div class="field-label">Fusible Links</div><div class="field">${$('rpt-links')?.value||''}</div></div></div>
+    <div class="row" style="margin-top:4px">
+      Fuel Shut-Off:&nbsp;
+      <div style="border:1.5px solid ${fuelType==='Electric'?'#333':'#ccc'};width:10px;height:10px;display:inline-flex;align-items:center;justify-content:center;font-size:7pt">${fuelType==='Electric'?'✓':''}</div><span style="font-size:7pt">Electric</span>&nbsp;&nbsp;
+      <div style="border:1.5px solid ${fuelType==='Mechanical'?'#333':'#ccc'};width:10px;height:10px;display:inline-flex;align-items:center;justify-content:center;font-size:7pt">${fuelType==='Mechanical'?'✓':''}</div><span style="font-size:7pt">Mechanical</span>
+    </div>
+  </div>
+  <div></div>
+</div>
+
+<div class="checks-grid">
+  <div class="check-col">
+    <div class="check-title">System Checks</div>
+    ${leftChecks.map(r=>`<div class="check-row">
+      <div class="check-label">${r.label}</div>
+      <span class="check-yn">Yes</span><div class="check-box">${r.yes}</div>
+      <span class="check-yn">No</span><div class="check-box">${r.no}</div>
+    </div>`).join('')}
+  </div>
+  <div class="check-col">
+    <div class="check-title">System Checks (cont.)</div>
+    ${rightChecks.map(r=>`<div class="check-row">
+      <div class="check-label">${r.label}</div>
+      <span class="check-yn">Yes</span><div class="check-box">${r.yes}</div>
+      <span class="check-yn">No</span><div class="check-box">${r.no}</div>
+    </div>`).join('')}
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title">Cooking Appliance Locations: Left To Right</div>
+  <div class="textarea-box">${($('rpt-appliances')?.value||'').replace(/
+/g,'<br>')}</div>
+</div>
+
+<div class="section">
+  <div class="section-title">Comments / Discrepancies / Deficiencies</div>
+  <div class="textarea-box">${($('rpt-deficiencies')?.value||'').replace(/
+/g,'<br>')}</div>
+</div>
+
+<div style="font-size:7.5pt;padding:6px;border:1px solid #ccc;margin-bottom:6px;background:#f9f9f9">
+  The service technician certifies that the system was inspected and found conditions to be as indicated on this report.
+</div>
+
+<div class="sig-box">
+  <div class="sig-side">
+    <div class="sig-line">${techSig?`<img src="${techSig}" style="max-height:38px">`:'&nbsp;'}</div>
+    <div class="sig-label">Service Technician Signature</div>
+    <div style="margin-top:8px;border-bottom:1px solid #000;padding-bottom:2px;font-size:9pt">${$('rpt-tech-name')?.value||'Jon Stephens'}</div>
+    <div class="sig-label">Print Service Technician Name</div>
+    <div style="margin-top:8px;border-bottom:1px solid #000;padding-bottom:2px;font-size:9pt">${serviceDate}</div>
+    <div class="sig-label">Date</div>
+    <div style="margin-top:8px;border-bottom:1px solid #000;padding-bottom:2px;font-size:9pt">${$('rpt-permit')?.value||''}</div>
+    <div class="sig-label">Permit No.</div>
+  </div>
+  <div class="sig-side">
+    <div class="sig-line">${ownerSig?`<img src="${ownerSig}" style="max-height:38px">`:'&nbsp;'}</div>
+    <div class="sig-label">Owner/Manager/Authorized Agent Signature</div>
+    <div style="margin-top:8px;border-bottom:1px solid #000;padding-bottom:2px;font-size:9pt">${$('rpt-owner-name')?.value||''}</div>
+    <div class="sig-label">Print Owner/Manager/Authorized Agent Name</div>
+  </div>
+</div>
+
+<script>window.print()<\/script>
+</body></html>`
+
+  // open in new window for printing/saving as PDF
+  const w=window.open('','_blank')
+  if(w){w.document.write(html);w.document.close()}
+  else{
+    // fallback: download as HTML file
+    const blob=new Blob([html],{type:'text/html'})
+    const url=URL.createObjectURL(blob)
+    const a=document.createElement('a');a.href=url;a.download='suppression-report.html';a.click()
+    setTimeout(()=>URL.revokeObjectURL(url),5000)
+  }
+  if(b){b.innerHTML='📄 Generate Report PDF';b.classList.remove('loading')}
+}
+
+// STARTUP
+load().then(()=>{
+  rDash()
+  if(!D.locs.length&&!D.jobs.length){
+    setTimeout(()=>load().then(rDash),1200)
+  }
+})
+</script>
+</body>
+</html>
