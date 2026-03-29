@@ -1364,7 +1364,7 @@ function jCard(j,isOv=false){
   const ds=j.scheduled_date?new Date(j.scheduled_date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}):''
   const cls=isOv?'jrd':j.status==='active'?'jgn':j.status==='completed'?'jgy':'jbl'
   return`<div class="jc ${cls}" onclick="openJob('${j.id}')">
-    <div class="jc-r1"><div class="jc-nm"><span style="color:var(--fire);text-decoration:underline;text-decoration-color:rgba(240,90,40,.3);text-underline-offset:2px;cursor:pointer" onclick="event.stopPropagation();openCust('${l.id||j.location_id}')">${esc(l.name||'Unknown')} ›</span></div><div class="jc-tm">${ds}${j.scheduled_time?' '+j.scheduled_time.slice(0,5):''}</div></div>
+    <div class="jc-r1"><div class="jc-nm"><span style="color:var(--fire);text-decoration:underline;text-decoration-color:rgba(240,90,40,.3);text-underline-offset:2px;cursor:pointer" onclick="event.stopPropagation();openCust('${j.location_id||l.id}')">${esc(l.name||'Unknown')} ›</span></div><div class="jc-tm">${ds}${j.scheduled_time?' '+j.scheduled_time.slice(0,5):''}</div></div>
     <div class="jc-addr">${esc(a)||'No address'}</div>
     <div class="jc-tags">${sc.includes('suppression')?'<span class="tg ts">Suppression</span>':''}${sc.includes('extinguishers')?'<span class="tg te">Ext</span>':''}${sc.includes('elights')?'<span class="tg tl">E-Lights</span>':''}${sc.includes('hydro')?'<span class="tg th">Hydro</span>':''}${isOv?'<span class="tg to2">Overdue</span>':''}${l.is_brycer_jurisdiction?'<span class="tg tb">Brycer</span>':''}${j.assigned_to?(()=>{const tk2=D.techs?.find(x=>x.id===j.assigned_to);return tk2?'<span class="tg" style="background:'+tk2.color+'22;color:'+tk2.color+'">'+esc(tk2.name.split(' ')[0])+'</span>':''})():''}</div>
     <div class="jc-val">${v?fmt(v):'<span style="color:var(--g2);font-size:12px">Add equipment to estimate</span>'}</div>
@@ -1423,8 +1423,8 @@ function buildJobLines(j){
     let bv=rc.suppression_standard||250
     if(s.category==='captiveaire_tank')bv=rc.suppression_captiveaire_tank||450
     if(s.category==='captiveaire_core')bv=rc.suppression_captiveaire_core||650
-    const p=bv+((s.tank_count-1)*(rc.suppression_additional_tank||50))
-    lines.push({desc:`${s.system_type} Semi-Annual (${s.tank_count}T)`,qty:1,price:p})
+    lines.push({desc:`${s.system_type} Semi-Annual`,qty:1,price:bv})
+    if(s.tank_count>1)lines.push({desc:`Additional Tank Fee`,qty:s.tank_count-1,price:rc.suppression_additional_tank||50})
     if(s.fusible_link_count)lines.push({desc:`Fusible Links`,qty:s.fusible_link_count,price:rc.fusible_link||25})
     if(s.nozzle_count)lines.push({desc:`Blow-Off Caps`,qty:s.nozzle_count,price:rc.metal_blowoff_cap||25})
   }
