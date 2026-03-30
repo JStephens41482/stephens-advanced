@@ -5778,40 +5778,52 @@ async function handleAppliancePhotos(ev){
 }
 
 async function saveSuppReport(jobId,sysId){
-  const ownerSigData=$('rptOwnerSig')?.toDataURL()||null
-  const reportHtml=await generateSuppReport(jobId,sysId,true)
+  const btn=$('rptSaveBtn2');if(btn){btn.textContent='Saving...';btn.style.opacity='.5';btn.style.pointerEvents='none'}
+  // capture all form data BEFORE any async calls
+  const techSigData=$('rptTechSig')?.toDataURL()||''
   const sysLocation=$('rpt-sys-location')?.value||''
-  const data={
-    checks:window._rptCheckState||{},
+  const formData={
+    checks:{...(window._rptCheckState||{})},
     serviceType:window._rptServiceType||'semi',
     fuelType:window._rptFuelType||'',
     mfg:$('rpt-mfg')?.value||'',model:$('rpt-model')?.value||'',
     serial:$('rpt-serial')?.value||'',cyl:$('rpt-cyl')?.value||'',
     hydro:$('rpt-hydro')?.value||'',recharge:$('rpt-recharge')?.value||'',
-    links:$('rpt-links')?.value||'',techName:$('rpt-tech-name')?.value||'',
-    permit:$('rpt-permit')?.value||'',ownerName:$('rpt-owner-name')?.value||'',
+    links:$('rpt-links')?.value||'',techName:$('rpt-tech-name')?.value||'Jon Stephens',
+    permit:$('rpt-permit')?.value||'FEL-A-2593933',ownerName:$('rpt-owner-name')?.value||'',
     appliances:$('rpt-appliances')?.value||'',deficiencies:$('rpt-deficiencies')?.value||'',
     sysLocation:sysLocation,
-    reportHtml:reportHtml||''
+    techSig:techSigData,
+    timein:$('rpt-timein')?.value||'',timeout:$('rpt-timeout')?.value||''
   }
+  // generate report HTML while form is still on screen
+  const reportHtml=await generateSuppReport(jobId,sysId,true)
+  formData.reportHtml=reportHtml||''
+
   const j=D.jobs.find(x=>x.id===jobId)||{}
   const locId=j.location_id||j.location?.id
+  if(!locId){toast('Error: no location linked to this job',false);if(btn){btn.textContent='✓ Save Report';btn.style.opacity='';btn.style.pointerEvents=''}return}
+
+  let saveOk=false
   try{
-    // use system_id to allow multiple reports per job
     if(sysId){
-      // fetch all reports for this job, then find matching sysId in JS
       const{data:allRpts}=await SB.from('reports').select('id,report_data').eq('job_id',jobId).eq('report_type','kitchen_suppression')
       const existing=(allRpts||[]).find(r=>r.report_data?.sysId===sysId)
       if(existing){
-        await SB.from('reports').update({report_data:{...data,sysId}}).eq('id',existing.id)
+        const{error}=await SB.from('reports').update({report_data:{...formData,sysId}}).eq('id',existing.id)
+        if(error){toast('Save error: '+error.message,false);console.error('report update:',error)}else saveOk=true
       }else{
-        await SB.from('reports').insert({job_id:jobId,location_id:locId,report_type:'kitchen_suppression',report_data:{...data,sysId}})
+        const{error}=await SB.from('reports').insert({job_id:jobId,location_id:locId,report_type:'kitchen_suppression',report_data:{...formData,sysId}})
+        if(error){toast('Save error: '+error.message,false);console.error('report insert:',error)}else saveOk=true
       }
     }else{
-      await SB.from('reports').insert({job_id:jobId,location_id:locId,report_type:'kitchen_suppression',report_data:data})
+      const{error}=await SB.from('reports').insert({job_id:jobId,location_id:locId,report_type:'kitchen_suppression',report_data:formData})
+      if(error){toast('Save error: '+error.message,false);console.error('report insert:',error)}else saveOk=true
     }
-    if(ownerSigData)await SB.from('jobs').update({signature_data:ownerSigData,notes:($('rpt-deficiencies')?.value||j.notes||null)}).eq('id',jobId)
-  }catch(e){console.error('report save:',e)}
+  }catch(e){console.error('report save exception:',e);toast('Save failed: '+e.message,false)}
+
+  if(!saveOk){if(btn){btn.textContent='✓ Save Report';btn.style.opacity='';btn.style.pointerEvents=''}return}
+
   await load()
   toast('Report saved ✓')
   pop()
