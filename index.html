@@ -411,7 +411,7 @@ document.getElementById('invOv').addEventListener('click',function(e){if(e.targe
 
 async function load(){
   const[j,l,i,b,r,ci,td2,mz,bq,tk,sr,pt]=await Promise.all([
-    SB.from('jobs').select('*,location:locations(*)').order('scheduled_date').order('scheduled_time'),
+    SB.from('jobs').select('*,location:locations(*)').order('updated_at',{ascending:false}),
     SB.from('locations').select('*,extinguishers(id,type,size,serial_number,location_in_building,manufacture_date,last_internal,last_hydro),suppression_systems(id,system_type,category,tank_count,nozzle_count,fusible_link_count),emergency_lights(id,fixture_count),billing_account:billing_accounts(*)').order('name'),
     SB.from('invoices').select('*').order('date',{ascending:false}).limit(100),
     SB.from('billing_accounts').select('*').order('name'),
