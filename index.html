@@ -2143,11 +2143,19 @@ async function updateJobChecklist(){
   flags.forEach(f=>{
     const color=f.done?'var(--ok)':'var(--g2)'
     const icon=f.done?'✓':'○'
-    fh+=`<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;margin-bottom:4px;border-radius:var(--rs);background:${f.done?'rgba(16,185,129,.08)':'var(--c2)'};border:1px solid ${f.done?'var(--ok)':'var(--b1)'};cursor:${f.action?'pointer':'default'}" ${f.action?`onclick="${f.action}"`:''}>
-      <span style="font-size:16px;font-weight:800;color:${color};width:20px;text-align:center">${icon}</span>
-      <span style="font-size:12px;font-weight:700;color:${f.done?'var(--ok)':'var(--w)'};flex:1">${f.label}</span>
-      ${f.done?'<span style="font-size:9px;font-weight:800;color:var(--ok);text-transform:uppercase">Done</span>':'<span style="font-size:9px;font-weight:700;color:var(--fire);text-transform:uppercase">Required</span>'}
-    </div>`
+    if(f.action){
+      fh+=`<button style="display:flex;align-items:center;gap:10px;padding:8px 12px;margin-bottom:4px;border-radius:var(--rs);background:${f.done?'rgba(16,185,129,.08)':'var(--c2)'};border:1px solid ${f.done?'var(--ok)':'var(--b1)'};cursor:pointer;width:100%;text-align:left" onclick="${f.action}">
+        <span style="font-size:16px;font-weight:800;color:${color};width:20px;text-align:center">${icon}</span>
+        <span style="font-size:12px;font-weight:700;color:${f.done?'var(--ok)':'var(--w)'};flex:1">${f.label}</span>
+        ${f.done?'<span style="font-size:9px;font-weight:800;color:var(--ok);text-transform:uppercase">Done</span>':'<span style="font-size:9px;font-weight:700;color:var(--fire);text-transform:uppercase">Tap to fill</span>'}
+      </button>`
+    }else{
+      fh+=`<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;margin-bottom:4px;border-radius:var(--rs);background:${f.done?'rgba(16,185,129,.08)':'var(--c2)'};border:1px solid ${f.done?'var(--ok)':'var(--b1)'}">
+        <span style="font-size:16px;font-weight:800;color:${color};width:20px;text-align:center">${icon}</span>
+        <span style="font-size:12px;font-weight:700;color:${f.done?'var(--ok)':'var(--w)'};flex:1">${f.label}</span>
+        ${f.done?'<span style="font-size:9px;font-weight:800;color:var(--ok);text-transform:uppercase">Done</span>':''}
+      </div>`
+    }
   })
 
   const allDone=flags.every(f=>f.done)
