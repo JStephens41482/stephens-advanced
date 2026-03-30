@@ -5738,7 +5738,7 @@ function buildDryChemReportHtml(jobId,sysId){
 
 async function openSuppReport(jobId,sysId,preLocation){
   const j=D.jobs.find(x=>x.id===jobId)||{}
-  const l=j.location||{}
+  const l=D.locs.find(x=>x.id===(j.location_id||j.location?.id))||j.location||{}
   const sys=l.suppression_systems?.find(s=>s.id===sysId)||l.suppression_systems?.[0]||{}
   const a=[l.address,l.city,l.state,l.zip].filter(Boolean).join(', ')
 
@@ -6211,7 +6211,7 @@ async function generateSuppReport(jobId,sysId,returnHtml=false){
   const b=returnHtml?null:$('rptSaveBtn2');if(b){b.innerHTML='<span class="spin"></span> Generating...';b.classList.add('loading')}
   
   const j=D.jobs.find(x=>x.id===jobId)||{}
-  const l=j.location||{}
+  const l=D.locs.find(x=>x.id===(j.location_id||j.location?.id))||j.location||{}
   const sys=l.suppression_systems?.find(s=>s.id===sysId)||l.suppression_systems?.[0]||{}
   const a=[l.address,l.city,l.state,l.zip].filter(Boolean).join(', ')
 
@@ -6319,7 +6319,7 @@ async function generateSuppReport(jobId,sysId,returnHtml=false){
 // ═══ CLEAN AGENT SYSTEM REPORT (NFPA 2001) ═══
 async function openCleanAgentReport(jobId,sysId){
   const j=D.jobs.find(x=>x.id===jobId)||{}
-  const l=j.location||{}
+  const l=D.locs.find(x=>x.id===(j.location_id||j.location?.id))||j.location||{}
   const sys=l.suppression_systems?.find(s=>s.id===sysId)||l.suppression_systems?.[0]||{}
   const a=[l.address,l.city,l.state,l.zip].filter(Boolean).join(', ')
 
@@ -6590,7 +6590,7 @@ async function saveCleanAgentReport(jobId,sysId,silent){
 async function generateCleanAgentReport(jobId,sysId,returnHtml=false){
   const b=returnHtml?null:$('caRptSaveBtn2');if(b){b.innerHTML='<span class="spin"></span> Generating...';b.classList.add('loading')}
   const j=D.jobs.find(x=>x.id===jobId)||{}
-  const l=j.location||{}
+  const l=D.locs.find(x=>x.id===(j.location_id||j.location?.id))||j.location||{}
   const a=[l.address,l.city,l.state,l.zip].filter(Boolean).join(', ')
   const checks=[
     'Hazard area inspected for occupancy/configuration changes',
