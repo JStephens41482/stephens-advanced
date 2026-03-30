@@ -4215,7 +4215,7 @@ async function _confirmSendEmail(){
     try{
       // render full HTML doc in hidden iframe — force white background
       const iframe=document.createElement('iframe')
-      iframe.style.cssText='position:absolute;left:-9999px;top:0;width:750px;height:1056px;border:none;background:#fff'
+      iframe.style.cssText='position:absolute;left:-9999px;top:0;width:680px;height:1056px;border:none;background:#fff'
       document.body.appendChild(iframe)
       const idoc=iframe.contentDocument||iframe.contentWindow.document
       // strip scripts, force white bg and black text on all elements
@@ -4224,7 +4224,7 @@ async function _confirmSendEmail(){
       idoc.open();idoc.write(cleanHtml);idoc.close()
       // wait for content + fonts to render
       await new Promise(r=>setTimeout(r,500))
-      const pdfBlob=await html2pdf().set({margin:[0.5,0.6,0.5,0.6],filename:'report.pdf',image:{type:'jpeg',quality:0.98},html2canvas:{scale:2,useCORS:true,windowWidth:750,backgroundColor:'#ffffff'},jsPDF:{unit:'in',format:'letter',orientation:'portrait'}}).from(idoc.body).outputPdf('blob')
+      const pdfBlob=await html2pdf().set({margin:[0.5,0.75,0.5,0.75],filename:'report.pdf',image:{type:'jpeg',quality:0.98},html2canvas:{scale:2,useCORS:true,windowWidth:680,backgroundColor:'#ffffff'},jsPDF:{unit:'in',format:'letter',orientation:'portrait'}}).from(idoc.body).outputPdf('blob')
       document.body.removeChild(iframe)
       const buf=await pdfBlob.arrayBuffer()
       const b64=btoa(new Uint8Array(buf).reduce((s,b)=>s+String.fromCharCode(b),''))
@@ -5080,18 +5080,18 @@ const RPT_LOGO=`<svg width="44" height="50" viewBox="0 0 32 38" fill="none" xmln
 
 function rptShell(title,subtitle,content){
   return`<!DOCTYPE html><html style="background:#ffffff;color-scheme:light"><head><meta charset="UTF-8"><meta name="color-scheme" content="light"></head>
-<body style="margin:0;padding:20px 16px;font-family:Arial,Helvetica,sans-serif;font-size:9.5pt;color:#222;background:#ffffff;line-height:1.4;max-width:700px;overflow:hidden">
+<body style="margin:0;padding:16px 12px;font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#222;background:#ffffff;line-height:1.4;width:100%;overflow:hidden">
 
 <table style="width:100%;border-collapse:collapse;border-bottom:3px solid #f05a28;padding-bottom:10px;margin-bottom:16px">
 <tr><td style="vertical-align:middle;width:50px;padding-bottom:10px">${RPT_LOGO}</td>
 <td style="vertical-align:middle;padding-bottom:10px;padding-left:10px">
-  <div style="font-size:18pt;font-weight:900;color:#1a1a2e">Stephens <span style="color:#f05a28">Advanced</span> LLC</div>
-  <div style="font-size:8pt;color:#666;margin-top:2px">3801 Alder Trail · Euless, Texas 76040</div>
-  <div style="font-size:10pt;font-weight:700;color:#f05a28;margin-top:2px">(214) 994-4799</div>
+  <div style="font-size:15pt;font-weight:900;color:#1a1a2e">Stephens <span style="color:#f05a28">Advanced</span> LLC</div>
+  <div style="font-size:7pt;color:#666;margin-top:1px">3801 Alder Trail · Euless, TX 76040</div>
+  <div style="font-size:9pt;font-weight:700;color:#f05a28;margin-top:1px">(214) 994-4799</div>
 </td>
-<td style="vertical-align:middle;text-align:right;padding-bottom:10px">
-  <div style="font-size:12pt;font-weight:800;color:#1a1a2e">${title}</div>
-  ${subtitle?`<div style="font-size:7.5pt;color:#888;margin-top:2px">${subtitle}</div>`:''}
+<td style="vertical-align:middle;text-align:right;padding-bottom:10px;max-width:220px">
+  <div style="font-size:10pt;font-weight:800;color:#1a1a2e">${title}</div>
+  ${subtitle?`<div style="font-size:6.5pt;color:#888;margin-top:1px">${subtitle}</div>`:''}
 </td></tr></table>
 
 ${content}
