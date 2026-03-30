@@ -4742,29 +4742,47 @@ async function openExtReport(jobId,editMode){
 }
 
 function showExtReportSummary(jobId,l){
-  const exts=l.extinguishers||[]
-  let h=`<div class="ov-hdr"><button class="ov-back" onclick="pop()">‹</button><div class="ov-title">Extinguisher Report</div></div><div class="ov-body">
-  <div style="background:var(--c1);border:1px solid var(--b1);border-radius:var(--r);padding:14px;margin-bottom:16px">
-    <div style="font-size:14px;font-weight:700">${esc(l.name||'')}</div>
-    <div style="font-size:12px;color:var(--g1);margin-top:4px">${_extRptData.length} extinguisher${_extRptData.length!==1?'s':''} inspected</div>
-  </div>`
+  const EXT_TYPES=['ABC Dry Chemical','Class K','CO2','Water','Halotron','Halon','Class D','Purple K','Clean Agent','BC Dry Chemical']
+  const typeOpts=t=>EXT_TYPES.map(tp=>`<option${tp===t?' selected':''}>${tp}</option>`).join('')
+  const condOpts=c=>['pass','fail','swap','condemn','remove'].map(v=>`<option${v===c?' selected':''}>${v}</option>`).join('')
+
+  let h=`<div class="ov-hdr"><button class="ov-back" onclick="pop()">‹</button><div class="ov-title">Extinguisher Report</div>
+    <button class="ov-act" onclick="finishExtReport('${jobId}')">Save</button>
+  </div><div class="ov-body">
+  <div style="font-size:13px;font-weight:700;color:var(--w);margin-bottom:8px">${esc(l.name||'')} · ${_extRptData.length} unit${_extRptData.length!==1?'s':''}</div>
+  <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:12px">
+  <table style="width:100%;min-width:600px;border-collapse:collapse;font-size:11px">
+    <tr style="background:var(--c2)">
+      <th style="padding:6px 4px;text-align:left;font-size:9px;font-weight:800;color:var(--g2);text-transform:uppercase;border-bottom:1px solid var(--b1)">#</th>
+      <th style="padding:6px 4px;text-align:left;font-size:9px;font-weight:800;color:var(--g2);text-transform:uppercase;border-bottom:1px solid var(--b1)">Type</th>
+      <th style="padding:6px 4px;text-align:left;font-size:9px;font-weight:800;color:var(--g2);text-transform:uppercase;border-bottom:1px solid var(--b1)">Size</th>
+      <th style="padding:6px 4px;text-align:left;font-size:9px;font-weight:800;color:var(--g2);text-transform:uppercase;border-bottom:1px solid var(--b1)">Location</th>
+      <th style="padding:6px 4px;text-align:left;font-size:9px;font-weight:800;color:var(--g2);text-transform:uppercase;border-bottom:1px solid var(--b1)">Mfg</th>
+      <th style="padding:6px 4px;text-align:left;font-size:9px;font-weight:800;color:var(--g2);text-transform:uppercase;border-bottom:1px solid var(--b1)">Status</th>
+      <th style="padding:6px 4px;text-align:left;font-size:9px;font-weight:800;color:var(--g2);text-transform:uppercase;border-bottom:1px solid var(--b1)">Notes</th>
+    </tr>`
+
   _extRptData.forEach((d,i)=>{
-    const nfpa=NFPA10[d.type]||NFPA10['ABC Dry Chemical']
     const condColor=d.condition==='pass'?'var(--ok)':'var(--bad)'
-    h+=`<div style="background:var(--c1);border:1px solid var(--b1);border-radius:var(--rs);padding:12px;margin-bottom:6px;display:flex;align-items:center;gap:10px">
-      <div style="width:8px;height:8px;border-radius:50%;background:${condColor};flex-shrink:0"></div>
-      <div style="flex:1;min-width:0">
-        <div style="font-size:13px;font-weight:700">${esc(d.type)} ${esc(d.size)}</div>
-        <div style="font-size:11px;color:var(--g1)">${esc(d.location||'')}${d.lastHydro?' · Hydro: '+d.lastHydro:''}${d.lastInternal?' · Int: '+d.lastInternal:''}</div>
-        ${d.notes?`<div style="font-size:10px;color:var(--warn);margin-top:2px">${esc(d.notes)}</div>`:''}
-      </div>
-      <span style="font-size:11px;font-weight:800;color:${condColor};text-transform:uppercase">${d.condition||'—'}</span>
-    </div>`
+    h+=`<tr style="border-bottom:1px solid var(--b1)">
+      <td style="padding:4px;color:var(--g1);font-weight:700">${i+1}</td>
+      <td style="padding:4px"><select style="font-size:11px;background:var(--c1);color:var(--w);border:1px solid var(--b1);border-radius:4px;padding:4px;width:100%" onchange="_extRptData[${i}].type=this.value">${typeOpts(d.type)}</select></td>
+      <td style="padding:4px"><input value="${esc(d.size)}" style="width:50px;font-size:11px;background:var(--c1);color:var(--w);border:1px solid var(--b1);border-radius:4px;padding:4px" oninput="_extRptData[${i}].size=this.value"></td>
+      <td style="padding:4px"><input value="${esc(d.location)}" style="width:80px;font-size:11px;background:var(--c1);color:var(--w);border:1px solid var(--b1);border-radius:4px;padding:4px" oninput="_extRptData[${i}].location=this.value"></td>
+      <td style="padding:4px"><input type="month" value="${d.mfgDate||''}" style="width:90px;font-size:10px;background:var(--c1);color:var(--w);border:1px solid var(--b1);border-radius:4px;padding:4px" oninput="_extRptData[${i}].mfgDate=this.value"></td>
+      <td style="padding:4px"><select style="font-size:11px;background:var(--c1);color:${condColor};border:1px solid var(--b1);border-radius:4px;padding:4px;font-weight:700;width:100%" onchange="_extRptData[${i}].condition=this.value;this.style.color=this.value==='pass'?'var(--ok)':'var(--bad)'">${condOpts(d.condition)}</select></td>
+      <td style="padding:4px"><input value="${esc(d.notes)}" placeholder="—" style="width:70px;font-size:10px;background:var(--c1);color:var(--w);border:1px solid var(--b1);border-radius:4px;padding:4px" oninput="_extRptData[${i}].notes=this.value"></td>
+    </tr>`
   })
-  h+=`</div>
-  <div class="ov-foot" style="display:flex;gap:8px">
-    <button class="btn-p" style="flex:1" onclick="pop();openExtReport('${jobId}',true)">Edit Report</button>
-    <button class="btn-dim" style="flex:1;margin-top:0" onclick="pop()">← Back</button>
+
+  h+=`</table></div>
+  <div style="display:flex;gap:8px;margin-bottom:12px">
+    <button class="trk-btn" style="flex:1;background:var(--fire);color:#fff;font-size:12px" onclick="addExtAndContinue('snap')">📷 Add (AI Snap)</button>
+    <button class="trk-btn" style="flex:1;background:var(--c2);border:1.5px solid var(--b1);color:var(--w2);font-size:12px" onclick="addExtAndContinue('manual')">✏️ Add Manually</button>
+  </div>
+  <input type="file" id="extPhotoInput" accept="image/*" capture="environment" style="display:none" onchange="handleExtPhoto(event)">
+  <button class="btn-p" onclick="finishExtReport('${jobId}')">Save Report</button>
+  <button class="btn-dim" style="margin-top:8px" onclick="pop()">← Back</button>
   </div>`
   push(h)
 }
