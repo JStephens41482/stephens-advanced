@@ -4170,11 +4170,25 @@ async function _confirmSendEmail(){
   const btn=$('confirmSendBtn');if(btn){btn.innerHTML='<span class="spin"></span> Sending...';btn.style.pointerEvents='none'}
   const st=$('confirmSendStatus')
 
-  // capture customer signature
+  // capture customer signature — redraw on white bg with dark ink for PDF
   let custSigData=''
   const custSigCanvas=$('custSendSig')
   if(custSigCanvas){
-    try{custSigData=custSigCanvas.toDataURL('image/jpeg',0.5)||''}catch(e){}
+    try{
+      const w=custSigCanvas.width,h=custSigCanvas.height
+      const tmp=document.createElement('canvas');tmp.width=w;tmp.height=h
+      const tctx=tmp.getContext('2d')
+      tctx.fillStyle='#ffffff';tctx.fillRect(0,0,w,h)
+      // get the original pixel data and draw dark where there was white ink
+      const srcCtx=custSigCanvas.getContext('2d')
+      const src=srcCtx.getImageData(0,0,w,h)
+      const dst=tctx.getImageData(0,0,w,h)
+      for(let i=0;i<src.data.length;i+=4){
+        if(src.data[i+3]>20){dst.data[i]=34;dst.data[i+1]=34;dst.data[i+2]=34;dst.data[i+3]=255}
+      }
+      tctx.putImageData(dst,0,0)
+      custSigData=tmp.toDataURL('image/jpeg',0.7)||''
+    }catch(e){console.error('sig capture:',e)}
   }
   if(custSigData&&custSigData.length>100&&d.inv.job_id){
     try{await SB.from('jobs').update({signature_data:custSigData}).eq('id',d.inv.job_id)}catch(e){console.error('save cust sig:',e)}
@@ -6016,7 +6030,13 @@ async function saveSuppReport(jobId,sysId,silent){
 async function _doSaveSuppReport(jobId,sysId,silent,btn){
   // capture all form data BEFORE any async calls
   let techSigData=''
-  try{const c=$('rptTechSig');if(c&&c.width>0)techSigData=c.toDataURL('image/jpeg',0.5)||''}catch(e){}
+  try{
+    const c=$('rptTechSig');if(c&&c.width>0){
+      const tw=c.width,th=c.height,tmp=document.createElement('canvas');tmp.width=tw;tmp.height=th
+      const tctx=tmp.getContext('2d');tctx.fillStyle='#ffffff';tctx.fillRect(0,0,tw,th);tctx.drawImage(c,0,0)
+      techSigData=tmp.toDataURL('image/jpeg',0.7)||''
+    }
+  }catch(e){}
   const sysLocation=$('rpt-sys-location')?.value||''
   const formData={
     checks:{...(window._rptCheckState||{})},
