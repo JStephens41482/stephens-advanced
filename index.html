@@ -4189,7 +4189,7 @@ async function _showEmailPreview(invId,to,custName,invNum){
     })
     h+=`</div>`
   }else{
-    h+=`<div style="background:var(--warns);border:1px solid var(--warn);border-radius:var(--r);padding:12px;margin-bottom:16px;font-size:12px;color:var(--warn)">No reports attached. Complete inspection reports before sending.</div>`
+    h+=`<div style="font-size:11px;color:var(--g1);padding:8px 0;text-align:center">No reports to attach.</div>`
   }
 
   // customer signature
@@ -4204,7 +4204,7 @@ async function _showEmailPreview(invId,to,custName,invNum){
 
   h+=`<button id="confirmSendBtn" onclick="_confirmSendEmail()" style="width:100%;padding:16px;border-radius:var(--r);background:var(--fire);color:#fff;font-size:16px;font-weight:800;border:none;cursor:pointer;min-height:54px;margin-bottom:8px">✉️ Send Invoice${rpts.length?' + '+rpts.length+' Report'+(rpts.length>1?'s':''):''}</button>`
   h+=`<div id="confirmSendStatus" style="text-align:center;font-size:12px;color:var(--g1);min-height:16px;margin-bottom:8px"></div>`
-  h+=`<button class="btn-dim" onclick="pop()">← Cancel</button>`
+  h+=`<button class="btn-dim" onclick="pop()">← Back</button>`
   h+=`</div>`
   push(h)
   // init customer signature canvas
