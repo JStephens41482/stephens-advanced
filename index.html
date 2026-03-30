@@ -5794,6 +5794,12 @@ async function openSuppReport(jobId,sysId,preLocation){
   let checkState={} // id -> 'yes'|'no'|'na'
   checks.forEach((_,i)=>checkState[i]='')
 
+  // init state BEFORE building template (template reads these)
+  window._rptCheckState=prev.checks||{}
+  checks.forEach((_,i)=>{if(window._rptCheckState[i]===undefined)window._rptCheckState[i]='yes'})
+  window._rptServiceType=prev.serviceType||'semi'
+  window._rptFuelType=prev.fuelType||''
+
   let h=`<div class="ov-hdr">
     <button class="ov-back" onclick="pop()">‹</button>
     <div class="ov-title">Suppression Report</div>
@@ -5902,11 +5908,6 @@ async function openSuppReport(jobId,sysId,preLocation){
   <div class="ov-foot">
     <button class="btn-p" id="rptSaveBtn2" onclick="saveSuppReport('${jobId}','${sysId}')">✓ Save Report</button>
   </div>`
-
-  window._rptCheckState=prev.checks||{}
-  checks.forEach((_,i)=>{if(window._rptCheckState[i]===undefined)window._rptCheckState[i]='yes'})
-  window._rptServiceType=prev.serviceType||'semi'
-  window._rptFuelType=prev.fuelType||''
 
   push(h)
   setTimeout(()=>{
