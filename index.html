@@ -5620,11 +5620,11 @@ async function openDryChemReport(jobId,sysId){
       <div style="font-size:10px;font-weight:800;color:var(--ok);text-align:center;width:36px">YES</div>
       <div style="font-size:10px;font-weight:800;color:var(--bad);text-align:center;width:36px">NO</div>
     </div>
-    ${checks.map((c,i)=>`<div style="display:grid;grid-template-columns:1fr auto auto;gap:8px;padding:10px 12px;border-bottom:1px solid rgba(42,47,62,.5);align-items:center">
+    ${checks.map((c,i)=>{const st=window._dcCheckState[i]||'';return`<div style="display:grid;grid-template-columns:1fr auto auto;gap:8px;padding:10px 12px;border-bottom:1px solid rgba(42,47,62,.5);align-items:center">
       <div style="font-size:11px;color:var(--w2);line-height:1.4">${i+1}. ${c}</div>
-      <button style="width:36px;height:36px;border-radius:8px;border:1.5px solid var(--b1);background:var(--c2);font-size:14px;color:var(--g2)" id="dc-y-${i}" onclick="setDcCheck(${i},'yes')">✓</button>
-      <button style="width:36px;height:36px;border-radius:8px;border:1.5px solid var(--b1);background:var(--c2);font-size:14px;color:var(--g2)" id="dc-n-${i}" onclick="setDcCheck(${i},'no')">✕</button>
-    </div>`).join('')}
+      <button style="width:36px;height:36px;border-radius:8px;border:1.5px solid ${st==='yes'?'var(--ok)':'var(--b1)'};background:${st==='yes'?'var(--oks)':'var(--c2)'};font-size:14px;color:${st==='yes'?'var(--ok)':'var(--g2)'}" id="dc-y-${i}" onclick="setDcCheck(${i},'yes')">✓</button>
+      <button style="width:36px;height:36px;border-radius:8px;border:1.5px solid ${st==='no'?'var(--bad)':'var(--b1)'};background:${st==='no'?'var(--bads)':'var(--c2)'};font-size:14px;color:${st==='no'?'var(--bad)':'var(--g2)'}" id="dc-n-${i}" onclick="setDcCheck(${i},'no')">✕</button>
+    </div>`}).join('')}
   </div></div>
 
   <div class="ds"><div class="ds-t">Deficiencies / Comments</div>
@@ -5849,10 +5849,10 @@ async function openSuppReport(jobId,sysId,preLocation){
       <div style="font-size:10px;font-weight:800;color:var(--ok);text-align:center">YES</div>
       <div style="font-size:10px;font-weight:800;color:var(--bad);text-align:center">NO</div>
     </div>
-    ${checks.map((c,i)=>`<div style="display:grid;grid-template-columns:1fr auto auto;gap:8px;padding:10px 12px;border-bottom:1px solid rgba(42,47,62,.5);align-items:center" id="chk-row-${i}">
+    ${checks.map((c,i)=>{const st=window._rptCheckState[i]||'';return`<div style="display:grid;grid-template-columns:1fr auto auto;gap:8px;padding:10px 12px;border-bottom:1px solid rgba(42,47,62,.5);align-items:center" id="chk-row-${i}">
       <div style="font-size:11px;color:var(--w2);line-height:1.4">${i+1}. ${c}</div>
-      <button style="width:36px;height:36px;border-radius:8px;border:1.5px solid var(--b1);background:var(--c2);font-size:14px;color:var(--g2)" id="chk-y-${i}" onclick="setCheck(${i},'yes')">✓</button>
-      <button style="width:36px;height:36px;border-radius:8px;border:1.5px solid var(--b1);background:var(--c2);font-size:14px;color:var(--g2)" id="chk-n-${i}" onclick="setCheck(${i},'no')">✕</button>
+      <button style="width:36px;height:36px;border-radius:8px;border:1.5px solid ${st==='yes'?'var(--ok)':'var(--b1)'};background:${st==='yes'?'var(--oks)':'var(--c2)'};font-size:14px;color:${st==='yes'?'var(--ok)':'var(--g2)'}" id="chk-y-${i}" onclick="setCheck(${i},'yes')">✓</button>
+      <button style="width:36px;height:36px;border-radius:8px;border:1.5px solid ${st==='no'?'var(--bad)':'var(--b1)'};background:${st==='no'?'var(--bads)':'var(--c2)'};font-size:14px;color:${st==='no'?'var(--bad)':'var(--g2)'}" id="chk-n-${i}" onclick="setCheck(${i},'no')">✕</button>`}
     </div>`).join('')}
   </div></div>
 
@@ -6410,11 +6410,11 @@ async function openCleanAgentReport(jobId,sysId){
       <div style="font-size:10px;font-weight:800;color:var(--ok);text-align:center;width:42px">YES</div>
       <div style="font-size:10px;font-weight:800;color:var(--bad);text-align:center;width:42px">NO</div>
     </div>
-    ${checks.map((c,i)=>`<div style="display:grid;grid-template-columns:1fr auto auto;gap:8px;padding:10px 12px;border-bottom:1px solid rgba(42,47,62,.5);align-items:center" id="ca-chk-row-${i}">
+    ${checks.map((c,i)=>{const st=window._caCheckState[i]||'';return`<div style="display:grid;grid-template-columns:1fr auto auto;gap:8px;padding:10px 12px;border-bottom:1px solid rgba(42,47,62,.5);align-items:center" id="ca-chk-row-${i}">
       <div style="font-size:11px;color:var(--w2);line-height:1.4">${i+1}. ${c}</div>
-      <button style="width:36px;height:36px;border-radius:8px;border:1.5px solid var(--b1);background:var(--c2);font-size:14px;color:var(--g2)" id="ca-chk-y-${i}" onclick="setCaCheck(${i},'yes')">✓</button>
-      <button style="width:36px;height:36px;border-radius:8px;border:1.5px solid var(--b1);background:var(--c2);font-size:14px;color:var(--g2)" id="ca-chk-n-${i}" onclick="setCaCheck(${i},'no')">✕</button>
-    </div>`).join('')}
+      <button style="width:36px;height:36px;border-radius:8px;border:1.5px solid ${st==='yes'?'var(--ok)':'var(--b1)'};background:${st==='yes'?'var(--oks)':'var(--c2)'};font-size:14px;color:${st==='yes'?'var(--ok)':'var(--g2)'}" id="ca-chk-y-${i}" onclick="setCaCheck(${i},'yes')">✓</button>
+      <button style="width:36px;height:36px;border-radius:8px;border:1.5px solid ${st==='no'?'var(--bad)':'var(--b1)'};background:${st==='no'?'var(--bads)':'var(--c2)'};font-size:14px;color:${st==='no'?'var(--bad)':'var(--g2)'}" id="ca-chk-n-${i}" onclick="setCaCheck(${i},'no')">✕</button>
+    </div>`}).join('')}
   </div></div>
 
   <!-- DEFICIENCIES -->
