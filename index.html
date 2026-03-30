@@ -5873,9 +5873,20 @@ async function handleAppliancePhotos(ev){
 }
 
 async function saveSuppReport(jobId,sysId){
-  const btn=$('rptSaveBtn2');if(btn){btn.textContent='Saving...';btn.style.opacity='.5';btn.style.pointerEvents='none'}
+  const btn=$('rptSaveBtn2')||$('rptSaveBtn');if(btn){btn.textContent='Saving...';btn.style.opacity='.5';btn.style.pointerEvents='none'}
   // capture all form data BEFORE any async calls
-  const techSigData=$('rptTechSig')?.toDataURL()||''
+  let techSigData=''
+  try{
+    const c=$('rptTechSig')
+    if(c){
+      // check if canvas has actual content (not blank)
+      const ctx=c.getContext('2d')
+      const px=ctx.getImageData(0,0,c.width,c.height).data
+      let hasContent=false
+      for(let i=3;i<px.length;i+=4){if(px[i]>0){hasContent=true;break}}
+      if(hasContent)techSigData=c.toDataURL('image/jpeg',0.5)||''
+    }
+  }catch(e){console.error('sig capture:',e)}
   const sysLocation=$('rpt-sys-location')?.value||''
   const formData={
     checks:{...(window._rptCheckState||{})},
@@ -5891,13 +5902,12 @@ async function saveSuppReport(jobId,sysId){
     techSig:techSigData,
     timein:$('rpt-timein')?.value||'',timeout:$('rpt-timeout')?.value||''
   }
-  // generate report HTML while form is still on screen
-  const reportHtml=await generateSuppReport(jobId,sysId,true)
-  formData.reportHtml=reportHtml||''
+  // skip storing reportHtml in DB — it's huge and can be regenerated from formData
+  // reportHtml will be generated at send time from the saved form data
 
   const j=D.jobs.find(x=>x.id===jobId)||{}
   const locId=j.location_id||j.location?.id
-  if(!locId){toast('Error: no location linked to this job',false);if(btn){btn.textContent='✓ Save Report';btn.style.opacity='';btn.style.pointerEvents=''}return}
+  if(!locId){toast('Error: no location linked to this job',false);console.error('No locId for job',jobId,j);if(btn){btn.textContent='✓ Save Report';btn.style.opacity='';btn.style.pointerEvents=''}return}
 
   let saveOk=false
   try{
