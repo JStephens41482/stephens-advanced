@@ -4049,12 +4049,16 @@ async function _confirmSendEmail(){
     const rType=rpt.report_type==='extinguisher'?'Extinguisher-Report':rpt.report_type==='clean_agent'?'Clean-Agent-Report':rpt.report_type==='dry_chemical'?'Dry-Chemical-Report':'Suppression-Report'
     const suffix=d.rpts.length>1?'-'+(sysLoc||ri+1):''
     try{
-      const container=document.createElement('div')
-      container.innerHTML=rHtml
-      container.style.cssText='position:absolute;left:-9999px;top:0;width:800px;background:#fff'
-      document.body.appendChild(container)
-      const pdfBlob=await html2pdf().set({margin:0.3,filename:'report.pdf',image:{type:'jpeg',quality:0.95},html2canvas:{scale:2,useCORS:true},jsPDF:{unit:'in',format:'letter',orientation:'portrait'}}).from(container).outputPdf('blob')
-      document.body.removeChild(container)
+      // render full HTML doc in hidden iframe so <style> tags work
+      const iframe=document.createElement('iframe')
+      iframe.style.cssText='position:absolute;left:-9999px;top:0;width:800px;height:1200px;border:none'
+      document.body.appendChild(iframe)
+      const idoc=iframe.contentDocument||iframe.contentWindow.document
+      idoc.open();idoc.write(rHtml.replace(/<script[\s\S]*?<\/script>/gi,''));idoc.close()
+      // wait for content to render
+      await new Promise(r=>setTimeout(r,300))
+      const pdfBlob=await html2pdf().set({margin:0.3,filename:'report.pdf',image:{type:'jpeg',quality:0.95},html2canvas:{scale:2,useCORS:true,windowWidth:800},jsPDF:{unit:'in',format:'letter',orientation:'portrait'}}).from(idoc.body).outputPdf('blob')
+      document.body.removeChild(iframe)
       const buf=await pdfBlob.arrayBuffer()
       const b64=btoa(new Uint8Array(buf).reduce((s,b)=>s+String.fromCharCode(b),''))
       attachments.push({filename:'Stephens-Advanced-'+rType+suffix+'.pdf',content:b64})
