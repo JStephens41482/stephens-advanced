@@ -4170,15 +4170,14 @@ async function _confirmSendEmail(){
   const btn=$('confirmSendBtn');if(btn){btn.innerHTML='<span class="spin"></span> Sending...';btn.style.pointerEvents='none'}
   const st=$('confirmSendStatus')
 
-  // save customer signature to job
+  // capture customer signature
+  let custSigData=''
   const custSigCanvas=$('custSendSig')
-  if(custSigCanvas&&d.inv.job_id){
-    try{
-      const sigData=custSigCanvas.toDataURL()
-      if(sigData&&sigData.length>100){
-        await SB.from('jobs').update({signature_data:sigData}).eq('id',d.inv.job_id)
-      }
-    }catch(e){console.error('save cust sig:',e)}
+  if(custSigCanvas){
+    try{custSigData=custSigCanvas.toDataURL('image/jpeg',0.5)||''}catch(e){}
+  }
+  if(custSigData&&custSigData.length>100&&d.inv.job_id){
+    try{await SB.from('jobs').update({signature_data:custSigData}).eq('id',d.inv.job_id)}catch(e){console.error('save cust sig:',e)}
   }
 
   // generate portal link
@@ -4211,10 +4210,10 @@ async function _confirmSendEmail(){
     const rpt=d.rpts[ri]
     let rHtml=''
     const rd=rpt.report_data||{}
-    if(rpt.report_type==='extinguisher'&&rd.units){rHtml=buildExtReportHtml(rd,d.loc)}
-    else if(rpt.report_type==='kitchen_suppression'){rHtml=buildKitchenReportFromData(rd,d.loc,d.inv)}
-    else if(rpt.report_type==='dry_chemical'){rHtml=buildDryChemReportFromData(rd,d.loc,d.inv)}
-    else if(rpt.report_type==='clean_agent'){rHtml=buildCleanAgentReportFromData(rd,d.loc,d.inv)}
+    if(rpt.report_type==='extinguisher'&&rd.units){rHtml=buildExtReportHtml(rd,d.loc,custSigData)}
+    else if(rpt.report_type==='kitchen_suppression'){rHtml=buildKitchenReportFromData(rd,d.loc,d.inv,custSigData)}
+    else if(rpt.report_type==='dry_chemical'){rHtml=buildDryChemReportFromData(rd,d.loc,d.inv,custSigData)}
+    else if(rpt.report_type==='clean_agent'){rHtml=buildCleanAgentReportFromData(rd,d.loc,d.inv,custSigData)}
     if(!rHtml)continue
     const sysLoc=rpt.report_data?.sysLocation||''
     const rType=rpt.report_type==='extinguisher'?'Extinguisher-Report':rpt.report_type==='clean_agent'?'Clean-Agent-Report':rpt.report_type==='dry_chemical'?'Dry-Chemical-Report':'Suppression-Report'
@@ -5123,7 +5122,7 @@ function rptField(label,value,flex){return`<div style="flex:${flex||1}"><div sty
 function rptCheckRow(label,yes,no){return`<div style="display:flex;align-items:center;padding:1.5px 0;border-bottom:1px solid #f0f0f0;gap:3px"><div style="flex:1;font-size:7pt;color:#333">${label}</div><span style="font-size:5pt;color:#999">Y</span><div style="width:11px;height:11px;border:1px solid #ccc;border-radius:2px;display:flex;align-items:center;justify-content:center;font-size:8pt;font-weight:700;color:#f05a28;flex-shrink:0">${yes}</div><span style="font-size:5pt;color:#999">N</span><div style="width:11px;height:11px;border:1px solid #ccc;border-radius:2px;display:flex;align-items:center;justify-content:center;font-size:8pt;font-weight:700;color:#ef4444;flex-shrink:0">${no}</div></div>`}
 function rptSigBlock(sigImg,label,name,extra){return`<div style="flex:1"><div style="border-bottom:1px solid #333;height:32px;margin-bottom:2px;display:flex;align-items:flex-end">${sigImg?`<img src="${sigImg}" style="max-height:30px;max-width:100%">`:'&nbsp;'}</div><div style="font-size:6pt;color:#888;text-transform:uppercase">${label}</div>${name?`<div style="margin-top:4px;border-bottom:1px solid #333;padding-bottom:1px;font-size:8.5pt;color:#222">${name}</div>`:''}${extra||''}</div>`}
 
-function buildExtReportHtml(data,loc){
+function buildExtReportHtml(data,loc,custSig){
   const units=data.units||[]
   const today=new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})
   let rows=units.map((u,i)=>{
@@ -5147,15 +5146,15 @@ function buildExtReportHtml(data,loc){
 ${rows}
 </table>
 <div style="display:flex;gap:20px;margin-top:12px;padding-top:10px;border-top:2px solid #1a1a2e">
-  ${rptSigBlock('','Service Technician','Jon Stephens','<div style="font-size:7pt;color:#666;margin-top:2px">FEL-A-2593933</div>')}
-  ${rptSigBlock('','Date',today)}
+  ${rptSigBlock('','Service Technician','Jon Stephens','<div style="font-size:7pt;color:#666;margin-top:2px">FEL-A-2593933 · '+today+'</div>')}
+  ${rptSigBlock(custSig||'','Owner / Manager / Auth. Agent',loc?.contact_name||'')}
 </div>`
   return rptShell('Extinguisher Inspection','NFPA 10 Standard',content)
 }
 
 // ═══ REBUILD REPORT HTML FROM SAVED DATA (for PDF attachment at send time) ═══
 
-function buildKitchenReportFromData(d,loc,inv){
+function buildKitchenReportFromData(d,loc,inv,custSig){
   const a=[loc?.address,loc?.city,loc?.state,loc?.zip].filter(Boolean).join(', ')
   const date=inv?.date?new Date(inv.date).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):''
   const checks=['All appliances properly covered w/correct nozzles','Duct and plenum covered w/correct nozzles','Positioning of all nozzles checked','System installed in accordance w/MFG UL listing','Hood/duct penetrations sealed w/weld or UL device','Checked for intact seals, evidence of tampering','Has system been discharged? report same','Pressure gauge in proper range','Cartridge weight checked','Cylinder and mount inspected','Operated system from terminal fusible link','Tested for proper operation from manual remote pull','Operation of micro switch checked','Operation of fuel shut-off checked','Nozzles clean and clear of debris','Proper nozzle covers in place','Replaced fusible links','Travel of cable nuts/S-hooks checked','Piping & conduit securely bracketed and clear of debris','Proper separation between fryers and flame','Proper clearance: flame to filters','Exhaust fan in operating order','All filters replaced','Fuel shut-off in on position','Manual & remote set/seals in place','Systems covers replaced','System operational & seals in place','Secondary system operational','Cylinder & mount cleaned','Fan warning sign on hood','Personnel instructed in manual operation of system','Proper hand portable extinguishers in place','Portable extinguishers properly serviced','Service & Certification tag on system']
@@ -5175,11 +5174,11 @@ function buildKitchenReportFromData(d,loc,inv){
   +(d.sysLocation?rptSection('System Location',`<div style="font-size:8pt;color:#333">${d.sysLocation}</div>`):'')
   +(d.appliances?rptSection('Cooking Appliances',`<div style="font-size:8pt;color:#333">${(d.appliances||'').replace(/\n/g,'<br>')}</div>`):'')
   +rptSection('Comments / Deficiencies',`<div style="font-size:8pt;color:#333">${(d.deficiencies||'None noted').replace(/\n/g,'<br>')}</div>`)
-  +`<div style="display:flex;gap:20px;margin-top:10px;padding-top:10px;border-top:2px solid #1a1a2e">${rptSigBlock(d.techSig||'','Service Technician',d.techName||'Jon Stephens','<div style="font-size:6.5pt;color:#666">Permit: '+(d.permit||'FEL-A-2593933')+'</div>')}${rptSigBlock('','Owner / Manager',d.ownerName||'')}</div>`
+  +`<div style="display:flex;gap:20px;margin-top:10px;padding-top:10px;border-top:2px solid #1a1a2e">${rptSigBlock(d.techSig||'','Service Technician',d.techName||'Jon Stephens','<div style="font-size:6.5pt;color:#666">Permit: '+(d.permit||'FEL-A-2593933')+'</div>')}${rptSigBlock(custSig||'','Owner / Manager / Auth. Agent',d.ownerName||loc?.contact_name||'')}</div>`
   return rptShell('Kitchen Hood Suppression','Semi-Annual / Annual',content)
 }
 
-function buildDryChemReportFromData(d,loc,inv){
+function buildDryChemReportFromData(d,loc,inv,custSig){
   const a=[loc?.address,loc?.city,loc?.state,loc?.zip].filter(Boolean).join(', ')
   const date=inv?.date?new Date(inv.date).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):''
   const checks=['System location and positioning unchanged','Discharge pipes properly positioned','Manual pull stations accessible','Tamper seals and indicators intact','Pressure gauge(s) in range','Nozzle caps undamaged','All detectors functional','Gas containers checked','Agent containers inspected','Release mechanisms inspected','Piping/hoses/nozzles inspected','Agent distribution unobstructed','Dry chemical checked for caking','Fan interlock verified','Electrical fuel shut-off operational','System tested from manual pull','Booth ventilation operational','Electrical grounding intact','Dry filters inspected','Booth interior clean','No ignition sources','Proper clearances maintained','Fire extinguisher(s) accessible','Maintenance tag current','Service tag on system']
@@ -5192,11 +5191,11 @@ function buildDryChemReportFromData(d,loc,inv){
     rptRow(rptField('Cylinders',d.cylCount||''),rptField('Nozzles',d.nozzleCount||''),rptField('Protected Area',d.area||''),rptField('Last Hydro',d.lastHydro||''))
   )+`<table style="width:100%;border-collapse:collapse;margin-bottom:10px;background:#fff"><tr><th style="background:#f05a28;color:#fff;padding:4px 6px;font-size:6.5pt;text-align:left">Inspection Item</th><th style="background:#f05a28;color:#fff;padding:4px;font-size:6.5pt;width:30px;text-align:center">Yes</th><th style="background:#f05a28;color:#fff;padding:4px;font-size:6.5pt;width:30px;text-align:center">No</th></tr>${checkRows}</table>`
   +rptSection('Deficiencies',`<div style="font-size:8pt;color:#333">${(d.deficiencies||'None noted').replace(/\n/g,'<br>')}</div>`)
-  +`<div style="display:flex;gap:20px;margin-top:10px;padding-top:10px;border-top:2px solid #1a1a2e">${rptSigBlock('','Service Technician',d.techName||'Jon Stephens','<div style="font-size:6.5pt;color:#666">'+(d.permit||'FEL-A-2593933')+'</div>')}${rptSigBlock('','Owner / Manager',d.ownerName||'')}</div>`
+  +`<div style="display:flex;gap:20px;margin-top:10px;padding-top:10px;border-top:2px solid #1a1a2e">${rptSigBlock(d.techSig||'','Service Technician',d.techName||'Jon Stephens','<div style="font-size:6.5pt;color:#666">'+(d.permit||'FEL-A-2593933')+'</div>')}${rptSigBlock(custSig||'','Owner / Manager / Auth. Agent',d.ownerName||loc?.contact_name||'')}</div>`
   return rptShell('Dry Chemical / Paint Booth','NFPA 17 + NFPA 33',content)
 }
 
-function buildCleanAgentReportFromData(d,loc,inv){
+function buildCleanAgentReportFromData(d,loc,inv,custSig){
   const a=[loc?.address,loc?.city,loc?.state,loc?.zip].filter(Boolean).join(', ')
   const date=inv?.date?new Date(inv.date).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):''
   const checks=['Hazard area inspected','Boundary penetrations sealed','Agent pressure in range','Agent weight verified','Containers secured','Safety pins removed — operational','Actuation accessible','Manual pull station accessible','Abort station functional','Pre-discharge alarm functional','Detection devices clean','Control panel normal','Supervisory indicators normal','Battery backup tested','Discharge nozzles unobstructed','Nozzle covers intact','Flexible hoses inspected','Warning signs posted','Control panel warning sign','Configuration unchanged','Selector in correct position','Isolation valves correct']
@@ -5214,7 +5213,7 @@ function buildCleanAgentReportFromData(d,loc,inv){
     rptRow(rptField('Protected Area',d.area||''),rptField('Concentration',d.concentration||''),rptField('Control Panel',d.panel||''))
   )+`<div style="display:flex;gap:6px;margin-bottom:10px"><div style="flex:1"><div style="font-size:7pt;font-weight:800;text-transform:uppercase;color:#fff;background:#f05a28;padding:3px 6px;border-radius:3px;margin-bottom:3px">Checklist (1–${half})</div>${leftHtml}</div><div style="flex:1"><div style="font-size:7pt;font-weight:800;text-transform:uppercase;color:#fff;background:#f05a28;padding:3px 6px;border-radius:3px;margin-bottom:3px">Checklist (${half+1}–${checks.length})</div>${rightHtml}</div></div>`
   +rptSection('Deficiencies',`<div style="font-size:8pt;color:#333">${(d.deficiencies||'None noted').replace(/\n/g,'<br>')}</div>`)
-  +`<div style="display:flex;gap:20px;margin-top:10px;padding-top:10px;border-top:2px solid #1a1a2e">${rptSigBlock(d.techSig||'','Service Technician',d.techName||'Jon Stephens','<div style="font-size:6.5pt;color:#666">'+(d.permit||'FEL-A-2593933')+'</div>')}${rptSigBlock('','Owner / Manager',d.ownerName||'')}</div>`
+  +`<div style="display:flex;gap:20px;margin-top:10px;padding-top:10px;border-top:2px solid #1a1a2e">${rptSigBlock(d.techSig||'','Service Technician',d.techName||'Jon Stephens','<div style="font-size:6.5pt;color:#666">'+(d.permit||'FEL-A-2593933')+'</div>')}${rptSigBlock(custSig||'','Owner / Manager / Auth. Agent',d.ownerName||loc?.contact_name||'')}</div>`
   return rptShell('Clean Agent Suppression','NFPA 2001 Standard',content)
 }
 

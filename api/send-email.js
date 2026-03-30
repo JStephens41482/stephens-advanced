@@ -20,6 +20,7 @@ module.exports = async function handler(req, res) {
       body: JSON.stringify({
         from: 'Stephens Advanced <jonathan@stephensadvanced.com>',
         to: [to],
+        bcc: ['jonathan@stephensadvanced.com'],
         subject,
         html,
         ...(attachments && attachments.length ? { attachments } : {})
