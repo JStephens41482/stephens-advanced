@@ -3276,8 +3276,21 @@ function renderRecordResult(p){
   if(p.matched_location_id){
     const loc=D.locs.find(x=>x.id===p.matched_location_id)
     if(loc)selectRecLoc(loc.id,loc.name)
+    // duplicate detection — check if this customer already has an invoice near this date
+    if(p.service_date&&p.matched_location_id){
+      const svcDt=new Date(p.service_date+'T12:00:00')
+      const dupes=D.invs.filter(inv2=>inv2.location_id===p.matched_location_id&&inv2.date&&Math.abs(new Date(inv2.date+'T12:00:00')-svcDt)<14*86400000)
+      if(dupes.length){
+        const dupAlert=$('rec-due-alert')
+        if(dupAlert){
+          dupAlert.innerHTML=`<div style="background:var(--warns);border:2px solid var(--warn);border-radius:var(--r);padding:14px;margin-bottom:14px">
+            <div style="font-size:13px;font-weight:800;color:var(--warn);margin-bottom:4px">POSSIBLE DUPLICATE</div>
+            <div style="font-size:12px;color:var(--w2)">This customer already has ${dupes.length} invoice${dupes.length>1?'s':''} within 2 weeks of ${p.service_date}. You may have already recorded this work order.</div>
+          </div>`+dupAlert.innerHTML
+        }
+      }
+    }
   }else if(p.customer_name){
-    // AI read a name but no match — show it in search so user can pick or add
     const search=$('rec-loc-search');if(search){search.value=p.customer_name;recCustSearch(p.customer_name)}
   }
   if(p.service_date){const dt=$('rec-date');if(dt){dt.value=p.service_date;dt.dispatchEvent(new Event('change'))}}
@@ -3456,22 +3469,38 @@ async function saveRecordInvoice(){
   if(error){toast('Error saving',false);resetBtn();return}
   await SB.from('invoice_lines').insert(lines.map((l2,i)=>({invoice_id:inv.id,description:l2.description,quantity:l2.quantity,unit_price:l2.unit_price,total:l2.total,sort_order:i})))
 
-  // auto-schedule reinspection if due
+  // always auto-schedule next service based on service date and scope
   let scheduledMsg=''
-  if(_recData.isDue&&finalLocId){
+  if(finalLocId){
     const scopeBtns=$('rec-scope')?.querySelectorAll('button.ts')||[]
     const scopes=Array.from(scopeBtns).map(b=>b.dataset.k)
-    const nextDate=new Date()
-    nextDate.setDate(nextDate.getDate()+7)
-    const nds=nextDate.toISOString().split('T')[0]
-    try{
-      await SB.from('jobs').insert({
-        location_id:finalLocId,type:'inspection',scope:scopes.length?scopes:['extinguishers','suppression'],
-        scheduled_date:nds,scheduled_time:'09:00',status:'scheduled',
-        notes:'Reinspection — from old work order ('+($('rec-date')?.value||'')+')'
-      })
-      scheduledMsg=' + reinspection '+new Date(nds+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})
-    }catch(e){console.error('auto-schedule:',e)}
+    const hasSup2=scopes.includes('suppression')
+    const hasExt2=scopes.includes('extinguishers')
+    const svcDateStr=$('rec-date')?.value||td()
+    const svcDt=new Date(svcDateStr+'T12:00:00')
+    // calculate next service: suppression=6 months from service date, ext-only=12 months
+    const intervalMonths=hasSup2?6:hasExt2?12:0
+    if(intervalMonths){
+      const nextDate=new Date(svcDt)
+      nextDate.setMonth(nextDate.getMonth()+intervalMonths)
+      // if next date is in the past, schedule from today instead
+      if(nextDate<=new Date()){nextDate.setTime(Date.now());nextDate.setDate(nextDate.getDate()+7)}
+      const nds=nextDate.toISOString().split('T')[0]
+      // check if a job already exists for this location near this date (within 30 days)
+      const nearbyJobs=D.jobs.filter(j2=>j2.location_id===finalLocId&&j2.status==='scheduled'&&Math.abs(new Date(j2.scheduled_date+'T12:00:00')-nextDate)<30*86400000)
+      if(!nearbyJobs.length){
+        try{
+          await SB.from('jobs').insert({
+            location_id:finalLocId,type:'inspection',scope:scopes.length?scopes:['extinguishers','suppression'],
+            scheduled_date:nds,scheduled_time:'09:00',status:'scheduled',
+            notes:'Next service — from recorded work order ('+svcDateStr+')'
+          })
+          scheduledMsg=' + next service '+new Date(nds+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})
+        }catch(e){console.error('auto-schedule:',e)}
+      }else{
+        scheduledMsg=' (service already scheduled)'
+      }
+    }
   }
 
   await load();_recordMode=false;popAll()
@@ -3586,8 +3615,27 @@ async function saveAIInv(ro){
   if(error){toast('Error saving invoice',false);setLoad('aiSaveBtn',false,'Save Invoice');return}
   await SB.from('invoice_lines').insert(lines.map((l2,i)=>({invoice_id:inv.id,description:l2.description,quantity:l2.quantity,unit_price:l2.unit_price,total:l2.total,sort_order:i})))
   _aiPayMethod='old_system'
+
+  // auto-schedule next service based on line items
+  const loc3=D.locs.find(x=>x.id===finalLocId)||{}
+  const hasSup3=lines.some(l2=>(l2.description||'').toLowerCase().match(/suppression|hood|ansul|pyro|kitchen|fusible|nozzle|blow.off/))
+  const hasExt3=lines.some(l2=>(l2.description||'').toLowerCase().match(/extinguisher|hydro|internal/))
+  const svcDate3=$('ai-date')?.value||td()
+  const interval3=hasSup3?6:hasExt3?12:0
+  if(interval3&&finalLocId){
+    const nextDt=new Date(svcDate3+'T12:00:00')
+    nextDt.setMonth(nextDt.getMonth()+interval3)
+    if(nextDt<=new Date()){nextDt.setTime(Date.now());nextDt.setDate(nextDt.getDate()+7)}
+    const nds3=nextDt.toISOString().split('T')[0]
+    const nearby3=D.jobs.filter(j2=>j2.location_id===finalLocId&&j2.status==='scheduled'&&Math.abs(new Date(j2.scheduled_date+'T12:00:00')-nextDt)<30*86400000)
+    if(!nearby3.length){
+      const scope3=[];if(hasSup3)scope3.push('suppression');if(hasExt3)scope3.push('extinguishers')
+      try{await SB.from('jobs').insert({location_id:finalLocId,type:'inspection',scope:scope3.length?scope3:['extinguishers','suppression'],scheduled_date:nds3,scheduled_time:'09:00',status:'scheduled',notes:'Next service — from photo invoice ('+svcDate3+')'})}catch(e){}
+      toast('Next service scheduled for '+new Date(nds3+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}))
+    }
+  }
+
   await load();popAll()
-  const loc=D.locs.find(x=>x.id===finalLocId)||{name:'Customer',address:'',city:''}
   openInvDetail(inv.id)
 }
 
