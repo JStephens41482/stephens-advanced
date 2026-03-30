@@ -2973,6 +2973,7 @@ RULES:
 - SUB TOTAL and TOTAL at the bottom are most important — copy exactly.
 - Note payment method if visible (check, cash, card, PAID).
 - Include work order number and date if visible.
+- SERVICE DATE IS CRITICAL: Look for ANY date on the document — handwritten dates, printed dates, invoice dates, "Date:" fields, date stamps. If multiple dates exist, use the SERVICE DATE or DATE OF SERVICE. If only one date exists, use that. The date MUST be extracted accurately in YYYY-MM-DD format. This date determines when the next service is due.
 
 Known customers: ${JSON.stringify(locList)}
 
