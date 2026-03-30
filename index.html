@@ -5869,9 +5869,9 @@ async function openSuppReport(jobId,sysId,preLocation){
       <div style="font-size:10px;font-weight:800;color:var(--bad);text-align:center">NO</div>
     </div>
     ${checks.map((c,i)=>{const st=window._rptCheckState[i]||'';return`<div style="display:grid;grid-template-columns:1fr auto auto;gap:8px;padding:10px 12px;border-bottom:1px solid rgba(42,47,62,.5);align-items:center" id="chk-row-${i}">
-      <div style="font-size:11px;color:var(--w2);line-height:1.4">${i+1}. ${c}</div>
-      <button style="width:36px;height:36px;border-radius:8px;border:1.5px solid ${st==='yes'?'var(--ok)':'var(--b1)'};background:${st==='yes'?'var(--oks)':'var(--c2)'};font-size:14px;color:${st==='yes'?'var(--ok)':'var(--g2)'}" id="chk-y-${i}" onclick="setCheck(${i},'yes')">✓</button>
-      <button style="width:36px;height:36px;border-radius:8px;border:1.5px solid ${st==='no'?'var(--bad)':'var(--b1)'};background:${st==='no'?'var(--bads)':'var(--c2)'};font-size:14px;color:${st==='no'?'var(--bad)':'var(--g2)'}" id="chk-n-${i}" onclick="setCheck(${i},'no')">✕</button>
+      <div style="font-size:11px;color:#c8ccd6;line-height:1.4">${i+1}. ${c}</div>
+      <button style="width:36px;height:36px;border-radius:8px;border:1.5px solid ${st==='yes'?'#10b981':'#2a2f3e'};background:${st==='yes'?'#10b98133':'#1c1f2a'};font-size:14px;color:${st==='yes'?'#10b981':'#555d72'}" id="chk-y-${i}" onclick="setCheck(${i},'yes')">✓</button>
+      <button style="width:36px;height:36px;border-radius:8px;border:1.5px solid ${st==='no'?'#ef4444':'#2a2f3e'};background:${st==='no'?'#ef444433':'#1c1f2a'};font-size:14px;color:${st==='no'?'#ef4444':'#555d72'}" id="chk-n-${i}" onclick="setCheck(${i},'no')">✕</button>
     </div>`}).join('')}
   </div></div>
 
@@ -5958,13 +5958,13 @@ const SUPP_MODELS={
 }
 const SUPP_TANKS={
   'Amerex':['1.5 gal','2.5 gal','3 gal','4 gal','6 gal'],
-  'Ansul':['1.5 gal (LT-5-R)','3 gal (LT-10-R)','4.5 gal (LT-20-R)','6 gal (LT-30-R)'],
-  'Buckeye':['2.5 gal (N2 Small)','3.2 gal (N2 Large)','6 gal'],
+  'Ansul':['1.5 gal','3 gal'],
+  'Buckeye':['2.5 gal','3.2 gal','6 gal'],
   'Captive-Aire':['Integrated Tank','3 gal','6 gal'],
-  'Kidde':['1.6 gal (XV-N2)','2.5 gal','3.2 gal','4.75 gal'],
+  'Kidde':['1.6 gal','2.5 gal','3.2 gal','4.75 gal'],
   'Pyro-Chem':['17 lb (PCI-17)','27 lb (PCI-27)','3.5 gal (PCL-160)','5 gal (PCL-300)','7.5 gal (PCL-460)','10 gal (PCL-650)'],
   'Range Guard':['2.5 gal','3 gal','4 gal','6 gal'],
-  '_default':['1.5 gal','2.5 gal','3 gal','4 gal','4.5 gal','6 gal']
+  '_default':['1.5 gal','2.5 gal','3 gal','4 gal','6 gal']
 }
 function updateRptModels(){
   const mfg=$('rpt-mfg')?.value||''
