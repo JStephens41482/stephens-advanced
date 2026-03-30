@@ -3916,13 +3916,14 @@ function showInv(d){
 }
 
 async function sendInvoiceEmail(invId,toEmail,custName,invNum,btn){
-  // NEVER auto-send — open native email app for review
+  // Show email preview overlay — user taps link to open their email app
   const emailField=$('inv-email-to')
   const to=emailField?emailField.value.trim():toEmail
   if(!to){
     const st=$('inv-email-status');if(st){st.textContent='No email address — enter one above.';st.style.color='var(--bad)'}
     return
   }
+  if(btn){btn.innerHTML='<span class="spin"></span>';btn.style.pointerEvents='none'}
 
   const{data:invFresh}=await SB.from('invoices').select('*').eq('id',invId).single()
   const inv=invFresh||D.invs.find(x=>x.id===invId)||{}
@@ -3932,19 +3933,42 @@ async function sendInvoiceEmail(invId,toEmail,custName,invNum,btn){
   const loc=D.locs.find(x=>x.id===inv.location_id)||{}
 
   const subj=`Invoice ${inv.invoice_number||invNum} — Stephens Advanced LLC`
-  let body=`Invoice: ${inv.invoice_number||invNum}\n`
-  body+=`Customer: ${custName||loc.name||''}\n`
-  body+=`Address: ${[loc.address,loc.city,loc.state,loc.zip].filter(Boolean).join(', ')}\n`
-  body+=`Date: ${inv.date?new Date(inv.date).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):''}\n\n`
-  body+=`--- Line Items ---\n`
+  let body=`Invoice: ${inv.invoice_number||invNum}\nCustomer: ${custName||loc.name||''}\nAddress: ${[loc.address,loc.city,loc.state,loc.zip].filter(Boolean).join(', ')}\nDate: ${inv.date?new Date(inv.date).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):''}\n\n--- Line Items ---\n`
   ls.forEach(l=>{body+=`${l.description} — Qty: ${l.quantity} × $${(+l.unit_price).toFixed(2)} = $${(+l.total).toFixed(2)}\n`})
-  body+=`\nTOTAL: $${total.toFixed(2)}\n\n`
-  body+=`Stephens Advanced LLC\nFire Suppression & Safety\n(214) 994-4799\njonathan@stephensadvanced.com`
+  body+=`\nTOTAL: $${total.toFixed(2)}\n\nStephens Advanced LLC\nFire Suppression & Safety\n(214) 994-4799\njonathan@stephensadvanced.com`
 
-  window.open(`mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`)
-  toast('Email opened for review')
-  const st=$('inv-email-status');if(st){st.textContent='Opened in your email app — review and send.';st.style.color='var(--info)'}
+  showEmailPreview(to,subj,body,ls,total,inv,custName||loc.name||'')
   if(btn){btn.innerHTML='✉️ Send Email';btn.style.pointerEvents=''}
+}
+
+function showEmailPreview(to,subj,body,ls,total,inv,custName){
+  let h=`<div class="ov-hdr"><button class="ov-back" onclick="pop()">‹</button><div class="ov-title">Email Preview</div></div><div class="ov-body" style="padding:16px">`
+  h+=`<div style="background:var(--c2);border-radius:var(--r);padding:16px;margin-bottom:16px">
+    <div style="font-size:11px;color:var(--g1);margin-bottom:4px">TO</div>
+    <div style="font-size:15px;font-weight:700;color:var(--w);margin-bottom:12px">${esc(to)}</div>
+    <div style="font-size:11px;color:var(--g1);margin-bottom:4px">SUBJECT</div>
+    <div style="font-size:14px;font-weight:600;color:var(--w)">${esc(subj)}</div>
+  </div>`
+  h+=`<div style="background:var(--c2);border-radius:var(--r);padding:16px;margin-bottom:16px">
+    <div style="font-size:11px;color:var(--g1);margin-bottom:8px">INVOICE PREVIEW</div>
+    <div style="font-size:16px;font-weight:800;color:var(--fire);margin-bottom:4px">${esc(inv.invoice_number||'')}</div>
+    <div style="font-size:13px;color:var(--w);margin-bottom:12px">${esc(custName)}</div>`
+  if(ls&&ls.length){
+    h+=`<table style="width:100%;font-size:12px;color:var(--w);border-collapse:collapse">`
+    ls.forEach(l=>{
+      h+=`<tr><td style="padding:6px 0;border-bottom:1px solid var(--b1)">${esc(l.description)}</td>
+        <td style="padding:6px 0;border-bottom:1px solid var(--b1);text-align:right;white-space:nowrap">${l.quantity} × $${(+l.unit_price).toFixed(2)}</td>
+        <td style="padding:6px 0;border-bottom:1px solid var(--b1);text-align:right;font-weight:700;white-space:nowrap">$${(+l.total).toFixed(2)}</td></tr>`
+    })
+    h+=`<tr><td colspan="2" style="padding:8px 0;font-weight:800;font-size:14px">TOTAL</td>
+      <td style="padding:8px 0;text-align:right;font-weight:900;font-size:16px;color:var(--fire)">$${total.toFixed(2)}</td></tr></table>`
+  }
+  h+=`</div>`
+  const mailto=`mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`
+  h+=`<a href="${mailto}" style="display:block;text-align:center;padding:16px;border-radius:var(--r);background:var(--fire);color:#fff;font-size:16px;font-weight:800;text-decoration:none;min-height:54px;line-height:22px;margin-bottom:12px">✉️ Open in Email App</a>`
+  h+=`<div style="text-align:center;font-size:11px;color:var(--g1);margin-bottom:16px">Review everything above, then tap to open your email app with this pre-filled.</div>`
+  h+=`</div>`
+  push(h)
 }
 
 async function getOrCreatePortalToken(locId,baId){
@@ -4153,11 +4177,11 @@ function addToCalendar({title,date,time,addr,notes}){
 }
 
 async function sendInvoiceEmailFromDetail(invId,custName,invNum){
-  // NEVER auto-send — open native email app for review
+  // Show email preview — user taps link to open their email app
   const to=$('det-email-to')?.value?.trim()
-  const st=$('det-email-status')
   const btn=$('det-send-btn')
-  if(!to){if(st){st.textContent='Enter an email address.';st.style.color='var(--bad)'}return}
+  if(!to){const st=$('det-email-status');if(st){st.textContent='Enter an email address.';st.style.color='var(--bad)'}return}
+  if(btn){btn.innerHTML='<span class="spin"></span>';btn.style.pointerEvents='none'}
 
   const{data:invFresh2}=await SB.from('invoices').select('*').eq('id',invId).single()
   const inv=invFresh2||D.invs.find(x=>x.id===invId)||{}
@@ -4167,18 +4191,11 @@ async function sendInvoiceEmailFromDetail(invId,custName,invNum){
   const loc=D.locs.find(x=>x.id===inv.location_id)||{}
 
   const subj=`Invoice ${inv.invoice_number||invNum} — Stephens Advanced LLC`
-  let body=`Invoice: ${inv.invoice_number||invNum}\n`
-  body+=`Customer: ${custName||loc.name||''}\n`
-  body+=`Address: ${[loc.address,loc.city,loc.state,loc.zip].filter(Boolean).join(', ')}\n`
-  body+=`Date: ${inv.date?new Date(inv.date).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):''}\n\n`
-  body+=`--- Line Items ---\n`
+  let body=`Invoice: ${inv.invoice_number||invNum}\nCustomer: ${custName||loc.name||''}\nAddress: ${[loc.address,loc.city,loc.state,loc.zip].filter(Boolean).join(', ')}\nDate: ${inv.date?new Date(inv.date).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):''}\n\n--- Line Items ---\n`
   ls.forEach(l=>{body+=`${l.description} — Qty: ${l.quantity} × $${(+l.unit_price).toFixed(2)} = $${(+l.total).toFixed(2)}\n`})
-  body+=`\nTOTAL: $${total.toFixed(2)}\n\n`
-  body+=`Stephens Advanced LLC\nFire Suppression & Safety\n(214) 994-4799\njonathan@stephensadvanced.com`
+  body+=`\nTOTAL: $${total.toFixed(2)}\n\nStephens Advanced LLC\nFire Suppression & Safety\n(214) 994-4799\njonathan@stephensadvanced.com`
 
-  window.open(`mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`)
-  toast('Email opened for review')
-  if(st){st.textContent='Opened in your email app — review and send.';st.style.color='var(--info)'}
+  showEmailPreview(to,subj,body,ls,total,inv,custName||loc.name||'')
   if(btn){btn.innerHTML='✉️ Send';btn.style.pointerEvents=''}
 }
 
