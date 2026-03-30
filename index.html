@@ -412,15 +412,17 @@ function _autoSaveOpenReport(){
     return
   }
   if(dcSaveBtn&&$('dc-sys-type')){
-    // dry chem report is open
-    dcSaveBtn.click()
+    // dry chem report is open — extract jobId/sysId from onclick
+    const dcOnclick=dcSaveBtn.getAttribute('onclick')||''
+    const dcMatch=dcOnclick.match(/saveDryChemReport\('([^']+)','([^']*)'\)/)
+    if(dcMatch){saveDryChemReport(dcMatch[1],dcMatch[2],true).catch(e=>console.error('auto-save dc:',e))}
     return
   }
   if(caSaveBtn&&$('ca-agent-type')){
     // clean agent report is open
     const onclick=caSaveBtn.getAttribute('onclick')||''
     const match=onclick.match(/saveCleanAgentReport\('([^']+)','([^']*)'\)/)
-    if(match){saveCleanAgentReport(match[1],match[2]).catch(e=>console.error('auto-save ca:',e))}
+    if(match){saveCleanAgentReport(match[1],match[2],true).catch(e=>console.error('auto-save ca:',e))}
     return
   }
   if(extShell&&window._extJobId){
@@ -1892,9 +1894,11 @@ async function openJob(id){
   const PARTS=[
     {label:'— Quick Add —',value:''},
     {label:'Extinguisher Inspection',value:`Extinguisher Inspection|1|${rc.extinguisher_inspection||20}`},
-    {label:'Suppression Semi-Annual (Standard)',value:`Suppression Semi-Annual|1|${rc.suppression_standard||250}`},
-    {label:'Suppression Semi-Annual (CA Tank)',value:`Suppression CA Tank|1|${rc.suppression_captiveaire_tank||450}`},
-    {label:'Suppression Semi-Annual (CA CORE)',value:`Suppression CA CORE|1|${rc.suppression_captiveaire_core||650}`},
+    {label:'Kitchen Suppression Semi-Annual (Standard)',value:`Kitchen Suppression Semi-Annual|1|${rc.suppression_standard||250}`},
+    {label:'Kitchen Suppression Semi-Annual (CA Tank)',value:`Kitchen Suppression CA Tank|1|${rc.suppression_captiveaire_tank||450}`},
+    {label:'Kitchen Suppression Semi-Annual (CA CORE)',value:`Kitchen Suppression CA CORE|1|${rc.suppression_captiveaire_core||650}`},
+    {label:'Clean Agent System Semi-Annual',value:`Clean Agent System Semi-Annual|1|${rc.suppression_standard||250}`},
+    {label:'Dry Chem / Paint Booth Semi-Annual',value:`Dry Chemical System Semi-Annual|1|${rc.suppression_standard||250}`},
     {label:'Fusible Link',value:`Fusible Link|1|${rc.fusible_link||25}`},
     {label:'Metal Blow-Off Cap',value:`Blow-Off Cap|1|${rc.metal_blowoff_cap||25}`},
     {label:'Silicone Cap',value:`Silicone Cap|1|9`},
@@ -2117,7 +2121,7 @@ async function updateJobChecklist(){
   // scan line item descriptions for report triggers
   const descs=jobLines.map(l2=>(l2.desc||'').toLowerCase()).join(' ')
   const hasExtLines=descs.match(/extinguisher/)
-  const hasKitchenLines=descs.match(/semi.?annual|suppression|ansul|pyro.?chem|buckeye|kidde|kitchen/)
+  const hasKitchenLines=descs.match(/kitchen|ansul|pyro.?chem|buckeye|kidde/)&&!descs.match(/clean.?agent|dry.?chem/)
   const hasDryChemLines=descs.match(/dry.?chem|paint|booth|a-101|i-101|monarch|industryguard/)
   const hasCleanLines=descs.match(/clean.?agent|fm.?200|novec|halon|inergen|co2.*system/)
   const hasAnyLines=jobLines.some(l2=>(l2.desc||'').trim())
@@ -5644,28 +5648,36 @@ function clrDcSig(){
   if($('dcSigPh'))$('dcSigPh').style.display=''
 }
 
-async function saveDryChemReport(jobId,sysId){
-  const ownerSig=$('dcSigC')?.toDataURL()||null
+async function saveDryChemReport(jobId,sysId,silent){
+  const btn=silent?null:document.querySelector('[onclick*="saveDryChemReport"]');if(btn){btn.textContent='Saving...';btn.style.opacity='.5';btn.style.pointerEvents='none'}
   const data={
-    checks:window._dcCheckState||{},
+    checks:{...(window._dcCheckState||{})},
     timeIn:$('dc-timein')?.value||'',timeOut:$('dc-timeout')?.value||'',
     sysType:$('dc-sys-type')?.value||'',agent:$('dc-agent')?.value||'',
     cylCount:$('dc-cyls')?.value||'1',nozzleCount:$('dc-nozzles')?.value||'0',
     lastHydro:$('dc-hydro')?.value||'',area:$('dc-area')?.value||'',
     deficiencies:$('dc-deficiencies')?.value||'',
     techName:$('dc-tech')?.value||'Jon Stephens',permit:$('dc-permit')?.value||'FEL-A-2593933',
-    ownerName:$('dc-owner-name')?.value||'',
-    reportHtml:buildDryChemReportHtml(jobId,sysId)
+    ownerName:$('dc-owner-name')?.value||''
   }
   const j=D.jobs.find(x=>x.id===jobId)||{}
   const locId=j.location_id||j.location?.id
+  if(!locId){if(!silent)toast('Error: no location',false);return}
+  let saveOk=false
   try{
     const{data:existing}=await SB.from('reports').select('id').eq('job_id',jobId).eq('report_type','dry_chemical').limit(1)
-    if(existing?.length){await SB.from('reports').update({report_data:data}).eq('id',existing[0].id)}
-    else{await SB.from('reports').insert({job_id:jobId,location_id:locId,report_type:'dry_chemical',report_data:data})}
-    if(ownerSig)await SB.from('jobs').update({signature_data:ownerSig}).eq('id',jobId)
-  }catch(e){console.error('dc report save:',e)}
-  toast('Dry chemical report saved ✓')
+    if(existing?.length){
+      const{error}=await SB.from('reports').update({report_data:data}).eq('id',existing[0].id)
+      if(error){if(!silent)toast('Save error: '+error.message,false)}else saveOk=true
+    }else{
+      const{error}=await SB.from('reports').insert({job_id:jobId,location_id:locId,report_type:'dry_chemical',report_data:data})
+      if(error){if(!silent)toast('Save error: '+error.message,false)}else saveOk=true
+    }
+  }catch(e){console.error('dc report save:',e);if(!silent)toast('Save failed',false)}
+  if(!saveOk){if(btn){btn.textContent='Save Report';btn.style.opacity='';btn.style.pointerEvents=''}return}
+  await load()
+  if(silent)return
+  toast('Report saved ✓')
   pop()
 }
 
@@ -6409,35 +6421,42 @@ function clrCaSig(key){
   if($(phId))$(phId).style.display=''
 }
 
-async function saveCleanAgentReport(jobId,sysId){
-  const ownerSigData=$('caOwnerSig')?.toDataURL()||null
-  const reportHtml=await generateCleanAgentReport(jobId,sysId,true) // capture while form is open
+async function saveCleanAgentReport(jobId,sysId,silent){
+  const btn=silent?null:($('caRptSaveBtn2')||$('caRptSaveBtn'));if(btn){btn.textContent='Saving...';btn.style.opacity='.5';btn.style.pointerEvents='none'}
+  let techSig=''
+  try{const c=$('caTechSig');if(c){const ctx=c.getContext('2d');const px=ctx.getImageData(0,0,c.width,c.height).data;let has=false;for(let i2=3;i2<px.length;i2+=4){if(px[i2]>0){has=true;break}};if(has)techSig=c.toDataURL('image/jpeg',0.5)}}catch(e){}
   const data={
-    checks:window._caCheckState||{},
+    checks:{...(window._caCheckState||{})},
     serviceType:window._caServiceType||'semi',
     agentType:$('ca-agent-type')?.value||'',
     mfg:$('ca-mfg')?.value||'',model:$('ca-model')?.value||'',
     serial:$('ca-serial')?.value||'',area:$('ca-area')?.value||'',
     concentration:$('ca-conc')?.value||'',panel:$('ca-panel')?.value||'',
-    cylinders:window._caCyls||[],
-    techName:$('ca-tech-name')?.value||'',
-    permit:$('ca-permit')?.value||'',
+    cylinders:(window._caCyls||[]).map(c=>({...c})),
+    techName:$('ca-tech-name')?.value||'Jon Stephens',
+    permit:$('ca-permit')?.value||'FEL-A-2593933',
     ownerName:$('ca-owner-name')?.value||'',
     deficiencies:$('ca-deficiencies')?.value||'',
-    reportHtml:reportHtml||''
+    techSig,
+    timein:$('ca-timein')?.value||'',timeout:$('ca-timeout')?.value||''
   }
   const j=D.jobs.find(x=>x.id===jobId)||{}
   const locId2=j.location_id||j.location?.id
+  if(!locId2){if(!silent)toast('Error: no location',false);if(btn){btn.textContent='✓ Save Report';btn.style.opacity='';btn.style.pointerEvents=''}return}
+  let saveOk=false
   try{
-    // check for existing clean agent report for this job
     const{data:caExist}=await SB.from('reports').select('id').eq('job_id',jobId).eq('report_type','clean_agent').limit(1)
     if(caExist?.length){
-      await SB.from('reports').update({report_data:data}).eq('id',caExist[0].id)
+      const{error}=await SB.from('reports').update({report_data:data}).eq('id',caExist[0].id)
+      if(error){if(!silent)toast('Save error: '+error.message,false)}else saveOk=true
     }else{
-      await SB.from('reports').insert({job_id:jobId,location_id:locId2,report_type:'clean_agent',report_data:data})
+      const{error}=await SB.from('reports').insert({job_id:jobId,location_id:locId2,report_type:'clean_agent',report_data:data})
+      if(error){if(!silent)toast('Save error: '+error.message,false)}else saveOk=true
     }
-    if(ownerSigData)await SB.from('jobs').update({signature_data:ownerSigData,notes:($('ca-deficiencies')?.value||j.notes||null)}).eq('id',jobId)
-  }catch(e){console.error('ca report save:',e)}
+  }catch(e){console.error('ca report save:',e);if(!silent)toast('Save failed',false)}
+  if(!saveOk){if(btn){btn.textContent='✓ Save Report';btn.style.opacity='';btn.style.pointerEvents=''}return}
+  await load()
+  if(silent)return
   toast('Report saved ✓')
   pop()
 }
