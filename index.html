@@ -2276,7 +2276,8 @@ async function openCust(id){
     h+=`<div class="ds" id="cust-jobs-section"><div class="ds-t">Job History · ${locJobs.length}</div>`
     locJobs.slice(0,15).forEach(j=>{
       const statC={scheduled:'var(--info)',active:'var(--ok)',completed:'var(--g1)'}[j.status]||'var(--g1)'
-      h+=`<div class="ic" onclick="openJob('${j.id}')"><div class="ic-r1"><div class="ic-nm">${j.scheduled_date||'No date'}</div><span style="font-size:10px;font-weight:800;text-transform:uppercase;color:${statC}">${j.status}</span></div><div class="ic-sub">${(j.scope||[]).join(' · ')}</div></div>`
+      const jInv=D.invs.find(i=>i.job_id===j.id)
+      h+=`<div class="ic" onclick="openJob('${j.id}')"><div class="ic-r1"><div class="ic-nm">${j.scheduled_date||'No date'}</div><span style="font-size:10px;font-weight:800;text-transform:uppercase;color:${statC}">${j.status}</span></div><div class="ic-sub">${(j.scope||[]).join(' · ')}${jInv?' · '+fmt(+jInv.total):''}</div>${jInv?`<div style="margin-top:6px" onclick="event.stopPropagation()"><button style="font-size:11px;font-weight:700;padding:6px 14px;border-radius:var(--rs);background:var(--info);color:#fff;border:none;cursor:pointer" onclick="resendJobInvoice('${jInv.id}','${esc(l.name||'')}','${esc(jInv.invoice_number||'')}')">✉️ Resend Invoice + Reports</button></div>`:''}</div>`
     })
     h+=`</div>`
   }
@@ -4258,6 +4259,14 @@ async function saveJob(){
     addr:[calLoc.address,calLoc.city].filter(Boolean).join(', '),
     notes:jobNoteTxt
   })
+}
+
+async function resendJobInvoice(invId,custName,invNum){
+  const inv=D.invs.find(x=>x.id===invId)||{}
+  const loc=D.locs.find(x=>x.id===inv.location_id)||{}
+  const to=loc.contact_email||''
+  if(!to){toast('No email on file — add one in client details',false);return}
+  await _showEmailPreview(invId,to,custName,invNum)
 }
 
 function addToCalendar({title,date,time,addr,notes}){
