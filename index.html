@@ -1791,7 +1791,6 @@ function buildJobLines(j){
     lines.push({desc:`${s.system_type} Semi-Annual`,qty:1,price:bv})
     if(s.tank_count>1)lines.push({desc:`Additional Tank Fee`,qty:s.tank_count-1,price:rc.suppression_additional_tank||50})
     if(s.fusible_link_count)lines.push({desc:`Fusible Links`,qty:s.fusible_link_count,price:rc.fusible_link||25})
-    if(s.nozzle_count)lines.push({desc:`Blow-Off Caps`,qty:s.nozzle_count,price:rc.metal_blowoff_cap||25})
   }
   // extinguishers
   if(sc.includes('extinguishers')&&l.extinguishers?.length){
@@ -2080,13 +2079,25 @@ async function openJob(id){
 
 function renderJobLines(){
   const wrap=$('wo-lines');if(!wrap)return
-  wrap.innerHTML=jobLines.map((l2,i)=>`
-    <div class="li-row" data-jli="${i}">
+  // header row
+  let h=`<div style="display:flex;gap:4px;padding:0 0 4px;margin-bottom:4px;border-bottom:1px solid var(--b1)">
+    <div style="width:44px;font-size:8px;font-weight:800;color:var(--g2);text-transform:uppercase">Qty</div>
+    <div style="flex:2;font-size:8px;font-weight:800;color:var(--g2);text-transform:uppercase">Description</div>
+    <div style="width:70px;font-size:8px;font-weight:800;color:var(--g2);text-transform:uppercase">Unit $</div>
+    <div style="width:70px;font-size:8px;font-weight:800;color:var(--g2);text-transform:uppercase;text-align:right">Total</div>
+    <div style="width:28px"></div>
+  </div>`
+  h+=jobLines.map((l2,i)=>{
+    const lineTotal=((+(l2.qty||1))*(+(l2.price||0))).toFixed(2)
+    return`<div class="li-row" data-jli="${i}" style="display:flex;gap:4px;align-items:center;margin-bottom:4px">
+      <input class="li-qty" type="number" value="${l2.qty||1}" min="0.5" step="0.5" oninput="jlEdit(${i},'qty',this.value)" style="width:44px;text-align:center">
       <input placeholder="Description" value="${esc(l2.desc||'')}" oninput="jlEdit(${i},'desc',this.value)" style="flex:2">
-      <input class="li-qty" type="number" value="${l2.qty||1}" min="0.5" step="0.5" oninput="jlEdit(${i},'qty',this.value)">
-      <input class="li-price" type="number" value="${+(l2.price||0)}" step="0.01" oninput="jlEdit(${i},'price',this.value)">
-      <button class="li-del" onclick="jlDel(${i})">✕</button>
-    </div>`).join('')
+      <input class="li-price" type="number" value="${+(l2.price||0)}" step="0.01" oninput="jlEdit(${i},'price',this.value)" style="width:70px">
+      <div style="width:70px;text-align:right;font-size:12px;font-weight:700;color:var(--ok);font-variant-numeric:tabular-nums" id="jl-total-${i}">$${lineTotal}</div>
+      <button class="li-del" onclick="jlDel(${i})" style="width:28px">✕</button>
+    </div>`
+  }).join('')
+  wrap.innerHTML=h
   updateWoTotal()
 }
 
@@ -2095,6 +2106,7 @@ function jlEdit(i,field,val){
   if(field==='desc')jobLines[i].desc=val
   else if(field==='qty')jobLines[i].qty=parseFloat(val)||1
   else if(field==='price')jobLines[i].price=parseFloat(val)||0
+  const lt=$('jl-total-'+i);if(lt)lt.textContent='$'+((+(jobLines[i].qty||1))*(+(jobLines[i].price||0))).toFixed(2)
   updateWoTotal()
 }
 
@@ -2573,21 +2585,48 @@ async function openInvDetail(id){
 function renderInvLines(locked){
   const wrap=$('inv-det-lines');if(!wrap)return
   if(!invLines.length){wrap.innerHTML=`<div style="color:var(--g2);font-size:12px;padding:8px 0">No line items</div>`;return}
-  wrap.innerHTML=invLines.map((l2,i)=>{
-    const isTravel=(l2.desc||'').startsWith('Travel —')
-    return locked
-    ?`<div class="ds-row"><div class="ds-lbl" style="flex:1;font-size:12px;color:var(--w2)">${isTravel?'🚗 ':''}${esc(l2.desc)}${l2.qty>1?' ×'+l2.qty:''}</div><div class="ds-val" style="font-variant-numeric:tabular-nums;flex-shrink:0">${fmtD(l2.qty*l2.price)}</div></div>`
-    :`<div class="li-row" data-ili="${i}" style="${isTravel?'border-left:3px solid var(--warn);padding-left:8px':''}">
-      <input placeholder="Description" value="${esc(l2.desc||'')}" oninput="ilEdit(${i},'desc',this.value)" style="flex:2${isTravel?';color:var(--warn)':''}">
-      <input class="li-qty" type="number" value="${l2.qty||1}" min="0.5" step="0.5" oninput="ilEdit(${i},'qty',this.value)">
-      <input class="li-price" type="number" value="${+(l2.price||0)}" step="0.01" oninput="ilEdit(${i},'price',this.value)">
-      <button class="li-del" onclick="ilDel(${i})">✕</button>
+  let h=''
+  if(locked){
+    // read-only view with columns
+    h+=`<div style="display:flex;gap:4px;padding:0 0 4px;margin-bottom:4px;border-bottom:1px solid var(--b1)">
+      <div style="width:36px;font-size:8px;font-weight:800;color:var(--g2);text-transform:uppercase">Qty</div>
+      <div style="flex:2;font-size:8px;font-weight:800;color:var(--g2);text-transform:uppercase">Description</div>
+      <div style="width:60px;font-size:8px;font-weight:800;color:var(--g2);text-transform:uppercase">Unit $</div>
+      <div style="width:65px;font-size:8px;font-weight:800;color:var(--g2);text-transform:uppercase;text-align:right">Total</div>
     </div>`
-  }).join('')
-  if(!locked){
-    const t=invLines.reduce((s,l2)=>s+(+(l2.qty||1))*(+(l2.price||0)),0)
-    wrap.innerHTML+=`<div class="ds-row" style="padding-top:10px;border-top:1.5px solid var(--b1)"><div class="ds-lbl" style="font-weight:800;color:var(--w)">Total</div><div class="ds-val" style="font-size:17px;font-weight:800;color:var(--fire)" id="inv-lines-total">${fmtD(t)}</div></div>`
+    h+=invLines.map(l2=>{
+      const isTravel=(l2.desc||'').startsWith('Travel —')
+      return`<div style="display:flex;gap:4px;align-items:center;padding:4px 0;border-bottom:1px solid var(--b1)">
+        <div style="width:36px;font-size:12px;color:var(--w2);text-align:center">${l2.qty}</div>
+        <div style="flex:2;font-size:12px;color:${isTravel?'var(--warn)':'var(--w2)'}">${isTravel?'🚗 ':''}${esc(l2.desc)}</div>
+        <div style="width:60px;font-size:11px;color:var(--g1);font-variant-numeric:tabular-nums">$${(+(l2.price||0)).toFixed(2)}</div>
+        <div style="width:65px;text-align:right;font-size:12px;font-weight:700;color:var(--ok);font-variant-numeric:tabular-nums">${fmtD(l2.qty*l2.price)}</div>
+      </div>`
+    }).join('')
+  }else{
+    // editable view with columns
+    h+=`<div style="display:flex;gap:4px;padding:0 0 4px;margin-bottom:4px;border-bottom:1px solid var(--b1)">
+      <div style="width:44px;font-size:8px;font-weight:800;color:var(--g2);text-transform:uppercase">Qty</div>
+      <div style="flex:2;font-size:8px;font-weight:800;color:var(--g2);text-transform:uppercase">Description</div>
+      <div style="width:70px;font-size:8px;font-weight:800;color:var(--g2);text-transform:uppercase">Unit $</div>
+      <div style="width:70px;font-size:8px;font-weight:800;color:var(--g2);text-transform:uppercase;text-align:right">Total</div>
+      <div style="width:28px"></div>
+    </div>`
+    h+=invLines.map((l2,i)=>{
+      const isTravel=(l2.desc||'').startsWith('Travel —')
+      const lineTotal=((+(l2.qty||1))*(+(l2.price||0))).toFixed(2)
+      return`<div class="li-row" data-ili="${i}" style="display:flex;gap:4px;align-items:center;margin-bottom:4px${isTravel?';border-left:3px solid var(--warn);padding-left:8px':''}">
+        <input class="li-qty" type="number" value="${l2.qty||1}" min="0.5" step="0.5" oninput="ilEdit(${i},'qty',this.value)" style="width:44px;text-align:center">
+        <input placeholder="Description" value="${esc(l2.desc||'')}" oninput="ilEdit(${i},'desc',this.value)" style="flex:2${isTravel?';color:var(--warn)':''}">
+        <input class="li-price" type="number" value="${+(l2.price||0)}" step="0.01" oninput="ilEdit(${i},'price',this.value)" style="width:70px">
+        <div style="width:70px;text-align:right;font-size:12px;font-weight:700;color:var(--ok);font-variant-numeric:tabular-nums" id="il-total-${i}">$${lineTotal}</div>
+        <button class="li-del" onclick="ilDel(${i})" style="width:28px">✕</button>
+      </div>`
+    }).join('')
   }
+  const t=invLines.reduce((s,l2)=>s+(+(l2.qty||1))*(+(l2.price||0)),0)
+  h+=`<div style="display:flex;justify-content:space-between;padding-top:10px;border-top:2px solid var(--fire)"><div style="font-size:15px;font-weight:900;color:var(--w)">TOTAL</div><div style="font-size:18px;font-weight:900;color:var(--fire);font-variant-numeric:tabular-nums" id="inv-lines-total">${fmtD(t)}</div></div>`
+  wrap.innerHTML=h
 }
 
 function ilEdit(i,field,val){
@@ -2595,10 +2634,13 @@ function ilEdit(i,field,val){
   if(field==='desc')invLines[i].desc=val
   else if(field==='qty')invLines[i].qty=parseFloat(val)||1
   else if(field==='price')invLines[i].price=parseFloat(val)||0
+  // update line total
+  const lt=$('il-total-'+i);if(lt)lt.textContent='$'+((+(invLines[i].qty||1))*(+(invLines[i].price||0))).toFixed(2)
   // update totals
   const t=invLines.reduce((s,l2)=>s+(+(l2.qty||1))*(+(l2.price||0)),0)
   const el=$('inv-lines-total');if(el)el.textContent=fmtD(t)
   const el2=$('inv-det-total-sm');if(el2)el2.textContent=fmtD(t)
+  const el3=$('inv-det-total');if(el3)el3.textContent=fmtD(t)
 }
 
 function ilDel(i){
