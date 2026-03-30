@@ -3914,7 +3914,7 @@ function showInv(d){
 }
 
 async function sendInvoiceEmail(invId,toEmail,custName,invNum,btn){
-  // Show email preview overlay — user taps link to open their email app
+  // Show email preview overlay — user reviews everything then taps Send
   const emailField=$('inv-email-to')
   const to=emailField?emailField.value.trim():toEmail
   if(!to){
@@ -3922,25 +3922,27 @@ async function sendInvoiceEmail(invId,toEmail,custName,invNum,btn){
     return
   }
   if(btn){btn.innerHTML='<span class="spin"></span>';btn.style.pointerEvents='none'}
+  await _showEmailPreview(invId,to,custName,invNum)
+  if(btn){btn.innerHTML='✉️ Send Email';btn.style.pointerEvents=''}
+}
 
+async function _showEmailPreview(invId,to,custName,invNum){
   const{data:invFresh}=await SB.from('invoices').select('*').eq('id',invId).single()
   const inv=invFresh||D.invs.find(x=>x.id===invId)||{}
   const{data:lines}=await SB.from('invoice_lines').select('*').eq('invoice_id',invId).order('sort_order')
   const ls=lines||[]
   const total=ls.reduce((s,l)=>s+(+l.total||0),0)||+inv.total||0
   const loc=D.locs.find(x=>x.id===inv.location_id)||{}
-
   const subj=`Invoice ${inv.invoice_number||invNum} — Stephens Advanced LLC`
-  let body=`Invoice: ${inv.invoice_number||invNum}\nCustomer: ${custName||loc.name||''}\nAddress: ${[loc.address,loc.city,loc.state,loc.zip].filter(Boolean).join(', ')}\nDate: ${inv.date?new Date(inv.date).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):''}\n\n--- Line Items ---\n`
-  ls.forEach(l=>{body+=`${l.description} — Qty: ${l.quantity} × $${(+l.unit_price).toFixed(2)} = $${(+l.total).toFixed(2)}\n`})
-  body+=`\nTOTAL: $${total.toFixed(2)}\n\nStephens Advanced LLC\nFire Suppression & Safety\n(214) 994-4799\njonathan@stephensadvanced.com`
 
-  showEmailPreview(to,subj,body,ls,total,inv,custName||loc.name||'')
-  if(btn){btn.innerHTML='✉️ Send Email';btn.style.pointerEvents=''}
-}
+  // fetch all reports for this job
+  let rpts=[]
+  if(inv.job_id){
+    const{data:r}=await SB.from('reports').select('id,report_type,report_data,created_at').eq('job_id',inv.job_id).order('created_at')
+    rpts=r||[]
+  }
 
-function showEmailPreview(to,subj,body,ls,total,inv,custName){
-  let h=`<div class="ov-hdr"><button class="ov-back" onclick="pop()">‹</button><div class="ov-title">Email Preview</div></div><div class="ov-body" style="padding:16px">`
+  let h=`<div class="ov-hdr"><button class="ov-back" onclick="pop()">‹</button><div class="ov-title">Review Before Sending</div></div><div class="ov-body" style="padding:16px">`
   h+=`<div style="background:var(--c2);border-radius:var(--r);padding:16px;margin-bottom:16px">
     <div style="font-size:11px;color:var(--g1);margin-bottom:4px">TO</div>
     <div style="font-size:15px;font-weight:700;color:var(--w);margin-bottom:12px">${esc(to)}</div>
@@ -3948,10 +3950,10 @@ function showEmailPreview(to,subj,body,ls,total,inv,custName){
     <div style="font-size:14px;font-weight:600;color:var(--w)">${esc(subj)}</div>
   </div>`
   h+=`<div style="background:var(--c2);border-radius:var(--r);padding:16px;margin-bottom:16px">
-    <div style="font-size:11px;color:var(--g1);margin-bottom:8px">INVOICE PREVIEW</div>
+    <div style="font-size:11px;color:var(--g1);margin-bottom:8px">INVOICE</div>
     <div style="font-size:16px;font-weight:800;color:var(--fire);margin-bottom:4px">${esc(inv.invoice_number||'')}</div>
-    <div style="font-size:13px;color:var(--w);margin-bottom:12px">${esc(custName)}</div>`
-  if(ls&&ls.length){
+    <div style="font-size:13px;color:var(--w);margin-bottom:12px">${esc(custName||loc.name||'')}</div>`
+  if(ls.length){
     h+=`<table style="width:100%;font-size:12px;color:var(--w);border-collapse:collapse">`
     ls.forEach(l=>{
       h+=`<tr><td style="padding:6px 0;border-bottom:1px solid var(--b1)">${esc(l.description)}</td>
@@ -3962,11 +3964,85 @@ function showEmailPreview(to,subj,body,ls,total,inv,custName){
       <td style="padding:8px 0;text-align:right;font-weight:900;font-size:16px;color:var(--fire)">$${total.toFixed(2)}</td></tr></table>`
   }
   h+=`</div>`
-  const mailto=`mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(body)}`
-  h+=`<a href="${mailto}" style="display:block;text-align:center;padding:16px;border-radius:var(--r);background:var(--fire);color:#fff;font-size:16px;font-weight:800;text-decoration:none;min-height:54px;line-height:22px;margin-bottom:12px">✉️ Open in Email App</a>`
-  h+=`<div style="text-align:center;font-size:11px;color:var(--g1);margin-bottom:16px">Review everything above, then tap to open your email app with this pre-filled.</div>`
+
+  // show attached reports
+  if(rpts.length){
+    h+=`<div style="background:var(--c2);border-radius:var(--r);padding:16px;margin-bottom:16px">
+      <div style="font-size:11px;color:var(--g1);margin-bottom:8px">PDF ATTACHMENTS · ${rpts.length}</div>`
+    rpts.forEach(r=>{
+      const icon=r.report_type==='extinguisher'?'🧯':r.report_type==='dry_chemical'?'🏭':r.report_type==='clean_agent'?'💨':'🔥'
+      const name=r.report_type==='extinguisher'?'Extinguisher Report':r.report_type==='dry_chemical'?'Dry Chemical / Paint Booth Report':r.report_type==='clean_agent'?'Clean Agent Report':'Kitchen Hood Report'
+      const sysLoc=r.report_data?.sysLocation||''
+      h+=`<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--b1)">
+        <span style="font-size:18px">${icon}</span>
+        <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--w)">${name}</div>
+          ${sysLoc?`<div style="font-size:11px;color:var(--g1)">${esc(sysLoc)}</div>`:''}</div>
+        <span style="font-size:11px;font-weight:700;color:var(--ok)">PDF</span>
+      </div>`
+    })
+    h+=`</div>`
+  }else{
+    h+=`<div style="background:var(--warns);border:1px solid var(--warn);border-radius:var(--r);padding:12px;margin-bottom:16px;font-size:12px;color:var(--warn)">No reports attached. Complete inspection reports before sending.</div>`
+  }
+
+  // store data for the send action
+  window._pendingEmail={invId,to,custName:custName||loc.name||'',invNum:inv.invoice_number||invNum,inv,ls,total,loc,rpts}
+
+  h+=`<button id="confirmSendBtn" onclick="_confirmSendEmail()" style="width:100%;padding:16px;border-radius:var(--r);background:var(--fire);color:#fff;font-size:16px;font-weight:800;border:none;cursor:pointer;min-height:54px;margin-bottom:8px">✉️ Send Invoice${rpts.length?' + '+rpts.length+' Report'+(rpts.length>1?'s':''):''}</button>`
+  h+=`<div id="confirmSendStatus" style="text-align:center;font-size:12px;color:var(--g1);min-height:16px;margin-bottom:8px"></div>`
+  h+=`<button class="btn-dim" onclick="pop()">← Cancel</button>`
   h+=`</div>`
   push(h)
+}
+
+async function _confirmSendEmail(){
+  const d=window._pendingEmail;if(!d)return
+  const btn=$('confirmSendBtn');if(btn){btn.innerHTML='<span class="spin"></span> Sending...';btn.style.pointerEvents='none'}
+  const st=$('confirmSendStatus')
+
+  // generate portal link
+  let portalUrl=''
+  try{const pTk=await getOrCreatePortalToken(d.inv.location_id,d.loc.billing_account_id||null);if(pTk)portalUrl='https://stephensadvanced.com/portal?t='+pTk}catch(e){}
+
+  const html=buildInvoiceEmailHtml({
+    invNum:d.invNum,custName:d.custName,
+    addr:[d.loc.address,d.loc.city,d.loc.state,d.loc.zip].filter(Boolean).join(', '),
+    date:d.inv.date?new Date(d.inv.date).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):'',
+    dueDate:d.inv.due_date?new Date(d.inv.due_date).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):'',
+    lines:d.ls,total:d.total,portalUrl
+  })
+
+  // build report PDF attachments
+  let attachments=[]
+  d.rpts.forEach((rpt,ri)=>{
+    let rHtml=rpt.report_data?.reportHtml||''
+    if(!rHtml&&rpt.report_type==='extinguisher'&&rpt.report_data?.units){rHtml=buildExtReportHtml(rpt.report_data,d.loc)}
+    if(!rHtml)return
+    const sysLoc=rpt.report_data?.sysLocation||''
+    const rType=rpt.report_type==='extinguisher'?'Extinguisher-Report':rpt.report_type==='clean_agent'?'Clean-Agent-Report':rpt.report_type==='dry_chemical'?'Dry-Chemical-Report':'Suppression-Report'
+    const suffix=d.rpts.length>1?'-'+(sysLoc||ri+1):''
+    const bytes=new TextEncoder().encode(rHtml)
+    let bin='';bytes.forEach(b2=>bin+=String.fromCharCode(b2))
+    attachments.push({filename:'Stephens-Advanced-'+rType+suffix+'.html',content:btoa(bin)})
+  })
+
+  try{
+    const res=await fetch('/api/send-email',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({to:d.to,subject:`Invoice ${d.invNum} — Stephens Advanced LLC`,html,invoiceNumber:d.invNum,customerName:d.custName,attachments})
+    })
+    const data=await res.json()
+    if(data.success){
+      await SB.from('invoices').update({status:'sent'}).eq('id',d.invId)
+      await load()
+      if(st){st.textContent='✓ Sent to '+d.to;st.style.color='var(--ok)'}
+      if(btn){btn.innerHTML='✓ Sent';btn.style.background='var(--ok)'}
+      toast('Invoice emailed with '+attachments.length+' report'+(attachments.length!==1?'s':''))
+    }else{throw new Error(data.error||'Send failed')}
+  }catch(err){
+    if(st){st.textContent='Error: '+err.message;st.style.color='var(--bad)'}
+    if(btn){btn.innerHTML='✉️ Retry Send';btn.style.pointerEvents=''}
+    toast('Send failed',false)
+  }
 }
 
 async function getOrCreatePortalToken(locId,baId){
@@ -4175,25 +4251,11 @@ function addToCalendar({title,date,time,addr,notes}){
 }
 
 async function sendInvoiceEmailFromDetail(invId,custName,invNum){
-  // Show email preview — user taps link to open their email app
   const to=$('det-email-to')?.value?.trim()
   const btn=$('det-send-btn')
   if(!to){const st=$('det-email-status');if(st){st.textContent='Enter an email address.';st.style.color='var(--bad)'}return}
   if(btn){btn.innerHTML='<span class="spin"></span>';btn.style.pointerEvents='none'}
-
-  const{data:invFresh2}=await SB.from('invoices').select('*').eq('id',invId).single()
-  const inv=invFresh2||D.invs.find(x=>x.id===invId)||{}
-  const{data:lines}=await SB.from('invoice_lines').select('*').eq('invoice_id',invId).order('sort_order')
-  const ls=lines||[]
-  const total=ls.reduce((s,l)=>s+(+l.total||0),0)||+inv.total||0
-  const loc=D.locs.find(x=>x.id===inv.location_id)||{}
-
-  const subj=`Invoice ${inv.invoice_number||invNum} — Stephens Advanced LLC`
-  let body=`Invoice: ${inv.invoice_number||invNum}\nCustomer: ${custName||loc.name||''}\nAddress: ${[loc.address,loc.city,loc.state,loc.zip].filter(Boolean).join(', ')}\nDate: ${inv.date?new Date(inv.date).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):''}\n\n--- Line Items ---\n`
-  ls.forEach(l=>{body+=`${l.description} — Qty: ${l.quantity} × $${(+l.unit_price).toFixed(2)} = $${(+l.total).toFixed(2)}\n`})
-  body+=`\nTOTAL: $${total.toFixed(2)}\n\nStephens Advanced LLC\nFire Suppression & Safety\n(214) 994-4799\njonathan@stephensadvanced.com`
-
-  showEmailPreview(to,subj,body,ls,total,inv,custName||loc.name||'')
+  await _showEmailPreview(invId,to,custName,invNum)
   if(btn){btn.innerHTML='✉️ Send';btn.style.pointerEvents=''}
 }
 
