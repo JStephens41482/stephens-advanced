@@ -673,7 +673,7 @@ function go(btn){
   const v=btn.dataset.v
   document.querySelectorAll('.vw').forEach(e=>e.classList.remove('on'));$(v).classList.add('on')
   document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('on'));btn.classList.add('on')
-  if(v==='vJobs')rJobs();else if(v==='vCust')rCust();else if(v==='vTechs')rTechs();else rMoney()
+  if(v==='vJobs')rJobs();else if(v==='vCust'){load().then(rCust)}else if(v==='vTechs')rTechs();else rMoney()
 }
 
 function toast(m,ok=true){
@@ -1550,7 +1550,7 @@ function jCard(j,isOv=false){
 }
 
 // JOBS LIST
-let _calYear,_calMonth,_jobsView='calendar'
+let _calYear,_calMonth,_jobsView='list'
 
 function rJobs(){
   // Render quick-action bar + alerts at top of Jobs tab
@@ -5784,10 +5784,14 @@ async function saveSuppReport(jobId,sysId){
     }
     if(ownerSigData)await SB.from('jobs').update({signature_data:ownerSigData,notes:($('rpt-deficiencies')?.value||j.notes||null)}).eq('id',jobId)
   }catch(e){console.error('report save:',e)}
+  await load()
   toast('Report saved ✓')
   pop()
-  // offer to fill additional report
-  showAdditionalReportOption(jobId,sysLocation)
+  // only offer additional report if location has multiple suppression systems
+  const loc2=D.locs.find(x=>x.id===locId)||{}
+  if((loc2.suppression_systems||[]).length>1){
+    showAdditionalReportOption(jobId,sysLocation)
+  }
 }
 
 function showAdditionalReportOption(jobId,prevLocation){
