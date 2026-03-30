@@ -5591,7 +5591,7 @@ async function openDryChemReport(jobId,sysId){
   ]
 
   window._dcCheckState=prev.checks||{}
-  checks.forEach((_,i)=>{if(window._dcCheckState[i]===undefined)window._dcCheckState[i]=''})
+  checks.forEach((_,i)=>{if(window._dcCheckState[i]===undefined)window._dcCheckState[i]='yes'})
 
   let h=`<div class="ov-hdr">
     <button class="ov-back" onclick="pop()">‹</button>
@@ -5880,7 +5880,7 @@ async function openSuppReport(jobId,sysId,preLocation){
   </div>`
 
   window._rptCheckState=prev.checks||{}
-  checks.forEach((_,i)=>{if(window._rptCheckState[i]===undefined)window._rptCheckState[i]=''})
+  checks.forEach((_,i)=>{if(window._rptCheckState[i]===undefined)window._rptCheckState[i]='yes'})
   window._rptServiceType=prev.serviceType||'semi'
   window._rptFuelType=prev.fuelType||''
 
@@ -6360,7 +6360,7 @@ async function openCleanAgentReport(jobId,sysId){
   </div>`
 
   window._caCheckState=prev.checks||{}
-  checks.forEach((_,i)=>{if(window._caCheckState[i]===undefined)window._caCheckState[i]=''})
+  checks.forEach((_,i)=>{if(window._caCheckState[i]===undefined)window._caCheckState[i]='yes'})
   window._caServiceType=prev.serviceType||'semi'
   window._caCyls=prevCyls.map(c=>({...c}))
 
