@@ -2433,18 +2433,41 @@ async function openInvDetail(id){
   if(inv.notes)h+=`<div style="margin-top:10px"><label class="fg-l">Notes</label><div class="ds-info" style="font-size:12px">${esc(inv.notes)}</div></div>`
   h+=`</div>`
 
-  // LINKED REPORTS
+  // LINKED REPORTS — show all saved reports for this job
   const jobId=inv.job_id
   if(jobId){
+    const{data:rpts}=await SB.from('reports').select('id,report_type,report_data,created_at').eq('job_id',jobId).order('created_at')
+    if(rpts?.length){
+      h+=`<div class="ds"><div class="ds-t">Reports · ${rpts.length}</div>`
+      rpts.forEach(r=>{
+        const icon=r.report_type==='extinguisher'?'🧯':r.report_type==='dry_chemical'?'🏭':r.report_type==='clean_agent'?'💨':'🔥'
+        const name=r.report_type==='extinguisher'?'Extinguisher Report':r.report_type==='dry_chemical'?'Dry Chemical / Paint Booth Report':r.report_type==='clean_agent'?'Clean Agent Report':'Kitchen Hood Report'
+        const sysLoc=r.report_data?.sysLocation||''
+        const dt=r.created_at?new Date(r.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric'}):'—'
+        const onclick2=r.report_type==='extinguisher'?`openExtReport('${jobId}')`:r.report_type==='dry_chemical'?`openDryChemReport('${jobId}','${r.report_data?.sysId||''}')`:r.report_type==='clean_agent'?`openCleanAgentReport('${jobId}','${r.report_data?.sysId||''}')`:`openSuppReport('${jobId}','${r.report_data?.sysId||''}')`
+        h+=`<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--b1);cursor:pointer" onclick="${onclick2}">
+          <span style="font-size:18px">${icon}</span>
+          <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--w)">${name}</div>
+            ${sysLoc?`<div style="font-size:11px;color:var(--g1)">${esc(sysLoc)}</div>`:''}</div>
+          <div style="text-align:right"><div style="font-size:10px;color:var(--g1)">${dt}</div>
+            <span style="font-size:10px;font-weight:700;color:var(--ok)">SAVED</span></div>
+        </div>`
+      })
+      h+=`</div>`
+    }
+    // show button to add new report if job has suppression systems
     const j2=D.jobs.find(x=>x.id===jobId)||{}
     const sc2=j2.scope||[]
     const syss2=loc.suppression_systems||[]
     if(sc2.includes('suppression')&&syss2.length){
       const sysId=syss2[0].id
       const hasCA=syss2.some(s=>{const t=(s.system_type||'').toLowerCase();return t.includes('fm-200')||t.includes('fm200')||t.includes('novec')||t.includes('co2')||t.includes('clean agent')||t.includes('halon')||t.includes('inergen')})
-      h+=`<div class="qa" style="margin-bottom:16px">
-        <button class="qa-btn" style="flex:1" onclick="${hasCA?`openCleanAgentReport('${jobId}','${sysId}')`:`openSuppReport('${jobId}','${sysId}')`}">📋 ${hasCA?'Clean Agent':'Kitchen Hood'} Inspection Report</button>
-      </div>`
+      const hasExisting=rpts?.some(r=>r.report_type==='kitchen_suppression'||r.report_type==='clean_agent')
+      if(!hasExisting){
+        h+=`<div class="qa" style="margin-bottom:16px">
+          <button class="qa-btn" style="flex:1" onclick="${hasCA?`openCleanAgentReport('${jobId}','${sysId}')`:`openSuppReport('${jobId}','${sysId}')`}">+ Add ${hasCA?'Clean Agent':'Kitchen Hood'} Report</button>
+        </div>`
+      }
     }
   }
 
