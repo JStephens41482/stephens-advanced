@@ -3945,12 +3945,6 @@ async function sendInvoiceEmail(invId,toEmail,custName,invNum,btn){
   toast('Email opened for review')
   const st=$('inv-email-status');if(st){st.textContent='Opened in your email app — review and send.';st.style.color='var(--info)'}
   if(btn){btn.innerHTML='✉️ Send Email';btn.style.pointerEvents=''}
-  }catch(err){
-    if(st){st.textContent='Error: '+err.message;st.style.color='var(--bad)'}
-    if(btn){btn.innerHTML='✉️ Send Email';btn.style.pointerEvents=''}
-    toast('Email failed — check credentials',false)
-    console.error(err)
-  }
 }
 
 async function getOrCreatePortalToken(locId,baId){
