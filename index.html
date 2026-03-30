@@ -1953,20 +1953,6 @@ async function openJob(id){
     </div>`:''}
   </div>
 
-  <!-- INSPECTION REPORTS — always visible -->
-  <div style="margin-bottom:16px">
-    <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:var(--g2);margin-bottom:8px">Inspection Reports</div>
-    ${sc.includes('suppression')&&(l.suppression_systems&&l.suppression_systems.length)?l.suppression_systems.map(s=>{
-      const t=(s.system_type||'').toLowerCase()
-      const isCA=t.includes('fm-200')||t.includes('fm200')||t.includes('novec')||t.includes('co2')||t.includes('clean agent')||t.includes('halon')||t.includes('inergen')||t.includes('sapphire')
-      const isDC=t.includes('dry chem')||t.includes('a-101')||t.includes('i-101')||t.includes('monarch')||t.includes('industryguard')||t.includes('paint')||t.includes('booth')
-      if(isDC)return`<button class="trk-btn" style="margin-bottom:6px;background:var(--warn);color:#000" onclick="openDryChemReport('${j.id}','${s.id}')">🏭 Dry Chemical / Paint Booth Report${s.system_type?' — '+s.system_type.replace(/'/g,'&#39;'):''}</button>`
-      if(isCA)return`<button class="trk-btn trk-go" style="margin-bottom:6px" onclick="openCleanAgentReport('${j.id}','${s.id}')">📋 Clean Agent Report${s.system_type&&s.system_type!=='Suppression System'?' — '+s.system_type.replace(/'/g,'&#39;'):''}</button>`
-      return`<button class="trk-btn trk-go" style="margin-bottom:6px" onclick="openSuppReport('${j.id}','${s.id}')">📋 Kitchen Hood Report${s.system_type&&s.system_type!=='Suppression System'?' — '+s.system_type.replace(/'/g,'&#39;'):''}</button>`
-    }).join(''):''}
-    <button class="trk-btn" style="background:var(--ok);color:#fff;margin-bottom:6px" onclick="openExtReport('${j.id}')">🧯 Extinguisher Inspection Report</button>
-  </div>
-
   <!-- LOCATION -->
   <div class="ds"><div class="ds-t">Location</div>
     <div class="ds-info">${esc(a)||'No address'}${l.contact_name?'<br>'+esc(l.contact_name)+(l.contact_phone?' · '+l.contact_phone:''):''}${l.is_brycer_jurisdiction?'<br><span style="color:var(--warn);font-weight:700">⚡ Brycer — '+esc(l.brycer_ahj_name||'Fort Worth FD')+'</span>':''}</div>
@@ -2109,12 +2095,10 @@ async function updateJobChecklist(){
   const loc=window._activeJobLoc||{}
   const wrap=$('job-checklist-'+jid);if(!wrap)return
 
-  // scan line item descriptions for report triggers
+  // scan line items AND location equipment to determine required reports
   const descs=jobLines.map(l2=>(l2.desc||'').toLowerCase()).join(' ')
   const hasExtLines=descs.match(/extinguisher/)
-  const hasKitchenLines=descs.match(/kitchen|ansul|pyro.?chem|buckeye|kidde/)&&!descs.match(/clean.?agent|dry.?chem/)
-  const hasDryChemLines=descs.match(/dry.?chem|paint|booth|a-101|i-101|monarch|industryguard/)
-  const hasCleanLines=descs.match(/clean.?agent|fm.?200|novec|halon|inergen|co2.*system/)
+  const hasSuppLines=descs.match(/semi.?annual|suppression|kitchen|ansul|pyro.?chem|buckeye|kidde|clean.?agent|fm.?200|novec|dry.?chem|paint|booth/)
   const hasAnyLines=jobLines.some(l2=>(l2.desc||'').trim())
 
   // fetch saved reports
@@ -2126,53 +2110,31 @@ async function updateJobChecklist(){
   // Invoice flag
   flags.push({label:'Build Invoice',done:hasAnyLines,action:null})
 
-  // Extinguisher report
+  // Extinguisher report — if extinguisher line exists
   if(hasExtLines){
     const done=rpts.some(r=>r.report_type==='extinguisher')
     flags.push({label:'Extinguisher Report',done,action:`openExtReport('${jid}')`})
   }
 
-  // Kitchen hood report — per matching system
-  if(hasKitchenLines&&!hasDryChemLines){
-    const syss=(loc.suppression_systems||[]).filter(s=>!(s.system_type||'').toLowerCase().match(/paint|booth|dry.?chem|a-101|i-101|monarch|fm.?200|novec|clean.?agent|halon|inergen/))
-    if(syss.length){
-      syss.forEach(sys=>{
-        const done=rpts.some(r=>r.report_type==='kitchen_suppression'&&(r.report_data?.sysId===sys.id||syss.length===1))
-        const nm=syss.length>1?' — '+(sys.system_type||'').split('(')[0].trim():''
-        flags.push({label:'Kitchen Hood Report'+nm,done,action:`openSuppReport('${jid}','${sys.id}')`})
-      })
-    }else{
-      // no systems on file but suppression line exists — show flag anyway
+  // Suppression reports — driven by actual systems on file, one flag per system
+  if(hasSuppLines){
+    const allSyss=loc.suppression_systems||[]
+    allSyss.forEach(sys=>{
+      const t=(sys.system_type||'').toLowerCase()
+      const isDC=t.match(/paint|booth|dry.?chem|a-101|i-101|industryguard/)&&!t.match(/kitchen|wet/)
+      const isCA=t.match(/fm.?200|fm200|novec|clean.?agent|halon|inergen|co2/)
+      // everything else is kitchen hood (Ansul, Pyro-Chem, Buckeye, Kidde, etc.)
+      const rptType=isDC?'dry_chemical':isCA?'clean_agent':'kitchen_suppression'
+      const label=isDC?'Dry Chem / Paint Booth Report':isCA?'Clean Agent Report':'Kitchen Hood Report'
+      const action=isDC?`openDryChemReport('${jid}','${sys.id}')`:isCA?`openCleanAgentReport('${jid}','${sys.id}')`: `openSuppReport('${jid}','${sys.id}')`
+      const sysName=(sys.system_type||'').split('(')[0].trim()
+      const done=rpts.some(r=>r.report_type===rptType&&(r.report_data?.sysId===sys.id||allSyss.length===1))
+      flags.push({label:label+(allSyss.length>1?' — '+sysName:''),done,action})
+    })
+    // if suppression line exists but no systems on file
+    if(!allSyss.length){
       const done=rpts.some(r=>r.report_type==='kitchen_suppression')
       flags.push({label:'Kitchen Hood Report',done,action:`openSuppReport('${jid}','')`})
-    }
-  }
-
-  // Dry chem / paint booth report
-  if(hasDryChemLines){
-    const syss=(loc.suppression_systems||[]).filter(s=>(s.system_type||'').toLowerCase().match(/paint|booth|dry.?chem|a-101|i-101|monarch|industryguard/))
-    if(syss.length){
-      syss.forEach(sys=>{
-        const done=rpts.some(r=>r.report_type==='dry_chemical'&&(r.report_data?.sysId===sys.id||syss.length===1))
-        flags.push({label:'Dry Chem / Paint Booth Report',done,action:`openDryChemReport('${jid}','${sys.id}')`})
-      })
-    }else{
-      const done=rpts.some(r=>r.report_type==='dry_chemical')
-      flags.push({label:'Dry Chem / Paint Booth Report',done,action:`openDryChemReport('${jid}','')`})
-    }
-  }
-
-  // Clean agent report
-  if(hasCleanLines){
-    const syss=(loc.suppression_systems||[]).filter(s=>(s.system_type||'').toLowerCase().match(/fm.?200|novec|co2|clean.?agent|halon|inergen/))
-    if(syss.length){
-      syss.forEach(sys=>{
-        const done=rpts.some(r=>r.report_type==='clean_agent'&&(r.report_data?.sysId===sys.id||syss.length===1))
-        flags.push({label:'Clean Agent Report',done,action:`openCleanAgentReport('${jid}','${sys.id}')`})
-      })
-    }else{
-      const done=rpts.some(r=>r.report_type==='clean_agent')
-      flags.push({label:'Clean Agent Report',done,action:`openCleanAgentReport('${jid}','')`})
     }
   }
 
