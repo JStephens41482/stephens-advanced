@@ -5009,6 +5009,7 @@ async function finishExtReport(jobId,silent){
   if(silent)return
   toast('Extinguisher report saved ✓')
   pop()
+  setTimeout(()=>updateJobChecklist(),200)
 }
 
 
@@ -5670,6 +5671,7 @@ async function saveDryChemReport(jobId,sysId,silent){
   if(silent)return
   toast('Report saved ✓')
   pop()
+  setTimeout(()=>updateJobChecklist(),200)
 }
 
 function buildDryChemReportHtml(jobId,sysId){
@@ -6033,6 +6035,7 @@ async function _doSaveSuppReport(jobId,sysId,silent,btn){
   if(silent)return // auto-save — don't pop or show prompts
   toast('Report saved ✓')
   pop()
+  setTimeout(()=>updateJobChecklist(),200)
   // only offer additional report if location has multiple suppression systems
   const loc2=D.locs.find(x=>x.id===locId)||{}
   if((loc2.suppression_systems||[]).length>1){
@@ -6445,6 +6448,7 @@ async function saveCleanAgentReport(jobId,sysId,silent){
   if(silent)return
   toast('Report saved ✓')
   pop()
+  setTimeout(()=>updateJobChecklist(),200)
 }
 
 async function generateCleanAgentReport(jobId,sysId,returnHtml=false){
