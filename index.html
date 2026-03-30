@@ -2010,61 +2010,11 @@ async function openJob(id){
   h+=`</div>`
 
   if(isActive){
-    // checklist flags above Complete button
+    // checklist flags above Complete button — reactive to line item changes
     h+=`<div id="job-checklist-${j.id}" style="padding:12px 0"></div>`
-
-    // fetch saved reports to determine checklist state
-    const _jid=j.id,_sc=sc,_syss=l.suppression_systems||[],_exts=l.extinguishers||[]
-    setTimeout(async()=>{
-      const{data:savedRpts}=await SB.from('reports').select('id,report_type,report_data').eq('job_id',_jid)
-      const rpts=savedRpts||[]
-      const wrap=$('job-checklist-'+_jid);if(!wrap)return
-
-      let flags=[]
-      // Invoice flag — always required, check if line items exist
-      const hasLines=jobLines.some(l2=>(l2.desc||'').trim())
-      flags.push({label:'Build Invoice',done:hasLines,action:null})
-
-      // Extinguisher report — if scope includes extinguishers and there are units
-      if(_sc.includes('extinguishers')&&_exts.length){
-        const hasExtRpt=rpts.some(r=>r.report_type==='extinguisher')
-        flags.push({label:'Extinguisher Report',done:hasExtRpt,action:`openExtReport('${_jid}')`})
-      }
-
-      // Suppression reports — one per system
-      if(_sc.includes('suppression')){
-        _syss.forEach(sys=>{
-          const sysName=(sys.system_type||'Suppression System').split('(')[0].trim()
-          const isDryChem=(sys.system_type||'').toLowerCase().match(/paint|booth|dry.?chem|a-101|i-101|monarch|industryguard/)
-          const isClean=(sys.system_type||'').toLowerCase().match(/fm.?200|novec|co2|clean.?agent|halon|inergen/)
-          const rptType=isDryChem?'dry_chemical':isClean?'clean_agent':'kitchen_suppression'
-          const hasRpt=rpts.some(r=>r.report_type===rptType&&(r.report_data?.sysId===sys.id||_syss.length===1))
-          const label=isDryChem?'Dry Chem / Paint Booth Report':isClean?'Clean Agent Report':'Kitchen Hood Report'
-          const onclick=isDryChem?`openDryChemReport('${_jid}','${sys.id}')`:isClean?`openCleanAgentReport('${_jid}','${sys.id}')`: `openSuppReport('${_jid}','${sys.id}')`
-          flags.push({label:label+((_syss.length>1)?(' — '+sysName):''),done:hasRpt,action:onclick})
-        })
-      }
-
-      let fh=''
-      flags.forEach(f=>{
-        const color=f.done?'var(--ok)':'var(--g2)'
-        const icon=f.done?'✓':'○'
-        const cursor=f.action?'cursor:pointer':'cursor:default'
-        fh+=`<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;margin-bottom:4px;border-radius:var(--rs);background:${f.done?'rgba(16,185,129,.08)':'var(--c2)'};border:1px solid ${f.done?'var(--ok)':'var(--b1)'};${cursor}" ${f.action&&!f.done?`onclick="${f.action}"`:(f.action?`onclick="${f.action}"`:'')}>
-          <span style="font-size:16px;font-weight:800;color:${color};width:20px;text-align:center">${icon}</span>
-          <span style="font-size:12px;font-weight:700;color:${f.done?'var(--ok)':'var(--w)'};flex:1">${f.label}</span>
-          ${f.done?'<span style="font-size:9px;font-weight:800;color:var(--ok);text-transform:uppercase">Done</span>':'<span style="font-size:9px;font-weight:700;color:var(--fire);text-transform:uppercase">Required</span>'}
-        </div>`
-      })
-
-      const allDone=flags.every(f=>f.done)
-      const compBtn=$('compBtn')
-      if(compBtn){
-        compBtn.style.background=allDone?'var(--ok)':'var(--g3)'
-        compBtn.style.color=allDone?'#fff':'var(--g1)'
-      }
-      wrap.innerHTML=fh
-    },120)
+    window._activeJobId=j.id
+    window._activeJobLoc=l
+    setTimeout(()=>updateJobChecklist(),150)
 
     h+=`<div style="padding:0 0 max(env(safe-area-inset-bottom),12px)"><button class="btn-p" id="compBtn" style="background:var(--g3);color:var(--g1)" onclick="compJ('${j.id}')">✓ Complete Job — Generate Invoice</button></div>`
   }else{
@@ -2108,16 +2058,112 @@ function jlEdit(i,field,val){
   else if(field==='price')jobLines[i].price=parseFloat(val)||0
   const lt=$('jl-total-'+i);if(lt)lt.textContent='$'+((+(jobLines[i].qty||1))*(+(jobLines[i].price||0))).toFixed(2)
   updateWoTotal()
+  if(field==='desc')updateJobChecklist()
 }
 
 function jlDel(i){
   jobLines.splice(i,1)
   renderJobLines()
+  updateJobChecklist()
 }
 
 function updateWoTotal(){
   const total=jobLines.reduce((s,l2)=>s+(+(l2.qty||1))*(+(l2.price||0)),0)
   const el=$('wo-total');if(el)el.textContent=fmtD(total)
+}
+
+// reactive checklist — scans jobLines descriptions to determine required reports
+async function updateJobChecklist(){
+  const jid=window._activeJobId;if(!jid)return
+  const loc=window._activeJobLoc||{}
+  const wrap=$('job-checklist-'+jid);if(!wrap)return
+
+  // scan line item descriptions for report triggers
+  const descs=jobLines.map(l2=>(l2.desc||'').toLowerCase()).join(' ')
+  const hasExtLines=descs.match(/extinguisher/)
+  const hasKitchenLines=descs.match(/semi.?annual|suppression|ansul|pyro.?chem|buckeye|kidde|kitchen/)
+  const hasDryChemLines=descs.match(/dry.?chem|paint|booth|a-101|i-101|monarch|industryguard/)
+  const hasCleanLines=descs.match(/clean.?agent|fm.?200|novec|halon|inergen|co2.*system/)
+  const hasAnyLines=jobLines.some(l2=>(l2.desc||'').trim())
+
+  // fetch saved reports
+  const{data:savedRpts}=await SB.from('reports').select('id,report_type,report_data').eq('job_id',jid)
+  const rpts=savedRpts||[]
+
+  let flags=[]
+
+  // Invoice flag
+  flags.push({label:'Build Invoice',done:hasAnyLines,action:null})
+
+  // Extinguisher report
+  if(hasExtLines){
+    const done=rpts.some(r=>r.report_type==='extinguisher')
+    flags.push({label:'Extinguisher Report',done,action:`openExtReport('${jid}')`})
+  }
+
+  // Kitchen hood report — per matching system
+  if(hasKitchenLines&&!hasDryChemLines){
+    const syss=(loc.suppression_systems||[]).filter(s=>!(s.system_type||'').toLowerCase().match(/paint|booth|dry.?chem|a-101|i-101|monarch|fm.?200|novec|clean.?agent|halon|inergen/))
+    if(syss.length){
+      syss.forEach(sys=>{
+        const done=rpts.some(r=>r.report_type==='kitchen_suppression'&&(r.report_data?.sysId===sys.id||syss.length===1))
+        const nm=syss.length>1?' — '+(sys.system_type||'').split('(')[0].trim():''
+        flags.push({label:'Kitchen Hood Report'+nm,done,action:`openSuppReport('${jid}','${sys.id}')`})
+      })
+    }else{
+      // no systems on file but suppression line exists — show flag anyway
+      const done=rpts.some(r=>r.report_type==='kitchen_suppression')
+      flags.push({label:'Kitchen Hood Report',done,action:`openSuppReport('${jid}','')`})
+    }
+  }
+
+  // Dry chem / paint booth report
+  if(hasDryChemLines){
+    const syss=(loc.suppression_systems||[]).filter(s=>(s.system_type||'').toLowerCase().match(/paint|booth|dry.?chem|a-101|i-101|monarch|industryguard/))
+    if(syss.length){
+      syss.forEach(sys=>{
+        const done=rpts.some(r=>r.report_type==='dry_chemical'&&(r.report_data?.sysId===sys.id||syss.length===1))
+        flags.push({label:'Dry Chem / Paint Booth Report',done,action:`openDryChemReport('${jid}','${sys.id}')`})
+      })
+    }else{
+      const done=rpts.some(r=>r.report_type==='dry_chemical')
+      flags.push({label:'Dry Chem / Paint Booth Report',done,action:`openDryChemReport('${jid}','')`})
+    }
+  }
+
+  // Clean agent report
+  if(hasCleanLines){
+    const syss=(loc.suppression_systems||[]).filter(s=>(s.system_type||'').toLowerCase().match(/fm.?200|novec|co2|clean.?agent|halon|inergen/))
+    if(syss.length){
+      syss.forEach(sys=>{
+        const done=rpts.some(r=>r.report_type==='clean_agent'&&(r.report_data?.sysId===sys.id||syss.length===1))
+        flags.push({label:'Clean Agent Report',done,action:`openCleanAgentReport('${jid}','${sys.id}')`})
+      })
+    }else{
+      const done=rpts.some(r=>r.report_type==='clean_agent')
+      flags.push({label:'Clean Agent Report',done,action:`openCleanAgentReport('${jid}','')`})
+    }
+  }
+
+  // render flags
+  let fh=''
+  flags.forEach(f=>{
+    const color=f.done?'var(--ok)':'var(--g2)'
+    const icon=f.done?'✓':'○'
+    fh+=`<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;margin-bottom:4px;border-radius:var(--rs);background:${f.done?'rgba(16,185,129,.08)':'var(--c2)'};border:1px solid ${f.done?'var(--ok)':'var(--b1)'};cursor:${f.action?'pointer':'default'}" ${f.action?`onclick="${f.action}"`:''}>
+      <span style="font-size:16px;font-weight:800;color:${color};width:20px;text-align:center">${icon}</span>
+      <span style="font-size:12px;font-weight:700;color:${f.done?'var(--ok)':'var(--w)'};flex:1">${f.label}</span>
+      ${f.done?'<span style="font-size:9px;font-weight:800;color:var(--ok);text-transform:uppercase">Done</span>':'<span style="font-size:9px;font-weight:700;color:var(--fire);text-transform:uppercase">Required</span>'}
+    </div>`
+  })
+
+  const allDone=flags.every(f=>f.done)
+  const compBtn=$('compBtn')
+  if(compBtn){
+    compBtn.style.background=allDone?'var(--ok)':'var(--g3)'
+    compBtn.style.color=allDone?'#fff':'var(--g1)'
+  }
+  wrap.innerHTML=fh
 }
 
 function addPartLine(sel){
@@ -2135,9 +2181,10 @@ function addPartLine(sel){
   // fuzzy match — normalize to catch "Ansul LT-10" vs "ansul lt10" etc.
   const nd=norm(desc)
   const existing=jobLines.find(l2=>norm(l2.desc)===nd)
-  if(existing){existing.qty=(+existing.qty||1)+1;renderJobLines();return}
+  if(existing){existing.qty=(+existing.qty||1)+1;renderJobLines();updateJobChecklist();return}
   jobLines.push({desc,qty,price,id:'jl'+Date.now()})
   renderJobLines()
+  updateJobChecklist()
 }
 
 async function compJ(id){
