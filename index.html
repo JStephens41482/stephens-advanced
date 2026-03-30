@@ -1972,10 +1972,7 @@ async function openJob(id){
     </div>
     </div>`
 
-    // SIGNATURE — only show if no suppression report (report captures owner sig)
-    if(!sc.includes('suppression')){
-      h+=`<div class="ds"><div class="ds-t">Customer Signature</div><div class="sig-wrap"><canvas id="sigC"></canvas><div class="sig-ph" id="sigPh">Sign here</div><button class="sig-clr" onclick="clrSig()">Clear</button></div></div>`
-    }
+    // Customer signature collected at send time, not here
 
   }else{
     // COMPLETED — invoices (editable via openInvDetail)
@@ -2014,9 +2011,65 @@ async function openJob(id){
   h+=`</div>`
 
   if(isActive){
-    h+=`<div class="ov-foot"><button class="btn-p" id="compBtn" onclick="compJ('${j.id}')">✓ Complete Job — Generate Invoice</button></div>`
+    // checklist flags above Complete button
+    h+=`<div id="job-checklist-${j.id}" style="padding:12px 0"></div>`
+
+    // fetch saved reports to determine checklist state
+    const _jid=j.id,_sc=sc,_syss=l.suppression_systems||[],_exts=l.extinguishers||[]
+    setTimeout(async()=>{
+      const{data:savedRpts}=await SB.from('reports').select('id,report_type,report_data').eq('job_id',_jid)
+      const rpts=savedRpts||[]
+      const wrap=$('job-checklist-'+_jid);if(!wrap)return
+
+      let flags=[]
+      // Invoice flag — always required, check if line items exist
+      const hasLines=jobLines.some(l2=>(l2.desc||'').trim())
+      flags.push({label:'Build Invoice',done:hasLines,action:null})
+
+      // Extinguisher report — if scope includes extinguishers and there are units
+      if(_sc.includes('extinguishers')&&_exts.length){
+        const hasExtRpt=rpts.some(r=>r.report_type==='extinguisher')
+        flags.push({label:'Extinguisher Report',done:hasExtRpt,action:`openExtReport('${_jid}')`})
+      }
+
+      // Suppression reports — one per system
+      if(_sc.includes('suppression')){
+        _syss.forEach(sys=>{
+          const sysName=(sys.system_type||'Suppression System').split('(')[0].trim()
+          const isDryChem=(sys.system_type||'').toLowerCase().match(/paint|booth|dry.?chem|a-101|i-101|monarch|industryguard/)
+          const isClean=(sys.system_type||'').toLowerCase().match(/fm.?200|novec|co2|clean.?agent|halon|inergen/)
+          const rptType=isDryChem?'dry_chemical':isClean?'clean_agent':'kitchen_suppression'
+          const hasRpt=rpts.some(r=>r.report_type===rptType&&(r.report_data?.sysId===sys.id||_syss.length===1))
+          const label=isDryChem?'Dry Chem / Paint Booth Report':isClean?'Clean Agent Report':'Kitchen Hood Report'
+          const onclick=isDryChem?`openDryChemReport('${_jid}','${sys.id}')`:isClean?`openCleanAgentReport('${_jid}','${sys.id}')`: `openSuppReport('${_jid}','${sys.id}')`
+          flags.push({label:label+((_syss.length>1)?(' — '+sysName):''),done:hasRpt,action:onclick})
+        })
+      }
+
+      let fh=''
+      flags.forEach(f=>{
+        const color=f.done?'var(--ok)':'var(--g2)'
+        const icon=f.done?'✓':'○'
+        const cursor=f.action?'cursor:pointer':'cursor:default'
+        fh+=`<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;margin-bottom:4px;border-radius:var(--rs);background:${f.done?'rgba(16,185,129,.08)':'var(--c2)'};border:1px solid ${f.done?'var(--ok)':'var(--b1)'};${cursor}" ${f.action&&!f.done?`onclick="${f.action}"`:(f.action?`onclick="${f.action}"`:'')}>
+          <span style="font-size:16px;font-weight:800;color:${color};width:20px;text-align:center">${icon}</span>
+          <span style="font-size:12px;font-weight:700;color:${f.done?'var(--ok)':'var(--w)'};flex:1">${f.label}</span>
+          ${f.done?'<span style="font-size:9px;font-weight:800;color:var(--ok);text-transform:uppercase">Done</span>':'<span style="font-size:9px;font-weight:700;color:var(--fire);text-transform:uppercase">Required</span>'}
+        </div>`
+      })
+
+      const allDone=flags.every(f=>f.done)
+      const compBtn=$('compBtn')
+      if(compBtn){
+        compBtn.style.background=allDone?'var(--ok)':'var(--g3)'
+        compBtn.style.color=allDone?'#fff':'var(--g1)'
+      }
+      wrap.innerHTML=fh
+    },120)
+
+    h+=`<div style="padding:0 0 max(env(safe-area-inset-bottom),12px)"><button class="btn-p" id="compBtn" style="background:var(--g3);color:var(--g1)" onclick="compJ('${j.id}')">✓ Complete Job — Generate Invoice</button></div>`
   }else{
-    h+=`<div class="ov-foot"><button class="btn-dim" onclick="pop()">← Back</button></div>`
+    h+=`<div style="padding:12px 0"><button class="btn-dim" onclick="pop()">← Back</button></div>`
   }
 
   push(h,{jobId:id})
