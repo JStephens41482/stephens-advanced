@@ -5467,7 +5467,7 @@ async function openSuppReport(jobId,sysId,preLocation){
 
   </div>
   <div class="ov-foot">
-    <button class="btn-p" id="rptSaveBtn2" onclick="generateSuppReport('${jobId}','${sysId}')">📄 Generate Report PDF</button>
+    <button class="btn-p" id="rptSaveBtn2" onclick="saveSuppReport('${jobId}','${sysId}')">✓ Save Report</button>
   </div>`
 
   window._rptCheckState=prev.checks||{}
@@ -6036,7 +6036,7 @@ async function openCleanAgentReport(jobId,sysId){
 
   </div>
   <div class="ov-foot">
-    <button class="btn-p" id="caRptSaveBtn2" onclick="generateCleanAgentReport('${jobId}','${sysId}')">📄 Generate Report PDF</button>
+    <button class="btn-p" id="caRptSaveBtn2" onclick="saveCleanAgentReport('${jobId}','${sysId}')">✓ Save Report</button>
   </div>`
 
   window._caCheckState=prev.checks||{}
