@@ -76,6 +76,7 @@
 <title>Stephens Advanced</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 :root{--bg:#0d0f14;--c1:#151820;--c2:#1c1f2a;--c3:#252937;--b1:#2a2f3e;--b2:#353b4d;--w:#f0f1f4;--w2:#c8ccd6;--g1:#7c8497;--g2:#555d72;--g3:#3d4456;--fire:#f05a28;--fires:rgba(240,90,40,.08);--ok:#10b981;--oks:rgba(16,185,129,.08);--warn:#f59e0b;--warns:rgba(245,158,11,.08);--bad:#ef4444;--bads:rgba(239,68,68,.08);--info:#6366f1;--infos:rgba(99,102,241,.08);--r:12px;--rs:8px}
@@ -4036,19 +4037,30 @@ async function _confirmSendEmail(){
     lines:d.ls,total:d.total,portalUrl
   })
 
-  // build report PDF attachments
+  // build report PDF attachments — convert HTML to real PDFs
   let attachments=[]
-  d.rpts.forEach((rpt,ri)=>{
+  if(st){st.textContent='Generating PDFs...';st.style.color='var(--g1)'}
+  for(let ri=0;ri<d.rpts.length;ri++){
+    const rpt=d.rpts[ri]
     let rHtml=rpt.report_data?.reportHtml||''
     if(!rHtml&&rpt.report_type==='extinguisher'&&rpt.report_data?.units){rHtml=buildExtReportHtml(rpt.report_data,d.loc)}
-    if(!rHtml)return
+    if(!rHtml)continue
     const sysLoc=rpt.report_data?.sysLocation||''
     const rType=rpt.report_type==='extinguisher'?'Extinguisher-Report':rpt.report_type==='clean_agent'?'Clean-Agent-Report':rpt.report_type==='dry_chemical'?'Dry-Chemical-Report':'Suppression-Report'
     const suffix=d.rpts.length>1?'-'+(sysLoc||ri+1):''
-    const bytes=new TextEncoder().encode(rHtml)
-    let bin='';bytes.forEach(b2=>bin+=String.fromCharCode(b2))
-    attachments.push({filename:'Stephens-Advanced-'+rType+suffix+'.html',content:btoa(bin)})
-  })
+    try{
+      const container=document.createElement('div')
+      container.innerHTML=rHtml
+      container.style.cssText='position:absolute;left:-9999px;top:0;width:800px;background:#fff'
+      document.body.appendChild(container)
+      const pdfBlob=await html2pdf().set({margin:0.3,filename:'report.pdf',image:{type:'jpeg',quality:0.95},html2canvas:{scale:2,useCORS:true},jsPDF:{unit:'in',format:'letter',orientation:'portrait'}}).from(container).outputPdf('blob')
+      document.body.removeChild(container)
+      const buf=await pdfBlob.arrayBuffer()
+      const b64=btoa(new Uint8Array(buf).reduce((s,b)=>s+String.fromCharCode(b),''))
+      attachments.push({filename:'Stephens-Advanced-'+rType+suffix+'.pdf',content:b64})
+    }catch(e){console.error('PDF gen error:',e)}
+  }
+  if(st){st.textContent='Sending...';st.style.color='var(--g1)'}
 
   try{
     const res=await fetch('/api/send-email',{method:'POST',headers:{'Content-Type':'application/json'},
