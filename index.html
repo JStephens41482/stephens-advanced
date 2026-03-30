@@ -5826,7 +5826,7 @@ async function openSuppReport(jobId,sysId,preLocation){
   <div class="ds"><div class="ds-t">System Information</div>
     <div class="ds-row"><div class="ds-lbl">Manufacturer</div><div class="ds-val">
       <select id="rpt-mfg" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600;width:100%" onchange="updateRptModels()">
-        ${['','Amerex','Ansul','Badger','Buckeye','Captive-Aire','Kidde','Lehavot','Protex','Pyro-Chem','Range Guard','Other'].map(m=>`<option value="${m}"${(prev.mfg||sys.system_type?.split(' ')[0]||'')===m?' selected':''}>${m||'— Select —'}</option>`).join('')}
+        ${['','Amerex','Ansul','Badger','Buckeye','Captive-Aire','Kidde','Lehavot','Protex','Pyro-Chem','Range Guard','Other'].map(m=>`<option value="${m}"${(prev.mfg||(sys.system_type||'').split(' ')[0]||'')===m?' selected':''}>${m||'— Select —'}</option>`).join('')}
       </select>
     </div></div>
     <div class="ds-row"><div class="ds-lbl">Model</div><div class="ds-val">
