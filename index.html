@@ -5853,8 +5853,8 @@ async function openSuppReport(jobId,sysId,preLocation){
     ${checks.map((c,i)=>{const st=window._rptCheckState[i]||'';return`<div style="display:grid;grid-template-columns:1fr auto auto;gap:8px;padding:10px 12px;border-bottom:1px solid rgba(42,47,62,.5);align-items:center" id="chk-row-${i}">
       <div style="font-size:11px;color:var(--w2);line-height:1.4">${i+1}. ${c}</div>
       <button style="width:36px;height:36px;border-radius:8px;border:1.5px solid ${st==='yes'?'var(--ok)':'var(--b1)'};background:${st==='yes'?'var(--oks)':'var(--c2)'};font-size:14px;color:${st==='yes'?'var(--ok)':'var(--g2)'}" id="chk-y-${i}" onclick="setCheck(${i},'yes')">✓</button>
-      <button style="width:36px;height:36px;border-radius:8px;border:1.5px solid ${st==='no'?'var(--bad)':'var(--b1)'};background:${st==='no'?'var(--bads)':'var(--c2)'};font-size:14px;color:${st==='no'?'var(--bad)':'var(--g2)'}" id="chk-n-${i}" onclick="setCheck(${i},'no')">✕</button>`}
-    </div>`).join('')}
+      <button style="width:36px;height:36px;border-radius:8px;border:1.5px solid ${st==='no'?'var(--bad)':'var(--b1)'};background:${st==='no'?'var(--bads)':'var(--c2)'};font-size:14px;color:${st==='no'?'var(--bad)':'var(--g2)'}" id="chk-n-${i}" onclick="setCheck(${i},'no')">✕</button>
+    </div>`}).join('')}
   </div></div>
 
   <!-- SYSTEM LOCATION -->
