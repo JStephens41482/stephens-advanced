@@ -1976,16 +1976,7 @@ async function openJob(id){
     </div>
   </div>`
 
-  if(isActive&&sc.includes('extinguishers')&&l.extinguishers?.length){
-    h+=`<div class="ds"><div class="ds-t">Extinguisher Status</div>`
-    l.extinguishers.forEach(e=>{
-      h+=`<div class="eq"><div class="eq-r1"><div><div class="eq-nm">${esc(e.type)} ${esc(e.size||'')}</div><div class="eq-sub">${esc(e.location_in_building||'')}${e.serial_number?' · SN:'+e.serial_number:''}</div></div></div>
-        <div class="sb-row">`
-      ;['Pass','Swap','Replace','Condemn','Remove'].forEach(s=>h+=`<button class="sb" onclick="setSt(this,'${e.id}','${s.toLowerCase()}')">${s}</button>`)
-      h+=`</div></div>`
-    })
-    h+=`</div>`
-  }
+  // Extinguisher status removed — handled in extinguisher report
 
   // WORK ORDER / LINE ITEMS (editable when active)
   if(isActive){
