@@ -4906,63 +4906,35 @@ async function handleExtPhoto(ev){
 const RPT_LOGO=`<svg width="44" height="50" viewBox="0 0 32 38" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M16 2C16 2 6 10 6 20C6 26 10 30 16 30C22 30 26 26 26 20C26 10 16 2 16 2Z" fill="#f05a28"/><path d="M16 8C16 8 10 14 10 20C10 23 12 25 14 26C13 23 14 20 16 18C18 20 19 23 18 26C20 25 22 23 22 20C22 14 16 8 16 8Z" fill="#ff7847"/><ellipse cx="16" cy="30" rx="5" ry="6" fill="#3498db"/><ellipse cx="16" cy="29" rx="3" ry="3.5" fill="#5dade2"/></svg>`
 
 function rptShell(title,subtitle,content){
-  return`<!DOCTYPE html><html style="background:#fff"><head><meta charset="UTF-8"><meta name="color-scheme" content="light">
-<style>
-*{margin:0;padding:0;box-sizing:border-box;color-scheme:light}
-html{background:#ffffff!important}
-body{font-family:'Segoe UI',Arial,Helvetica,sans-serif;font-size:9.5pt;color:#222!important;background:#ffffff!important;padding:28px 32px;line-height:1.4}
-.rpt-header{display:flex;align-items:center;gap:14px;padding-bottom:14px;border-bottom:3px solid #f05a28;margin-bottom:18px}
-.rpt-logo{flex-shrink:0}
-.rpt-co{flex:1}
-.rpt-co-name{font-size:20pt;font-weight:900;color:#1a1a2e;letter-spacing:-.5px}
-.rpt-co-name span{color:#f05a28}
-.rpt-co-sub{font-size:8.5pt;color:#666;margin-top:2px}
-.rpt-co-phone{font-size:11pt;font-weight:700;color:#f05a28;margin-top:3px}
-.rpt-title-box{text-align:right;flex-shrink:0}
-.rpt-title{font-size:13pt;font-weight:800;color:#1a1a2e}
-.rpt-subtitle{font-size:8pt;color:#888;margin-top:2px}
-.rpt-section{border:1.5px solid #ddd;border-radius:6px;padding:10px 12px;margin-bottom:12px;background:#fff}
-.rpt-section-title{font-size:8pt;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:#f05a28;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid #eee}
-.rpt-row{display:flex;gap:10px;margin-bottom:5px;align-items:flex-end}
-.rpt-field{flex:1}
-.rpt-field-label{font-size:7pt;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#999;margin-bottom:1px}
-.rpt-field-value{font-size:9pt;color:#222;border-bottom:1px solid #ccc;min-height:16px;padding:2px 0}
-.rpt-table{width:100%;border-collapse:collapse;margin-bottom:10px}
-.rpt-table th{background:#f05a28;color:#fff;padding:5px 8px;font-size:7.5pt;text-align:left;font-weight:700;text-transform:uppercase;letter-spacing:.3px}
-.rpt-table td{padding:4px 8px;font-size:8pt;border-bottom:1px solid #eee;color:#333}
-.rpt-table tr:nth-child(even) td{background:#fafafa}
-.rpt-checks{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
-.rpt-check-col{}
-.rpt-check-title{font-size:7.5pt;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#fff;background:#f05a28;padding:4px 8px;border-radius:3px;margin-bottom:4px}
-.rpt-check-row{display:flex;align-items:center;padding:2px 0;border-bottom:1px solid #f0f0f0;gap:4px}
-.rpt-check-label{flex:1;font-size:7.5pt;color:#333}
-.rpt-check-box{width:13px;height:13px;border:1.5px solid #ccc;border-radius:2px;display:flex;align-items:center;justify-content:center;font-size:9pt;font-weight:700;color:#f05a28;flex-shrink:0}
-.rpt-check-yn{font-size:5.5pt;color:#999;margin-right:1px}
-.rpt-sig-row{display:flex;gap:24px;margin-top:14px;padding-top:14px;border-top:2px solid #1a1a2e}
-.rpt-sig{flex:1}
-.rpt-sig-line{border-bottom:1px solid #333;height:36px;margin-bottom:3px;display:flex;align-items:flex-end}
-.rpt-sig-line img{max-height:34px;max-width:100%}
-.rpt-sig-label{font-size:6.5pt;color:#888;text-transform:uppercase;letter-spacing:.3px}
-.rpt-notes{border:1px solid #ddd;border-radius:4px;min-height:36px;padding:6px 8px;font-size:8pt;color:#333;background:#fafafa;margin-top:4px}
-.rpt-footer{margin-top:16px;padding-top:10px;border-top:1px solid #eee;font-size:7pt;color:#aaa;text-align:center}
-@media print{body{padding:12px}button{display:none}}
-</style></head><body>
-<div class="rpt-header">
-  <div class="rpt-logo">${RPT_LOGO}</div>
-  <div class="rpt-co">
-    <div class="rpt-co-name">Stephens <span>Advanced</span> LLC</div>
-    <div class="rpt-co-sub">3801 Alder Trail · Euless, Texas 76040</div>
-    <div class="rpt-co-phone">(214) 994-4799</div>
-  </div>
-  <div class="rpt-title-box">
-    <div class="rpt-title">${title}</div>
-    ${subtitle?`<div class="rpt-subtitle">${subtitle}</div>`:''}
-  </div>
-</div>
+  return`<!DOCTYPE html><html style="background:#ffffff;color-scheme:light"><head><meta charset="UTF-8"><meta name="color-scheme" content="light"></head>
+<body style="margin:0;padding:24px 28px;font-family:Arial,Helvetica,sans-serif;font-size:10pt;color:#222;background:#ffffff;line-height:1.4;max-width:760px">
+
+<table style="width:100%;border-collapse:collapse;border-bottom:3px solid #f05a28;padding-bottom:10px;margin-bottom:16px">
+<tr><td style="vertical-align:middle;width:50px;padding-bottom:10px">${RPT_LOGO}</td>
+<td style="vertical-align:middle;padding-bottom:10px;padding-left:10px">
+  <div style="font-size:18pt;font-weight:900;color:#1a1a2e">Stephens <span style="color:#f05a28">Advanced</span> LLC</div>
+  <div style="font-size:8pt;color:#666;margin-top:2px">3801 Alder Trail · Euless, Texas 76040</div>
+  <div style="font-size:10pt;font-weight:700;color:#f05a28;margin-top:2px">(214) 994-4799</div>
+</td>
+<td style="vertical-align:middle;text-align:right;padding-bottom:10px">
+  <div style="font-size:12pt;font-weight:800;color:#1a1a2e">${title}</div>
+  ${subtitle?`<div style="font-size:7.5pt;color:#888;margin-top:2px">${subtitle}</div>`:''}
+</td></tr></table>
+
 ${content}
-<div class="rpt-footer">Stephens Advanced LLC · Fire Suppression & Safety · jonathan@stephensadvanced.com · (214) 994-4799</div>
+
+<div style="margin-top:16px;padding-top:10px;border-top:1px solid #ddd;font-size:7pt;color:#aaa;text-align:center">
+  Stephens Advanced LLC · Fire Suppression & Safety · jonathan@stephensadvanced.com · (214) 994-4799
+</div>
 </body></html>`
 }
+
+// inline style helpers for report content
+function rptSection(title,body){return`<div style="border:1.5px solid #ddd;border-radius:6px;padding:10px 12px;margin-bottom:10px;background:#ffffff"><div style="font-size:7.5pt;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#f05a28;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid #eee">${title}</div>${body}</div>`}
+function rptRow(...fields){return`<div style="display:flex;gap:8px;margin-bottom:4px">${fields.join('')}</div>`}
+function rptField(label,value,flex){return`<div style="flex:${flex||1}"><div style="font-size:6.5pt;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#999;margin-bottom:1px">${label}</div><div style="font-size:8.5pt;color:#222;border-bottom:1px solid #ccc;min-height:14px;padding:1px 0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">${value||''}</div></div>`}
+function rptCheckRow(label,yes,no){return`<div style="display:flex;align-items:center;padding:1.5px 0;border-bottom:1px solid #f0f0f0;gap:3px"><div style="flex:1;font-size:7pt;color:#333">${label}</div><span style="font-size:5pt;color:#999">Y</span><div style="width:11px;height:11px;border:1px solid #ccc;border-radius:2px;display:flex;align-items:center;justify-content:center;font-size:8pt;font-weight:700;color:#f05a28;flex-shrink:0">${yes}</div><span style="font-size:5pt;color:#999">N</span><div style="width:11px;height:11px;border:1px solid #ccc;border-radius:2px;display:flex;align-items:center;justify-content:center;font-size:8pt;font-weight:700;color:#ef4444;flex-shrink:0">${no}</div></div>`}
+function rptSigBlock(sigImg,label,name,extra){return`<div style="flex:1"><div style="border-bottom:1px solid #333;height:32px;margin-bottom:2px;display:flex;align-items:flex-end">${sigImg?`<img src="${sigImg}" style="max-height:30px;max-width:100%">`:'&nbsp;'}</div><div style="font-size:6pt;color:#888;text-transform:uppercase">${label}</div>${name?`<div style="margin-top:4px;border-bottom:1px solid #333;padding-bottom:1px;font-size:8.5pt;color:#222">${name}</div>`:''}${extra||''}</div>`}
 
 function buildExtReportHtml(data,loc){
   const units=data.units||[]
@@ -4981,22 +4953,17 @@ function buildExtReportHtml(data,loc){
       <td style="padding:6px;border:1px solid #ddd;font-size:9px">${u.notes||''}</td>
     </tr>`
   }).join('')
-  const content=`
-<div class="rpt-section">
-  <div class="rpt-section-title">Customer Information</div>
-  <div class="rpt-row"><div class="rpt-field"><div class="rpt-field-label">Business Name</div><div class="rpt-field-value">${loc?.name||''}</div></div>
-    <div class="rpt-field"><div class="rpt-field-label">Address</div><div class="rpt-field-value">${[loc?.address,loc?.city,loc?.state].filter(Boolean).join(', ')}</div></div>
-    <div class="rpt-field" style="flex:.5"><div class="rpt-field-label">Date</div><div class="rpt-field-value">${today}</div></div></div>
-</div>
-<table class="rpt-table">
-<tr><th>#</th><th>Type / Size</th><th>Location</th><th>Mfg Date</th><th>Condition</th><th>Last Internal</th><th>Last Hydro</th><th>Interval</th><th>Notes</th></tr>
+  const content=rptSection('Customer Information',
+    rptRow(rptField('Business Name',loc?.name||'',2),rptField('Address',[loc?.address,loc?.city,loc?.state].filter(Boolean).join(', '),2),rptField('Date',today,1))
+  )+`<table style="width:100%;border-collapse:collapse;margin-bottom:10px;font-size:7.5pt;color:#333;background:#fff">
+<tr>${['#','Type / Size','Location','Mfg Date','Condition','Last Int.','Last Hydro','Interval','Notes'].map(h=>`<th style="background:#f05a28;color:#fff;padding:4px 5px;font-size:6.5pt;text-align:left;font-weight:700">${h}</th>`).join('')}</tr>
 ${rows}
 </table>
-<div class="rpt-sig-row">
-  <div class="rpt-sig"><div class="rpt-sig-line"></div><div class="rpt-sig-label">Technician: Jon Stephens · FEL-A-2593933</div></div>
-  <div class="rpt-sig"><div class="rpt-sig-line"></div><div class="rpt-sig-label">Date: ${today}</div></div>
+<div style="display:flex;gap:20px;margin-top:12px;padding-top:10px;border-top:2px solid #1a1a2e">
+  ${rptSigBlock('','Service Technician','Jon Stephens','<div style="font-size:7pt;color:#666;margin-top:2px">FEL-A-2593933</div>')}
+  ${rptSigBlock('','Date',today)}
 </div>`
-  return rptShell('Extinguisher Inspection Report','NFPA 10 Standard',content)
+  return rptShell('Extinguisher Inspection','NFPA 10 Standard',content)
 }
 
 
@@ -5487,33 +5454,19 @@ function buildDryChemReportHtml(jobId,sysId){
   const checks=['System location and positioning unchanged','Discharge pipes properly positioned, no bending/damage','Manual pull stations unobstructed and accessible','Tamper seals and indicators intact','Pressure gauge(s) in operating range','Nozzle caps/covers undamaged and in place','All detectors examined and functional','Gas containers (N2/CO2) checked','Agent containers inspected','Release mechanisms inspected','All piping, hoses, nozzles inspected','Agent distribution piping unobstructed','Dry chemical agent checked for caking','Fan interlock verified — fan stops before agent','Electrical fuel shut-off operational','System tested from manual pull','Booth ventilation/exhaust fan operational','Electrical grounding intact','Dry filters inspected (both sides)','Booth interior clean of overspray','No ignition sources in area','Proper clearances maintained','Fire extinguisher(s) accessible','Maintenance tag current','Service tag on system']
   const checkRows=checks.map((c,i)=>`<tr><td style="padding:4px 6px;border:1px solid #ddd;font-size:8pt">${i+1}. ${c}</td><td style="padding:4px;border:1px solid #ddd;text-align:center;font-weight:700">${cs[i]==='yes'?'✓':''}</td><td style="padding:4px;border:1px solid #ddd;text-align:center;font-weight:700">${cs[i]==='no'?'✓':''}</td></tr>`).join('')
 
-  const dcCheckTable=checks.map((c,i)=>`<tr><td style="padding:4px 8px;font-size:8pt;color:#333">${i+1}. ${c}</td><td style="text-align:center;font-weight:700;color:#f05a28">${cs[i]==='yes'?'✓':''}</td><td style="text-align:center;font-weight:700;color:#ef4444">${cs[i]==='no'?'✓':''}</td></tr>`).join('')
-  const content=`
-<div class="rpt-section">
-  <div class="rpt-section-title">Customer Information</div>
-  <div class="rpt-row"><div class="rpt-field" style="flex:2"><div class="rpt-field-label">Business Name</div><div class="rpt-field-value">${l.name||''}</div></div>
-    <div class="rpt-field" style="flex:2"><div class="rpt-field-label">Address</div><div class="rpt-field-value">${a}</div></div>
-    <div class="rpt-field"><div class="rpt-field-label">Date</div><div class="rpt-field-value">${serviceDate}</div></div></div>
-</div>
-<div class="rpt-section">
-  <div class="rpt-section-title">System Information</div>
-  <div class="rpt-row"><div class="rpt-field"><div class="rpt-field-label">System Type</div><div class="rpt-field-value">${$('dc-sys-type')?.value||''}</div></div>
-    <div class="rpt-field"><div class="rpt-field-label">Agent</div><div class="rpt-field-value">${$('dc-agent')?.value||''}</div></div></div>
-  <div class="rpt-row"><div class="rpt-field"><div class="rpt-field-label">Cylinders</div><div class="rpt-field-value">${$('dc-cyls')?.value||''}</div></div>
-    <div class="rpt-field"><div class="rpt-field-label">Nozzles</div><div class="rpt-field-value">${$('dc-nozzles')?.value||''}</div></div>
-    <div class="rpt-field"><div class="rpt-field-label">Protected Area</div><div class="rpt-field-value">${$('dc-area')?.value||''}</div></div>
-    <div class="rpt-field"><div class="rpt-field-label">Last Hydro</div><div class="rpt-field-value">${$('dc-hydro')?.value||''}</div></div></div>
-</div>
-<table class="rpt-table"><tr><th style="text-align:left">Inspection Item</th><th style="width:40px">Yes</th><th style="width:40px">No</th></tr>${dcCheckTable}</table>
-<div class="rpt-section">
-  <div class="rpt-section-title">Deficiencies / Comments</div>
-  <div class="rpt-notes">${($('dc-deficiencies')?.value||'None noted').replace(/\n/g,'<br>')}</div>
-</div>
-<div class="rpt-sig-row">
-  <div class="rpt-sig"><div class="rpt-sig-line"></div><div class="rpt-sig-label">Technician: ${$('dc-tech')?.value||'Jon Stephens'} · ${$('dc-permit')?.value||'FEL-A-2593933'}</div></div>
-  <div class="rpt-sig"><div class="rpt-sig-line"></div><div class="rpt-sig-label">Owner/Manager: ${$('dc-owner-name')?.value||''}</div></div>
+  const dcCheckTable=checks.map((c,i)=>`<tr><td style="padding:3px 6px;font-size:7.5pt;color:#333;border-bottom:1px solid #eee;background:${i%2===0?'#fff':'#fafafa'}">${i+1}. ${c}</td><td style="padding:3px;text-align:center;font-weight:700;color:#f05a28;border-bottom:1px solid #eee;background:${i%2===0?'#fff':'#fafafa'}">${cs[i]==='yes'?'✓':''}</td><td style="padding:3px;text-align:center;font-weight:700;color:#ef4444;border-bottom:1px solid #eee;background:${i%2===0?'#fff':'#fafafa'}">${cs[i]==='no'?'✓':''}</td></tr>`).join('')
+  const content=rptSection('Customer Information',
+    rptRow(rptField('Business Name',l.name||'',2),rptField('Address',a,2),rptField('Date',serviceDate,1))
+  )+rptSection('System Information',
+    rptRow(rptField('System Type',$('dc-sys-type')?.value||''),rptField('Agent',$('dc-agent')?.value||''))+
+    rptRow(rptField('Cylinders',$('dc-cyls')?.value||''),rptField('Nozzles',$('dc-nozzles')?.value||''),rptField('Protected Area',$('dc-area')?.value||''),rptField('Last Hydro',$('dc-hydro')?.value||''))
+  )+`<table style="width:100%;border-collapse:collapse;margin-bottom:10px;background:#fff"><tr><th style="background:#f05a28;color:#fff;padding:4px 6px;font-size:6.5pt;text-align:left;font-weight:700">Inspection Item</th><th style="background:#f05a28;color:#fff;padding:4px;font-size:6.5pt;width:30px;text-align:center">Yes</th><th style="background:#f05a28;color:#fff;padding:4px;font-size:6.5pt;width:30px;text-align:center">No</th></tr>${dcCheckTable}</table>`
+  +rptSection('Deficiencies / Comments',`<div style="border:1px solid #ddd;border-radius:4px;min-height:30px;padding:5px 8px;font-size:8pt;color:#333;background:#fafafa">${($('dc-deficiencies')?.value||'None noted').replace(/\n/g,'<br>')}</div>`)
+  +`<div style="display:flex;gap:20px;margin-top:12px;padding-top:10px;border-top:2px solid #1a1a2e">
+  ${rptSigBlock('','Service Technician',$('dc-tech')?.value||'Jon Stephens','<div style="font-size:7pt;color:#666;margin-top:2px">'+($('dc-permit')?.value||'FEL-A-2593933')+'</div>')}
+  ${rptSigBlock('','Owner / Manager',$('dc-owner-name')?.value||'')}
 </div>`
-  return rptShell('Dry Chemical / Paint Booth Inspection','NFPA 17 + NFPA 33',content)
+  return rptShell('Dry Chemical / Paint Booth','NFPA 17 + NFPA 33',content)
 }
 
 async function openSuppReport(jobId,sysId,preLocation){
@@ -5933,70 +5886,38 @@ async function generateSuppReport(jobId,sysId,returnHtml=false){
   const leftChecks=checkRows.filter(r=>r.col==='left')
   const rightChecks=checkRows.filter(r=>r.col==='right')
 
-  const svcCheck=t=>`<span style="display:inline-flex;align-items:center;gap:2px;margin-right:8px"><span style="width:11px;height:11px;border:1.5px solid ${svcType===t?'#f05a28':'#ccc'};border-radius:2px;display:inline-flex;align-items:center;justify-content:center;font-size:8pt;color:#f05a28">${svcType===t?'✓':''}</span><span style="font-size:7.5pt">${t}</span></span>`
-  const fuelCheck=t=>`<span style="display:inline-flex;align-items:center;gap:2px;margin-right:8px"><span style="width:11px;height:11px;border:1.5px solid ${fuelType===t?'#f05a28':'#ccc'};border-radius:2px;display:inline-flex;align-items:center;justify-content:center;font-size:8pt;color:#f05a28">${fuelType===t?'✓':''}</span><span style="font-size:7.5pt">${t}</span></span>`
-  const content=`
-<div class="rpt-section">
-  <div class="rpt-section-title">Customer Information</div>
-  <div class="rpt-row"><div class="rpt-field" style="flex:2"><div class="rpt-field-label">Business Name</div><div class="rpt-field-value">${l.name||''}</div></div>
-    <div class="rpt-field"><div class="rpt-field-label">Telephone</div><div class="rpt-field-value">${l.contact_phone||''}</div></div></div>
-  <div class="rpt-row"><div class="rpt-field" style="flex:2"><div class="rpt-field-label">Address</div><div class="rpt-field-value">${a}</div></div>
-    <div class="rpt-field"><div class="rpt-field-label">Email</div><div class="rpt-field-value">${l.contact_email||''}</div></div></div>
-  <div class="rpt-row"><div class="rpt-field"><div class="rpt-field-label">Owner/Manager</div><div class="rpt-field-value">${l.contact_name||''}</div></div>
-    <div class="rpt-field"><div class="rpt-field-label">Date of Service</div><div class="rpt-field-value">${serviceDate}</div></div>
-    <div class="rpt-field"><div class="rpt-field-label">Time In</div><div class="rpt-field-value">${timeIn}</div></div>
-    <div class="rpt-field"><div class="rpt-field-label">Time Out</div><div class="rpt-field-value">${timeOut}</div></div></div>
-  <div style="margin-top:4px">${svcCheck('Annual')}${svcCheck('Semi-Annual')}${svcCheck('Installation')}</div>
-</div>
+  const svcChk=t=>`<span style="display:inline-flex;align-items:center;gap:2px;margin-right:6px"><span style="width:10px;height:10px;border:1.5px solid ${svcType===t?'#f05a28':'#ccc'};border-radius:2px;display:inline-flex;align-items:center;justify-content:center;font-size:7pt;color:#f05a28">${svcType===t?'✓':''}</span><span style="font-size:7pt;color:#333">${t}</span></span>`
+  const fuelChk=t=>`<span style="display:inline-flex;align-items:center;gap:2px;margin-right:6px"><span style="width:10px;height:10px;border:1.5px solid ${fuelType===t?'#f05a28':'#ccc'};border-radius:2px;display:inline-flex;align-items:center;justify-content:center;font-size:7pt;color:#f05a28">${fuelType===t?'✓':''}</span><span style="font-size:7pt;color:#333">${t}</span></span>`
 
-<div class="rpt-section">
-  <div class="rpt-section-title">System Information</div>
-  <div class="rpt-row"><div class="rpt-field"><div class="rpt-field-label">Manufacturer</div><div class="rpt-field-value">${$('rpt-mfg')?.value||''}</div></div>
-    <div class="rpt-field"><div class="rpt-field-label">Model</div><div class="rpt-field-value">${$('rpt-model')?.value||''}</div></div>
-    <div class="rpt-field"><div class="rpt-field-label">Serial #</div><div class="rpt-field-value">${$('rpt-serial')?.value||''}</div></div></div>
-  <div class="rpt-row"><div class="rpt-field"><div class="rpt-field-label">Cylinder Size(s)</div><div class="rpt-field-value">${$('rpt-cyl')?.value||''}</div></div>
-    <div class="rpt-field"><div class="rpt-field-label">Last Hydro</div><div class="rpt-field-value">${$('rpt-hydro')?.value||''}</div></div>
-    <div class="rpt-field"><div class="rpt-field-label">Last Recharge</div><div class="rpt-field-value">${$('rpt-recharge')?.value||''}</div></div>
-    <div class="rpt-field"><div class="rpt-field-label">Fusible Links</div><div class="rpt-field-value">${$('rpt-links')?.value||''}</div></div></div>
-  <div style="margin-top:4px"><span style="font-size:7.5pt;color:#666;margin-right:6px">Fuel Shut-Off:</span>${fuelCheck('Electric')}${fuelCheck('Mechanical')}</div>
-</div>
-
-<div class="rpt-checks">
-  <div class="rpt-check-col">
-    <div class="rpt-check-title">System Checks (1–17)</div>
-    ${leftChecks.map(r=>`<div class="rpt-check-row"><div class="rpt-check-label">${r.label}</div><span class="rpt-check-yn">Y</span><div class="rpt-check-box">${r.yes}</div><span class="rpt-check-yn">N</span><div class="rpt-check-box">${r.no}</div></div>`).join('')}
+  const content=rptSection('Customer Information',
+    rptRow(rptField('Business Name',l.name||'',2),rptField('Phone',l.contact_phone||''))+
+    rptRow(rptField('Address',a,2),rptField('Email',l.contact_email||''))+
+    rptRow(rptField('Owner/Manager',l.contact_name||''),rptField('Date',serviceDate),rptField('Time In',timeIn),rptField('Time Out',timeOut))+
+    `<div style="margin-top:4px">${svcChk('Annual')}${svcChk('Semi-Annual')}${svcChk('Installation')}</div>`
+  )+rptSection('System Information',
+    rptRow(rptField('Manufacturer',$('rpt-mfg')?.value||''),rptField('Model',$('rpt-model')?.value||''),rptField('Serial #',$('rpt-serial')?.value||''))+
+    rptRow(rptField('Cylinder Size(s)',$('rpt-cyl')?.value||''),rptField('Last Hydro',$('rpt-hydro')?.value||''),rptField('Last Recharge',$('rpt-recharge')?.value||''),rptField('Fusible Links',$('rpt-links')?.value||''))+
+    `<div style="margin-top:4px"><span style="font-size:7pt;color:#666;margin-right:4px">Fuel Shut-Off:</span>${fuelChk('Electric')}${fuelChk('Mechanical')}</div>`
+  )+`<div style="display:flex;gap:8px;margin-bottom:10px">
+  <div style="flex:1">
+    <div style="font-size:7pt;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:#fff;background:#f05a28;padding:3px 6px;border-radius:3px;margin-bottom:3px">System Checks (1–17)</div>
+    ${leftChecks.map(r=>rptCheckRow(r.label,r.yes,r.no)).join('')}
   </div>
-  <div class="rpt-check-col">
-    <div class="rpt-check-title">System Checks (18–33)</div>
-    ${rightChecks.map(r=>`<div class="rpt-check-row"><div class="rpt-check-label">${r.label}</div><span class="rpt-check-yn">Y</span><div class="rpt-check-box">${r.yes}</div><span class="rpt-check-yn">N</span><div class="rpt-check-box">${r.no}</div></div>`).join('')}
-  </div>
-</div>
-
-${$('rpt-sys-location')?.value?`<div class="rpt-section"><div class="rpt-section-title">System Location</div><div class="rpt-notes">${esc($('rpt-sys-location')?.value||'')}</div></div>`:''}
-<div class="rpt-section"><div class="rpt-section-title">Cooking Appliance Locations: Left to Right</div><div class="rpt-notes">${($('rpt-appliances')?.value||'').replace(/\n/g,'<br>')}</div></div>
-<div class="rpt-section"><div class="rpt-section-title">Comments / Deficiencies</div><div class="rpt-notes">${($('rpt-deficiencies')?.value||'None noted').replace(/\n/g,'<br>')}</div></div>
-
-<div style="font-size:7pt;padding:8px;border:1px solid #eee;border-radius:4px;margin-bottom:10px;background:#fafafa;color:#666;font-style:italic">
-  The service technician certifies that the system was inspected and found conditions to be as indicated on this report.
-</div>
-
-<div class="rpt-sig-row">
-  <div class="rpt-sig">
-    <div class="rpt-sig-line">${techSig?`<img src="${techSig}">`:'&nbsp;'}</div>
-    <div class="rpt-sig-label">Service Technician Signature</div>
-    <div style="margin-top:6px;border-bottom:1px solid #333;padding-bottom:2px;font-size:9pt">${$('rpt-tech-name')?.value||'Jon Stephens'}</div>
-    <div class="rpt-sig-label">Name · ${serviceDate}</div>
-    <div style="margin-top:4px;font-size:8pt;color:#666">Permit: ${$('rpt-permit')?.value||'FEL-A-2593933'}</div>
-  </div>
-  <div class="rpt-sig">
-    <div class="rpt-sig-line">${ownerSig?`<img src="${ownerSig}">`:'&nbsp;'}</div>
-    <div class="rpt-sig-label">Owner / Manager / Authorized Agent</div>
-    <div style="margin-top:6px;border-bottom:1px solid #333;padding-bottom:2px;font-size:9pt">${$('rpt-owner-name')?.value||''}</div>
-    <div class="rpt-sig-label">Print Name</div>
+  <div style="flex:1">
+    <div style="font-size:7pt;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:#fff;background:#f05a28;padding:3px 6px;border-radius:3px;margin-bottom:3px">System Checks (18–33)</div>
+    ${rightChecks.map(r=>rptCheckRow(r.label,r.yes,r.no)).join('')}
   </div>
 </div>`
+  +($('rpt-sys-location')?.value?rptSection('System Location',`<div style="font-size:8pt;color:#333">${esc($('rpt-sys-location')?.value||'')}</div>`):'')
+  +rptSection('Cooking Appliances: Left to Right',`<div style="font-size:8pt;color:#333">${($('rpt-appliances')?.value||'').replace(/\n/g,'<br>')}</div>`)
+  +rptSection('Comments / Deficiencies',`<div style="font-size:8pt;color:#333">${($('rpt-deficiencies')?.value||'None noted').replace(/\n/g,'<br>')}</div>`)
+  +`<div style="font-size:6.5pt;padding:6px 8px;border:1px solid #eee;border-radius:4px;margin-bottom:10px;background:#fafafa;color:#666;font-style:italic">The service technician certifies that the system was inspected and found conditions to be as indicated on this report.</div>
+<div style="display:flex;gap:20px;margin-top:10px;padding-top:10px;border-top:2px solid #1a1a2e">
+  ${rptSigBlock(techSig,'Service Technician',$('rpt-tech-name')?.value||'Jon Stephens','<div style="font-size:6.5pt;color:#666;margin-top:2px">'+serviceDate+' · Permit: '+($('rpt-permit')?.value||'FEL-A-2593933')+'</div>')}
+  ${rptSigBlock(ownerSig,'Owner / Manager / Auth. Agent',$('rpt-owner-name')?.value||'')}
+</div>`
 
-  const html=rptShell('Kitchen Hood Suppression<br>Inspection Report','Pre-Engineered System · Semi-Annual / Annual',content)
+  const html=rptShell('Kitchen Hood Suppression','Pre-Engineered System · Semi-Annual / Annual',content)
 
   if(returnHtml)return html
   const w=window.open('','_blank')
@@ -6316,82 +6237,38 @@ async function generateCleanAgentReport(jobId,sysId,returnHtml=false){
   })
   const col1=checkRows.slice(0,12),col2=checkRows.slice(12)
 
-  const caSvcCheck=t=>`<span style="display:inline-flex;align-items:center;gap:2px;margin-right:8px"><span style="width:11px;height:11px;border:1.5px solid ${svcType===t?'#f05a28':'#ccc'};border-radius:2px;display:inline-flex;align-items:center;justify-content:center;font-size:8pt;color:#f05a28">${svcType===t?'✓':''}</span><span style="font-size:7.5pt">${t}</span></span>`
-  const caContent=`
-<div class="rpt-section">
-  <div class="rpt-section-title">Customer Information</div>
-  <div class="rpt-row"><div class="rpt-field" style="flex:2"><div class="rpt-field-label">Business Name</div><div class="rpt-field-value">${l.name||''}</div></div>
-    <div class="rpt-field"><div class="rpt-field-label">Telephone</div><div class="rpt-field-value">${l.contact_phone||''}</div></div></div>
-  <div class="rpt-row"><div class="rpt-field"><div class="rpt-field-label">Address</div><div class="rpt-field-value">${a}</div></div></div>
-  <div class="rpt-row"><div class="rpt-field"><div class="rpt-field-label">Date of Service</div><div class="rpt-field-value">${serviceDate}</div></div>
-    <div class="rpt-field"><div class="rpt-field-label">Time In</div><div class="rpt-field-value">${$('ca-timein')?.value||''}</div></div>
-    <div class="rpt-field"><div class="rpt-field-label">Time Out</div><div class="rpt-field-value">${$('ca-timeout')?.value||''}</div></div></div>
-  <div style="margin-top:4px">${caSvcCheck('Annual')}${caSvcCheck('Semi-Annual')}${caSvcCheck('Installation')}</div>
-</div>
+  const caChk=t=>`<span style="display:inline-flex;align-items:center;gap:2px;margin-right:6px"><span style="width:10px;height:10px;border:1.5px solid ${svcType===t?'#f05a28':'#ccc'};border-radius:2px;display:inline-flex;align-items:center;justify-content:center;font-size:7pt;color:#f05a28">${svcType===t?'✓':''}</span><span style="font-size:7pt;color:#333">${t}</span></span>`
 
-<div class="rpt-section">
-  <div class="rpt-section-title">System Information</div>
-  <div class="rpt-row"><div class="rpt-field"><div class="rpt-field-label">Agent Type</div><div class="rpt-field-value">${$('ca-agent-type')?.value||''}</div></div>
-    <div class="rpt-field"><div class="rpt-field-label">Manufacturer</div><div class="rpt-field-value">${$('ca-mfg')?.value||''}</div></div></div>
-  <div class="rpt-row"><div class="rpt-field"><div class="rpt-field-label">Model</div><div class="rpt-field-value">${$('ca-model')?.value||''}</div></div>
-    <div class="rpt-field"><div class="rpt-field-label">Serial #</div><div class="rpt-field-value">${$('ca-serial')?.value||''}</div></div></div>
-  <div class="rpt-row"><div class="rpt-field"><div class="rpt-field-label">Protected Area</div><div class="rpt-field-value">${$('ca-area')?.value||''}</div></div>
-    <div class="rpt-field"><div class="rpt-field-label">Design Concentration</div><div class="rpt-field-value">${$('ca-conc')?.value||''}</div></div>
-    <div class="rpt-field"><div class="rpt-field-label">Control Panel</div><div class="rpt-field-value">${$('ca-panel')?.value||''}</div></div>
-  </div>
-  <div class="section">
-    <div class="section-title">Cylinder Inventory</div>
-    <table class="cyl-table">
-      <thead><tr><th>#</th><th>Agent</th><th>Tare</th><th>Gross</th><th>Net (lb)</th><th>PSI</th><th>OK</th></tr></thead>
-      <tbody>
-        ${cyls.map((c,i)=>`<tr>
-          <td>${c.num||i+1}</td>
-          <td>${c.agent||''}</td>
-          <td>${c.tare||''}</td>
-          <td>${c.gross||''}</td>
-          <td style="font-weight:700">${c.actual||''}</td>
-          <td>${c.pressure||''}</td>
-          <td style="font-weight:700;color:${c.ok==='yes'?'green':'#999'}">${c.ok==='yes'?'✓':''}</td>
-        </tr>`).join('')}
-      </tbody>
-    </table>
-  </div>
-</div>
+  const cylTable=cyls.length?`<table style="width:100%;border-collapse:collapse;font-size:7.5pt;margin-top:6px;background:#fff"><tr>${['#','Agent','Tare','Gross','Net (lb)','PSI','OK'].map(h=>`<th style="background:#f05a28;color:#fff;padding:3px 4px;font-size:6pt;text-align:center;font-weight:700">${h}</th>`).join('')}</tr>${cyls.map((c,i)=>`<tr><td style="padding:3px 4px;border:1px solid #eee;text-align:center">${c.num||i+1}</td><td style="padding:3px 4px;border:1px solid #eee;text-align:center">${c.agent||''}</td><td style="padding:3px 4px;border:1px solid #eee;text-align:center">${c.tare||''}</td><td style="padding:3px 4px;border:1px solid #eee;text-align:center">${c.gross||''}</td><td style="padding:3px 4px;border:1px solid #eee;text-align:center;font-weight:700">${c.actual||''}</td><td style="padding:3px 4px;border:1px solid #eee;text-align:center">${c.pressure||''}</td><td style="padding:3px 4px;border:1px solid #eee;text-align:center;font-weight:700;color:${c.ok==='yes'?'#10b981':'#999'}">${c.ok==='yes'?'✓':''}</td></tr>`).join('')}</table>`:''
 
-<div class="rpt-checks">
-  <div class="rpt-check-col">
-    <div class="rpt-check-title">Inspection Checklist (1–12)</div>
-    ${col1.map(r=>`<div class="rpt-check-row"><div class="rpt-check-label">${r.label}</div><span class="rpt-check-yn">Y</span><div class="rpt-check-box">${r.yes}</div><span class="rpt-check-yn">N</span><div class="rpt-check-box">${r.no}</div></div>`).join('')}
+  const caContent=rptSection('Customer Information',
+    rptRow(rptField('Business Name',l.name||'',2),rptField('Phone',l.contact_phone||''))+
+    rptRow(rptField('Address',a,3))+
+    rptRow(rptField('Date',serviceDate),rptField('Time In',$('ca-timein')?.value||''),rptField('Time Out',$('ca-timeout')?.value||''))+
+    `<div style="margin-top:4px">${caChk('Annual')}${caChk('Semi-Annual')}${caChk('Installation')}</div>`
+  )+rptSection('System Information',
+    rptRow(rptField('Agent Type',$('ca-agent-type')?.value||''),rptField('Manufacturer',$('ca-mfg')?.value||''))+
+    rptRow(rptField('Model',$('ca-model')?.value||''),rptField('Serial #',$('ca-serial')?.value||''))+
+    rptRow(rptField('Protected Area',$('ca-area')?.value||''),rptField('Design Conc.',$('ca-conc')?.value||''),rptField('Control Panel',$('ca-panel')?.value||''))
+    +cylTable
+  )+`<div style="display:flex;gap:8px;margin-bottom:10px">
+  <div style="flex:1">
+    <div style="font-size:7pt;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:#fff;background:#f05a28;padding:3px 6px;border-radius:3px;margin-bottom:3px">Checklist (1–12)</div>
+    ${col1.map(r=>rptCheckRow(r.label,r.yes,r.no)).join('')}
   </div>
-  <div class="rpt-check-col">
-    <div class="rpt-check-title">Inspection Checklist (13–22)</div>
-    ${col2.map(r=>`<div class="rpt-check-row"><div class="rpt-check-label">${r.label}</div><span class="rpt-check-yn">Y</span><div class="rpt-check-box">${r.yes}</div><span class="rpt-check-yn">N</span><div class="rpt-check-box">${r.no}</div></div>`).join('')}
-  </div>
-</div>
-
-<div class="rpt-section"><div class="rpt-section-title">Deficiencies / Corrective Actions</div><div class="rpt-notes">${($('ca-deficiencies')?.value||'None noted').replace(/\n/g,'<br>')}</div></div>
-
-<div style="font-size:7pt;padding:8px;border:1px solid #eee;border-radius:4px;margin-bottom:10px;background:#fafafa;color:#666;font-style:italic">
-  The service technician certifies that the system was inspected per NFPA 2001 and found conditions to be as indicated on this report.
-</div>
-
-<div class="rpt-sig-row">
-  <div class="rpt-sig">
-    <div class="rpt-sig-line">${techSig?`<img src="${techSig}">`:'&nbsp;'}</div>
-    <div class="rpt-sig-label">Service Technician Signature</div>
-    <div style="margin-top:6px;border-bottom:1px solid #333;padding-bottom:2px;font-size:9pt">${$('ca-tech-name')?.value||'Jon Stephens'}</div>
-    <div class="rpt-sig-label">Name · ${serviceDate}</div>
-    <div style="margin-top:4px;font-size:8pt;color:#666">License: ${$('ca-permit')?.value||'FEL-A-2593933'}</div>
-  </div>
-  <div class="rpt-sig">
-    <div class="rpt-sig-line">${ownerSig?`<img src="${ownerSig}">`:'&nbsp;'}</div>
-    <div class="rpt-sig-label">Owner / Manager / Authorized Agent</div>
-    <div style="margin-top:6px;border-bottom:1px solid #333;padding-bottom:2px;font-size:9pt">${$('ca-owner-name')?.value||''}</div>
-    <div class="rpt-sig-label">Print Name</div>
+  <div style="flex:1">
+    <div style="font-size:7pt;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:#fff;background:#f05a28;padding:3px 6px;border-radius:3px;margin-bottom:3px">Checklist (13–22)</div>
+    ${col2.map(r=>rptCheckRow(r.label,r.yes,r.no)).join('')}
   </div>
 </div>`
+  +rptSection('Deficiencies / Corrective Actions',`<div style="font-size:8pt;color:#333">${($('ca-deficiencies')?.value||'None noted').replace(/\n/g,'<br>')}</div>`)
+  +`<div style="font-size:6.5pt;padding:6px 8px;border:1px solid #eee;border-radius:4px;margin-bottom:10px;background:#fafafa;color:#666;font-style:italic">The service technician certifies that the system was inspected per NFPA 2001 and found conditions to be as indicated on this report.</div>
+<div style="display:flex;gap:20px;margin-top:10px;padding-top:10px;border-top:2px solid #1a1a2e">
+  ${rptSigBlock(techSig,'Service Technician',$('ca-tech-name')?.value||'Jon Stephens','<div style="font-size:6.5pt;color:#666;margin-top:2px">'+serviceDate+' · License: '+($('ca-permit')?.value||'FEL-A-2593933')+'</div>')}
+  ${rptSigBlock(ownerSig,'Owner / Manager / Auth. Agent',$('ca-owner-name')?.value||'')}
+</div>`
 
-  const html=rptShell('Clean Agent Suppression<br>Inspection Report','NFPA 2001 Standard',caContent)
+  const html=rptShell('Clean Agent Suppression','NFPA 2001 Standard',caContent)
 
   if(returnHtml)return html
   const w=window.open('','_blank')
