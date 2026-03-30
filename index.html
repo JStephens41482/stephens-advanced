@@ -297,15 +297,13 @@ select{-webkit-appearance:none;appearance:none}
     </div>
     <div class="hdr-date" id="hdrDate"></div>
   </div>
-  <div class="vw on" id="vDash"><div class="vw-pad" id="dashC"></div></div>
-  <div class="vw" id="vJobs"><div class="vw-pad" id="jobsC"></div></div>
+  <div class="vw on" id="vJobs"><div class="vw-pad" id="jobsC"></div></div>
   <div class="vw" id="vCust"><div class="vw-pad" id="custC"></div></div>
   <div class="vw" id="vMoney"><div class="vw-pad" id="moneyC"></div></div>
   <div class="vw" id="vTechs"><div class="vw-pad" id="techsC"></div></div>
   <button class="fab" onclick="openNew()">+</button>
   <div class="nav">
-    <button class="on" data-v="vDash" onclick="go(this)"><span class="ni">⚡</span><span class="nt">Today</span></button>
-    <button data-v="vJobs" onclick="go(this)"><span class="ni">📋</span><span class="nt">Jobs</span></button>
+    <button class="on" data-v="vJobs" onclick="go(this)"><span class="ni">📋</span><span class="nt">Jobs</span></button>
     <button data-v="vCust" onclick="go(this)"><span class="ni">👤</span><span class="nt">Clients</span></button>
     <button data-v="vMoney" onclick="go(this)"><span class="ni">💰</span><span class="nt">Money</span></button>
     <button data-v="vTechs" onclick="go(this)"><span class="ni">👥</span><span class="nt">Techs</span></button>
@@ -373,13 +371,14 @@ const OVS=['ov1','ov2','ov3','ov4']
 let stk=[]
 const _popTimers={}
 
-function push(html){
+function push(html,opts={}){
   let slot=OVS.find(o=>!stk.includes(o))||OVS[OVS.length-1]
   // cancel any pending cleanup timer for this slot
   if(_popTimers[slot]){clearTimeout(_popTimers[slot]);delete _popTimers[slot]}
   const el=document.getElementById(slot)
   el.innerHTML=html
   el.style.display='flex'
+  if(opts.jobId)el.dataset.jobId=opts.jobId; else delete el.dataset.jobId
   requestAnimationFrame(()=>el.classList.add('open'))
   stk.push(slot)
   return slot
@@ -390,6 +389,7 @@ function pop(){
   const id=stk.pop()
   const el=document.getElementById(id)
   el.classList.remove('open')
+  delete el.dataset.jobId
   _popTimers[id]=setTimeout(()=>{el.style.display='none';el.innerHTML='';delete _popTimers[id]},250)
 }
 
@@ -555,7 +555,7 @@ async function openServiceRequests(){
 async function handleServiceReq(reqId,status){
   await SB.from('service_requests').update({status}).eq('id',reqId)
   await load();toast(status==='approved'?'Approved — schedule the job':'Acknowledged')
-  pop();if(D.serviceRequests?.length)openServiceRequests();rDash()
+  pop();if(D.serviceRequests?.length)openServiceRequests();rJobs()
 }
 
 async function openBrycerQueue(){
@@ -653,7 +653,7 @@ async function addTodo(){
   inp.value=''
   try{
     await SB.from('todos').insert({text,done:false})
-    await load();rDash()
+    await load();rJobs()
     // refresh overlay if open
     if(stk.length){pop();openTodoList()}
   }catch(e){toast('Error adding',false)}
@@ -663,7 +663,7 @@ async function doneTodo(id){
   if(el)el.style.opacity='.3'
   try{
     await SB.from('todos').delete().eq('id',id)
-    await load();rDash()
+    await load();rJobs()
     if(stk.length){pop();openTodoList()}
   }catch(e){toast('Error',false)}
 }
@@ -672,7 +672,7 @@ function go(btn){
   const v=btn.dataset.v
   document.querySelectorAll('.vw').forEach(e=>e.classList.remove('on'));$(v).classList.add('on')
   document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('on'));btn.classList.add('on')
-  if(v==='vDash')rDash();else if(v==='vJobs')rJobs();else if(v==='vCust')rCust();else if(v==='vTechs')rTechs();else rMoney()
+  if(v==='vJobs')rJobs();else if(v==='vCust')rCust();else if(v==='vTechs')rTechs();else rMoney()
 }
 
 function toast(m,ok=true){
@@ -1416,7 +1416,7 @@ async function saveEditTech(techId){
   await load();toast('Technician updated');pop();pop();rTechs()
 }
 
-function rDash(){
+function rJobs(){
   const t=td(),tj=D.jobs.filter(j=>j.scheduled_date===t),ov=D.jobs.filter(j=>j.status==='scheduled'&&j.scheduled_date<t)
   const ev=tj.reduce((s,j)=>s+est(j),0),ld=trkLoad(tj)
   let h=`<div class="stats s3">
@@ -1552,6 +1552,46 @@ function jCard(j,isOv=false){
 let _calYear,_calMonth,_jobsView='calendar'
 
 function rJobs(){
+  // Render quick-action bar + alerts at top of Jobs tab
+  const t=td()
+  const tj=D.jobs.filter(j=>j.scheduled_date===t&&j.status!=='cancelled'&&j.status!=='completed')
+  const todos=D.todos||[]
+  let top=`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">
+    <button onclick="openRouteView()" style="padding:14px 8px;border-radius:var(--r);background:var(--c1);border:1px solid var(--b1);display:flex;flex-direction:column;align-items:center;gap:4px;min-height:70px;cursor:pointer">
+      <span style="font-size:20px">🗺</span><span style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--info)">Route</span>
+    </button>
+    <button onclick="openTruckLoad()" style="padding:14px 8px;border-radius:var(--r);background:var(--c1);border:1px solid var(--b1);display:flex;flex-direction:column;align-items:center;gap:4px;min-height:70px;cursor:pointer">
+      <span style="font-size:20px">🔧</span><span style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--warn)">Truck</span>
+    </button>
+    <button onclick="openTodoList()" style="padding:14px 8px;border-radius:var(--r);background:var(--c1);border:1px solid ${todos.length?'var(--fire)':'var(--b1)'};display:flex;flex-direction:column;align-items:center;gap:4px;min-height:70px;cursor:pointer">
+      <span style="font-size:20px">📝</span><span style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:${todos.length?'var(--fire)':'var(--g1)'}">To-Do${todos.length?' · '+todos.length:''}</span>
+    </button>
+  </div>`
+  // Brycer compliance badge
+  const brycerPending=D.brycerQueue||[]
+  if(brycerPending.length){
+    top+=`<div style="background:var(--warns);border:1.5px solid var(--warn);border-radius:var(--r);padding:12px 14px;margin-bottom:12px;cursor:pointer" onclick="openBrycerQueue()">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div><span style="font-size:13px;font-weight:800;color:var(--warn)">Brycer Compliance</span>
+          <div style="font-size:11px;color:var(--w2);margin-top:2px">${brycerPending.length} pending submission${brycerPending.length>1?'s':''}</div>
+        </div>
+        <span style="background:var(--warn);color:#000;font-size:13px;font-weight:900;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center">${brycerPending.length}</span>
+      </div>
+    </div>`
+  }
+  // Service requests from portal
+  const svcReqs=D.serviceRequests||[]
+  if(svcReqs.length){
+    top+=`<div style="background:var(--infos);border:1.5px solid var(--info);border-radius:var(--r);padding:12px 14px;margin-bottom:12px;cursor:pointer" onclick="openServiceRequests()">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div><span style="font-size:13px;font-weight:800;color:var(--info)">Customer Requests</span>
+          <div style="font-size:11px;color:var(--w2);margin-top:2px">${svcReqs.length} pending request${svcReqs.length>1?'s':''}</div>
+        </div>
+        <span style="background:var(--info);color:#fff;font-size:13px;font-weight:900;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center">${svcReqs.length}</span>
+      </div>
+    </div>`
+  }
+  $('jobsC').innerHTML=top+'<div id="jobsContent"></div>'
   if(_jobsView==='list')rJobsList()
   else rJobsCal()
 }
@@ -1620,7 +1660,7 @@ function rJobsCal(){
     </div>`
   }
 
-  $('jobsC').innerHTML=h
+  const jc=$('jobsContent')||$('jobsC');jc.innerHTML=h
 }
 
 function openCalDay(ds){
@@ -1731,7 +1771,7 @@ function rJobsList(q){
   if(done.length){h+=`<div class="sec"><div class="sec-t">Completed</div></div>`;done.forEach(j=>h+=jCard(j))}
   if(!all.length)h+=`<div class="ey"><div class="ey-i">📋</div><div class="ey-t">No jobs yet. Tap + to create one.</div></div>`
   h+=`</div>`
-  $('jobsC').innerHTML=h;setTimeout(initSwipes,50)
+  const jc=$('jobsContent')||$('jobsC');jc.innerHTML=h;setTimeout(initSwipes,50)
 }
 
 // JOB WORK ORDER — live editable invoice during the job
@@ -1788,6 +1828,15 @@ function buildJobLines(j){
 }
 
 async function openJob(id){
+  // Prevent duplicate overlays — if this job is already open, focus it instead
+  for(const slot of stk){
+    const el=document.getElementById(slot)
+    if(el&&el.dataset.jobId===id){
+      el.classList.add('open')
+      el.style.display='flex'
+      return
+    }
+  }
   await load()
   const j=D.jobs.find(x=>x.id===id);if(!j)return
   extR={}
@@ -1969,7 +2018,7 @@ async function openJob(id){
     h+=`<div class="ov-foot"><button class="btn-dim" onclick="pop()">← Back</button></div>`
   }
 
-  push(h)
+  push(h,{jobId:id})
   if(isActive){
     setTimeout(()=>{renderJobLines();initSig()},80)
   }
@@ -2096,15 +2145,7 @@ async function compJ(id){
   pop()
   showInv({num:inv?.invoice_number||'—',nm:l.name||'',addr:[l.address,l.city].filter(Boolean).join(', '),lines,total:sub,ro:false,iid:inv?.id,locId:l.id,jobId:id,scope:j.scope||[],syss:l.suppression_systems||[]})
 
-  // auto-send invoice email if customer has email on file
-  if(inv?.id&&l.contact_email){
-    setTimeout(async()=>{
-      try{
-        await sendInvoiceEmail(inv.id,l.contact_email,l.name||'',inv.invoice_number||invNum)
-        toast('Invoice auto-emailed to '+l.contact_email)
-      }catch(e){console.error('auto-email:',e)}
-    },500)
-  }
+  // AUTO-SEND DISABLED — nothing sends without explicit user tap on Send button
 }
 
 function setSt(btn,eid,st){
@@ -2906,7 +2947,7 @@ function initSwipes(){
       try{await SB.from('reports').delete().eq('job_id',id)}catch(e){}
       try{await SB.from('extinguisher_results').delete().eq('job_id',id)}catch(e){}
       await SB.from('jobs').delete().eq('id',id)
-      await load();toast('Job deleted');rJobs();rDash()
+      await load();toast('Job deleted');rJobs();rJobs()
     })
   })
 }
@@ -3881,7 +3922,7 @@ function showInv(d){
   }
 
   h+=`<div class="inv-acts">
-    <button class="inv-close" onclick="$('invOv').classList.remove('open');rDash()">Done</button>
+    <button class="inv-close" onclick="$('invOv').classList.remove('open');rJobs()">Done</button>
     ${!d.ro&&d.iid?`<button class="inv-fwd" id="invSendBtn" onclick="sendInvoiceEmail('${d.iid}','${esc(toEmail||'')}','${esc(d.nm)}','${esc(d.num)}',this)">✉️ Send Email</button>`:''}
   </div>
   <div id="inv-email-row" style="margin-top:12px;display:${!d.ro&&d.iid?'block':'none'}">
@@ -4130,7 +4171,7 @@ async function saveJob(){
   await load();toast('Job created ✓')
   nSt={loc:null,mk:false};window._preCalDate=null;window._preCalTime=null
   popAll()
-  rJobs();rDash()
+  rJobs();rJobs()
   if(newJob?.id)openJob(newJob.id)
   // offer to add to iPhone calendar
   const calLoc=D.locs.find(x=>x.id===lid)||{}
@@ -4259,7 +4300,7 @@ async function delJob(id){
   if(error){toast('Error deleting job',false);return}
   await load();toast('Job deleted')
   popAll()
-  rJobs();rDash()
+  rJobs();rJobs()
 }
 
 async function delCust(id){
@@ -6572,13 +6613,13 @@ async function execChatAction(act){
         assigned_to:act.assigned_to||null
       })
       if(error)throw error
-      await load();rDash();rJobs()
+      await load();rJobs();rJobs()
       const loc=D.locs.find(l=>l.id===act.location_id)
       _chatMsgs.push({role:'assistant',content:`✓ Job scheduled: **${loc?.name||''}** on ${act.date} at ${act.time||'09:00'}`})
     }
     else if(t==='add_todo'){
       await SB.from('todos').insert({text:act.text,done:false})
-      await load();rDash()
+      await load();rJobs()
       _chatMsgs.push({role:'assistant',content:`✓ Added to to-do: "${act.text}"`})
     }
     else if(t==='mark_paid'){
@@ -6604,7 +6645,7 @@ async function execChatAction(act){
     }
     else if(t==='open_screen'){
       closeChat()
-      const map={dashboard:'vDash',jobs:'vJobs',clients:'vCust',money:'vMoney',techs:'vTechs'}
+      const map={dashboard:'vJobs',jobs:'vJobs',clients:'vCust',money:'vMoney',techs:'vTechs'}
       const v=map[act.screen]
       if(v){const btn2=document.querySelector(`[data-v="${v}"]`);if(btn2)go(btn2)}
       if(act.screen==='reports')openReports()
@@ -6614,7 +6655,7 @@ async function execChatAction(act){
     else if(t==='delete_job'){
       if(confirm('Delete this job?')){
         await SB.from('jobs').delete().eq('id',act.job_id)
-        await load();rDash();rJobs()
+        await load();rJobs();rJobs()
         _chatMsgs.push({role:'assistant',content:'✓ Job deleted'})
       }else{_chatMsgs.push({role:'assistant',content:'Cancelled.'})}
     }
@@ -6629,8 +6670,8 @@ async function execChatAction(act){
       _chatMsgs.push({role:'assistant',content:`✓ Added ${act.system_type} to location`})
     }
     else if(t==='send_sms'){
-      await fetch('/api/send-sms',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to:act.to,body:act.body})})
-      _chatMsgs.push({role:'assistant',content:`✓ Text sent to ${act.to}`})
+      // AUTO-SEND DISABLED — AI chat cannot send SMS automatically
+      _chatMsgs.push({role:'assistant',content:`⚠️ SMS sending is disabled. Use the Send Text button on the job card instead.`})
     }
     else if(t==='toast'){toast(act.message)}
   }catch(e){
@@ -6642,12 +6683,12 @@ async function execChatAction(act){
 // STARTUP
 function startApp(){
   load().then(()=>{
-    rDash()
+    rJobs()
     if(!D.locs.length&&!D.jobs.length){
-      setTimeout(()=>load().then(rDash),1200)
+      setTimeout(()=>load().then(rJobs),1200)
     }
   }).catch(err=>{
-    document.getElementById('dashC').innerHTML='<div style="padding:24px;color:#ef4444;font-size:13px;font-weight:600">Load error: '+err.message+'</div>'
+    document.getElementById('jobsC').innerHTML='<div style="padding:24px;color:#ef4444;font-size:13px;font-weight:600">Load error: '+err.message+'</div>'
     console.error('Startup load error:',err)
   })
 }
