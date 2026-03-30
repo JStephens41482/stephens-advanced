@@ -5645,15 +5645,19 @@ async function openDryChemReport(jobId,sysId){
   push(h)
   setTimeout(()=>{
     initRptSig('dc','dcSigC','dcSigPh')
-    checks.forEach((_,i)=>{if(window._dcCheckState[i])setDcCheck(i,window._dcCheckState[i])})
+    checks.forEach((_,i)=>_applyDcCheckVisual(i))
   },100)
 }
 
 function setDcCheck(i,val){
   window._dcCheckState[i]=window._dcCheckState[i]===val?'':val
+  _applyDcCheckVisual(i)
+}
+function _applyDcCheckVisual(i){
+  const v=window._dcCheckState[i]||''
   const y=$('dc-y-'+i),n=$('dc-n-'+i)
-  if(y){y.style.background=window._dcCheckState[i]==='yes'?'var(--oks)':'var(--c2)';y.style.borderColor=window._dcCheckState[i]==='yes'?'var(--ok)':'var(--b1)';y.style.color=window._dcCheckState[i]==='yes'?'var(--ok)':'var(--g2)'}
-  if(n){n.style.background=window._dcCheckState[i]==='no'?'var(--bads)':'var(--c2)';n.style.borderColor=window._dcCheckState[i]==='no'?'var(--bad)':'var(--b1)';n.style.color=window._dcCheckState[i]==='no'?'var(--bad)':'var(--g2)'}
+  if(y){y.style.background=v==='yes'?'var(--oks)':'var(--c2)';y.style.borderColor=v==='yes'?'var(--ok)':'var(--b1)';y.style.color=v==='yes'?'var(--ok)':'var(--g2)'}
+  if(n){n.style.background=v==='no'?'var(--bads)':'var(--c2)';n.style.borderColor=v==='no'?'var(--bad)':'var(--b1)';n.style.color=v==='no'?'var(--bad)':'var(--g2)'}
 }
 
 let dcSigCtx=null
@@ -5808,10 +5812,24 @@ async function openSuppReport(jobId,sysId,preLocation){
 
   <!-- SYSTEM INFO -->
   <div class="ds"><div class="ds-t">System Information</div>
-    <div class="ds-row"><div class="ds-lbl">Manufacturer</div><div class="ds-val"><input id="rpt-mfg" placeholder="e.g. Ansul" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600" value="${esc(prev.mfg||sys.system_type?.split(' ')[0]||'')}"></div></div>
-    <div class="ds-row"><div class="ds-lbl">System Name/Model</div><div class="ds-val"><input id="rpt-model" placeholder="e.g. R-102" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600" value="${esc(prev.model||sys.system_type||'')}"></div></div>
+    <div class="ds-row"><div class="ds-lbl">Manufacturer</div><div class="ds-val">
+      <select id="rpt-mfg" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600;width:100%" onchange="updateRptModels()">
+        ${['','Amerex','Ansul','Badger','Buckeye','Captive-Aire','Kidde','Lehavot','Protex','Pyro-Chem','Range Guard','Other'].map(m=>`<option value="${m}"${(prev.mfg||sys.system_type?.split(' ')[0]||'')===m?' selected':''}>${m||'— Select —'}</option>`).join('')}
+      </select>
+    </div></div>
+    <div class="ds-row"><div class="ds-lbl">Model</div><div class="ds-val">
+      <select id="rpt-model" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600;width:100%">
+        <option value="${esc(prev.model||sys.system_type||'')}">${esc(prev.model||sys.system_type||'— Select —')}</option>
+      </select>
+    </div></div>
     <div class="ds-row"><div class="ds-lbl">Serial Number</div><div class="ds-val"><input id="rpt-serial" placeholder="Serial #" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600" value="${esc(prev.serial||'')}"></div></div>
-    <div class="ds-row"><div class="ds-lbl">Cylinder Size(s)</div><div class="ds-val"><input id="rpt-cyl" placeholder="Main, Secondary..." style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600" value="${esc(prev.cyl||'')}"></div></div>
+    <div class="ds-row"><div class="ds-lbl">Cylinder Size</div><div class="ds-val">
+      <select id="rpt-cyl" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600;width:100%">
+        ${['','1.5 gal','2.5 gal','3 gal','4 gal','6 gal','LT-5-R','LT-10-R','LT-20-R','LT-30-R','PCI-17 (17 lb)','PCI-27 (27 lb)','PCL-350','PCL-460','3 lb CO2','5 lb CO2','10 lb CO2','Other'].map(s=>`<option value="${s}"${(prev.cyl||'')===s?' selected':''}>${s||'— Select —'}</option>`).join('')}
+      </select>
+    </div></div>
+    <div id="rpt-extra-tanks" style="padding:0 12px"></div>
+    <button style="margin:4px 12px 8px;padding:6px 12px;border-radius:var(--rs);background:var(--c2);border:1px solid var(--b1);color:var(--fire);font-size:11px;font-weight:700;cursor:pointer" onclick="addRptTank()">+ Add Additional Tank</button>
     <div class="ds-row"><div class="ds-lbl">Last Hydro Test</div><div class="ds-val"><input id="rpt-hydro" type="date" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600" value="${prev.hydro||''}"></div></div>
     <div class="ds-row"><div class="ds-lbl">Last Recharge</div><div class="ds-val"><input id="rpt-recharge" type="date" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600" value="${prev.recharge||''}"></div></div>
     <div class="ds-row"><div class="ds-lbl">Fusible Links</div><div class="ds-val"><input id="rpt-links" placeholder="Qty & temp ratings" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600" value="${esc(prev.links||(sys.fusible_link_count?sys.fusible_link_count+' links':''))}"></div></div>
@@ -5880,8 +5898,8 @@ async function openSuppReport(jobId,sysId,preLocation){
   push(h)
   setTimeout(()=>{
     initRptSig('tech','rptTechSig','rptTechSigPh')
-    // restore check states from prev report
-    checks.forEach((_,i)=>{if(window._rptCheckState[i])setCheck(i,window._rptCheckState[i])})
+    // apply visual check states (don't toggle, just render)
+    checks.forEach((_,i)=>_applyCheckVisual(i))
     // restore toggle states
     if(window._rptServiceType)toggleRptType(window._rptServiceType)
     if(window._rptFuelType)toggleRptFuel(window._rptFuelType)
@@ -5891,14 +5909,74 @@ async function openSuppReport(jobId,sysId,preLocation){
     if(prev.techName&&$('rpt-tech-name'))$('rpt-tech-name').value=prev.techName
     if(prev.permit&&$('rpt-permit'))$('rpt-permit').value=prev.permit
     if(prev.ownerName&&$('rpt-owner-name'))$('rpt-owner-name').value=prev.ownerName
+    // init model dropdown based on saved manufacturer
+    updateRptModels()
+    if(prev.model&&$('rpt-model')){const s=$('rpt-model');const o=Array.from(s.options).find(o2=>o2.value===prev.model);if(!o){s.innerHTML+=`<option value="${prev.model}" selected>${prev.model}</option>`}else{s.value=prev.model}}
+    // restore extra tanks
+    _rptExtraTanks=prev.extraTanks||[];renderRptTanks()
   },100)
 }
 
 function setCheck(i,val){
   window._rptCheckState[i]=window._rptCheckState[i]===val?'':val
+  _applyCheckVisual(i)
+}
+function _applyCheckVisual(i){
+  const v=window._rptCheckState[i]||''
   const y=$('chk-y-'+i),n=$('chk-n-'+i)
-  if(y)y.style.background=window._rptCheckState[i]==='yes'?'var(--oks)':'var(--c2)',y.style.borderColor=window._rptCheckState[i]==='yes'?'var(--ok)':'var(--b1)',y.style.color=window._rptCheckState[i]==='yes'?'var(--ok)':'var(--g2)'
-  if(n)n.style.background=window._rptCheckState[i]==='no'?'var(--bads)':'var(--c2)',n.style.borderColor=window._rptCheckState[i]==='no'?'var(--bad)':'var(--b1)',n.style.color=window._rptCheckState[i]==='no'?'var(--bad)':'var(--g2)'
+  if(y)y.style.background=v==='yes'?'var(--oks)':'var(--c2)',y.style.borderColor=v==='yes'?'var(--ok)':'var(--b1)',y.style.color=v==='yes'?'var(--ok)':'var(--g2)'
+  if(n)n.style.background=v==='no'?'var(--bads)':'var(--c2)',n.style.borderColor=v==='no'?'var(--bad)':'var(--b1)',n.style.color=v==='no'?'var(--bad)':'var(--g2)'
+}
+
+// manufacturer → model mapping for suppression systems
+const SUPP_MODELS={
+  'Amerex':['KP (Wet Chemical)','ZD (Wet Chemical)','Strike (Wet Chemical)'],
+  'Ansul':['R-102','Piranha','Sapphire (Clean Agent)'],
+  'Badger':['Fire Suppression System'],
+  'Buckeye':['BFR Kitchen Mister','BFR-S Kitchen Mister'],
+  'Captive-Aire':['Tank System','CORE System'],
+  'Kidde':['WHDR','Badger Wet Chemical'],
+  'Lehavot':['HFC-227ea','Novec 1230'],
+  'Protex':['L-Series'],
+  'Pyro-Chem':['Kitchen Knight II','Monarch','PCL','PCI'],
+  'Range Guard':['Wet Chemical System'],
+  'Other':[]
+}
+function updateRptModels(){
+  const mfg=$('rpt-mfg')?.value||''
+  const sel=$('rpt-model');if(!sel)return
+  const models=SUPP_MODELS[mfg]||[]
+  const cur=sel.value
+  sel.innerHTML=`<option value="">— Select —</option>`+models.map(m=>`<option value="${m}"${m===cur?' selected':''}>${m}</option>`).join('')+`<option value="Other">Other</option>`
+}
+
+let _rptExtraTanks=[]
+function addRptTank(){
+  _rptExtraTanks.push('')
+  renderRptTanks()
+  // also add $50 fee to job lines
+  const existing=jobLines.find(l=>l.desc==='Additional Tank Fee')
+  if(existing){existing.qty=_rptExtraTanks.length;renderJobLines()}
+  else{jobLines.push({desc:'Additional Tank Fee',qty:_rptExtraTanks.length,price:50,id:'jl'+Date.now()});renderJobLines()}
+  updateWoTotal();updateJobChecklist()
+}
+function removeRptTank(idx){
+  _rptExtraTanks.splice(idx,1)
+  renderRptTanks()
+  const existing=jobLines.find(l=>l.desc==='Additional Tank Fee')
+  if(existing){if(_rptExtraTanks.length===0){jobLines=jobLines.filter(l=>l.desc!=='Additional Tank Fee')}else{existing.qty=_rptExtraTanks.length}}
+  renderJobLines();updateWoTotal();updateJobChecklist()
+}
+function renderRptTanks(){
+  const wrap=$('rpt-extra-tanks');if(!wrap)return
+  const sizes=['','1.5 gal','2.5 gal','3 gal','4 gal','6 gal','LT-5-R','LT-10-R','LT-20-R','LT-30-R','PCI-17 (17 lb)','PCI-27 (27 lb)','PCL-350','PCL-460','3 lb CO2','5 lb CO2','10 lb CO2','Other']
+  wrap.innerHTML=_rptExtraTanks.map((t,i)=>`<div style="display:flex;gap:6px;align-items:center;margin-bottom:4px">
+    <span style="font-size:11px;color:var(--g1);width:60px">Tank ${i+2}</span>
+    <select style="flex:1;font-size:12px;background:var(--c1);color:var(--w);border:1px solid var(--b1);border-radius:var(--rs);padding:6px" onchange="_rptExtraTanks[${i}]=this.value">
+      ${sizes.map(s=>`<option value="${s}"${t===s?' selected':''}>${s||'— Size —'}</option>`).join('')}
+    </select>
+    <button style="width:28px;height:28px;border-radius:50%;background:var(--bad);color:#fff;font-size:14px;border:none;cursor:pointer;flex-shrink:0" onclick="removeRptTank(${i})">✕</button>
+  </div>`).join('')
 }
 
 function toggleRptType(t){
@@ -6028,7 +6106,8 @@ async function _doSaveSuppReport(jobId,sysId,silent,btn){
     permit:$('rpt-permit')?.value||'FEL-A-2593933',ownerName:$('rpt-owner-name')?.value||'',
     appliances:$('rpt-appliances')?.value||'',deficiencies:$('rpt-deficiencies')?.value||'',
     sysLocation:sysLocation,
-    timein:$('rpt-timein')?.value||'',timeout:$('rpt-timeout')?.value||''
+    timein:$('rpt-timein')?.value||'',timeout:$('rpt-timeout')?.value||'',
+    extraTanks:[..._rptExtraTanks]
   }
   // only include sig if it's small enough (skip huge data URLs that blow up JSONB)
   if(techSigData&&techSigData.length<50000)formData.techSig=techSigData
@@ -6367,7 +6446,7 @@ async function openCleanAgentReport(jobId,sysId){
   setTimeout(()=>{
     initRptSig('ca-tech','caTechSig','caTechSigPh')
     // owner sig removed — collected at send time
-    checks.forEach((_,i)=>{if(window._caCheckState[i])setCaCheck(i,window._caCheckState[i])})
+    checks.forEach((_,i)=>_applyCaCheckVisual(i))
     if(window._caServiceType)toggleCaType(window._caServiceType)
     if(prev.deficiencies&&$('ca-deficiencies'))$('ca-deficiencies').value=prev.deficiencies
   },100)
@@ -6409,9 +6488,13 @@ function toggleCaCylOk(i){
 
 function setCaCheck(i,val){
   window._caCheckState[i]=window._caCheckState[i]===val?'':val
+  _applyCaCheckVisual(i)
+}
+function _applyCaCheckVisual(i){
+  const v=window._caCheckState[i]||''
   const y=$('ca-chk-y-'+i),n=$('ca-chk-n-'+i)
-  if(y)y.style.background=window._caCheckState[i]==='yes'?'var(--oks)':'var(--c2)',y.style.borderColor=window._caCheckState[i]==='yes'?'var(--ok)':'var(--b1)',y.style.color=window._caCheckState[i]==='yes'?'var(--ok)':'var(--g2)'
-  if(n)n.style.background=window._caCheckState[i]==='no'?'var(--bads)':'var(--c2)',n.style.borderColor=window._caCheckState[i]==='no'?'var(--bad)':'var(--b1)',n.style.color=window._caCheckState[i]==='no'?'var(--bad)':'var(--g2)'
+  if(y)y.style.background=v==='yes'?'var(--oks)':'var(--c2)',y.style.borderColor=v==='yes'?'var(--ok)':'var(--b1)',y.style.color=v==='yes'?'var(--ok)':'var(--g2)'
+  if(n)n.style.background=v==='no'?'var(--bads)':'var(--c2)',n.style.borderColor=v==='no'?'var(--bad)':'var(--b1)',n.style.color=v==='no'?'var(--bad)':'var(--g2)'
 }
 
 function toggleCaType(t){
