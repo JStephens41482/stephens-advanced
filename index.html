@@ -5825,7 +5825,8 @@ async function openSuppReport(jobId,sysId,preLocation){
     <div class="ds-row"><div class="ds-lbl">Serial Number</div><div class="ds-val"><input id="rpt-serial" placeholder="Serial #" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600" value="${esc(prev.serial||'')}"></div></div>
     <div class="ds-row"><div class="ds-lbl">Cylinder Size</div><div class="ds-val">
       <select id="rpt-cyl" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600;width:100%">
-        ${['','1.5 gal','2.5 gal','3 gal','4 gal','6 gal','LT-5-R','LT-10-R','LT-20-R','LT-30-R','PCI-17 (17 lb)','PCI-27 (27 lb)','PCL-350','PCL-460','3 lb CO2','5 lb CO2','10 lb CO2','Other'].map(s=>`<option value="${s}"${(prev.cyl||'')===s?' selected':''}>${s||'— Select —'}</option>`).join('')}
+        <option value="">— Select —</option>
+        ${prev.cyl?`<option value="${esc(prev.cyl)}" selected>${esc(prev.cyl)}</option>`:''}
       </select>
     </div></div>
     <div id="rpt-extra-tanks" style="padding:0 12px"></div>
@@ -5930,24 +5931,40 @@ function _applyCheckVisual(i){
 
 // manufacturer → model mapping for suppression systems
 const SUPP_MODELS={
-  'Amerex':['KP (Wet Chemical)','ZD (Wet Chemical)','Strike (Wet Chemical)'],
-  'Ansul':['R-102','Piranha','Sapphire (Clean Agent)'],
-  'Badger':['Fire Suppression System'],
+  'Amerex':['KP','ZD','Strike'],
+  'Ansul':['R-102','Piranha'],
+  'Badger':['Wet Chemical System'],
   'Buckeye':['BFR Kitchen Mister','BFR-S Kitchen Mister'],
   'Captive-Aire':['Tank System','CORE System'],
-  'Kidde':['WHDR','Badger Wet Chemical'],
-  'Lehavot':['HFC-227ea','Novec 1230'],
+  'Kidde':['WHDR'],
+  'Lehavot':['Wet Chemical System'],
   'Protex':['L-Series'],
   'Pyro-Chem':['Kitchen Knight II','Monarch','PCL','PCI'],
   'Range Guard':['Wet Chemical System'],
   'Other':[]
 }
+const SUPP_TANKS={
+  'Amerex':['1.5 gal','2.5 gal','3 gal','4 gal','6 gal'],
+  'Ansul':['1.5 gal (LT-5-R)','3 gal (LT-10-R)','4.5 gal (LT-20-R)','6 gal (LT-30-R)'],
+  'Buckeye':['2.5 gal (N2 Small)','3.2 gal (N2 Large)','6 gal'],
+  'Captive-Aire':['Integrated Tank','3 gal','6 gal'],
+  'Kidde':['1.6 gal (XV-N2)','2.5 gal','3.2 gal','4.75 gal'],
+  'Pyro-Chem':['17 lb (PCI-17)','27 lb (PCI-27)','3.5 gal (PCL-160)','5 gal (PCL-300)','7.5 gal (PCL-460)','10 gal (PCL-650)'],
+  'Range Guard':['2.5 gal','3 gal','4 gal','6 gal'],
+  '_default':['1.5 gal','2.5 gal','3 gal','4 gal','4.5 gal','6 gal']
+}
 function updateRptModels(){
   const mfg=$('rpt-mfg')?.value||''
-  const sel=$('rpt-model');if(!sel)return
-  const models=SUPP_MODELS[mfg]||[]
-  const cur=sel.value
-  sel.innerHTML=`<option value="">— Select —</option>`+models.map(m=>`<option value="${m}"${m===cur?' selected':''}>${m}</option>`).join('')+`<option value="Other">Other</option>`
+  const sel=$('rpt-model');if(sel){
+    const models=SUPP_MODELS[mfg]||[]
+    const cur=sel.value
+    sel.innerHTML=`<option value="">— Select —</option>`+models.map(m=>`<option value="${m}"${m===cur?' selected':''}>${m}</option>`).join('')+`<option value="Other">Other</option>`
+  }
+  const cylSel=$('rpt-cyl');if(cylSel){
+    const tanks=SUPP_TANKS[mfg]||SUPP_TANKS._default
+    const curCyl=cylSel.value
+    cylSel.innerHTML=`<option value="">— Select —</option>`+tanks.map(t=>`<option value="${t}"${t===curCyl?' selected':''}>${t}</option>`).join('')+`<option value="Other">Other</option>`
+  }
 }
 
 let _rptExtraTanks=[]
@@ -5969,7 +5986,8 @@ function removeRptTank(idx){
 }
 function renderRptTanks(){
   const wrap=$('rpt-extra-tanks');if(!wrap)return
-  const sizes=['','1.5 gal','2.5 gal','3 gal','4 gal','6 gal','LT-5-R','LT-10-R','LT-20-R','LT-30-R','PCI-17 (17 lb)','PCI-27 (27 lb)','PCL-350','PCL-460','3 lb CO2','5 lb CO2','10 lb CO2','Other']
+  const mfg=$('rpt-mfg')?.value||''
+  const sizes=[''].concat(SUPP_TANKS[mfg]||SUPP_TANKS._default).concat(['Other'])
   wrap.innerHTML=_rptExtraTanks.map((t,i)=>`<div style="display:flex;gap:6px;align-items:center;margin-bottom:4px">
     <span style="font-size:11px;color:var(--g1);width:60px">Tank ${i+2}</span>
     <select style="flex:1;font-size:12px;background:var(--c1);color:var(--w);border:1px solid var(--b1);border-radius:var(--rs);padding:6px" onchange="_rptExtraTanks[${i}]=this.value">
