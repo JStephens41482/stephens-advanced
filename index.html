@@ -4149,28 +4149,8 @@ async function _showEmailPreview(invId,to,custName,invNum){
   h+=`<button class="btn-dim" onclick="pop()">← Back</button>`
   h+=`</div>`
   push(h)
-  // init customer signature canvas
-  function _initCustSig(){
-    const c=$('custSendSig');if(!c)return
-    const wrap=c.parentElement;if(!wrap)return
-    const w=wrap.offsetWidth||wrap.clientWidth||300
-    const h=wrap.offsetHeight||wrap.clientHeight||120
-    if(w<10){setTimeout(_initCustSig,200);return} // not visible yet, retry
-    c.width=w;c.height=h
-    c.style.width=w+'px';c.style.height=h+'px'
-    const ctx=c.getContext('2d')
-    ctx.strokeStyle='#ffffff';ctx.lineWidth=3;ctx.lineCap='round';ctx.lineJoin='round'
-    let on=false
-    const ph=$('custSendSigPh')
-    const gp=(e)=>{const cr=c.getBoundingClientRect(),t=e.touches?e.touches[0]:e;return{x:t.clientX-cr.left,y:t.clientY-cr.top}}
-    const sp=e=>{e.preventDefault();on=true;if(ph)ph.style.display='none';const p=gp(e);ctx.beginPath();ctx.moveTo(p.x,p.y)}
-    const sm=e=>{if(!on)return;e.preventDefault();const p=gp(e);ctx.lineTo(p.x,p.y);ctx.stroke()}
-    const se=()=>{on=false}
-    c.addEventListener('touchstart',sp,{passive:false});c.addEventListener('touchmove',sm,{passive:false});c.addEventListener('touchend',se)
-    c.addEventListener('mousedown',sp);c.addEventListener('mousemove',sm);c.addEventListener('mouseup',se)
-    c.addEventListener('pointerdown',sp);c.addEventListener('pointermove',sm);c.addEventListener('pointerup',se)
-  }
-  setTimeout(_initCustSig,400)
+  // use the same proven initRptSig that works on report forms
+  setTimeout(()=>initRptSig('custsend','custSendSig','custSendSigPh'),500)
 }
 
 async function _confirmSendEmail(){
@@ -4178,23 +4158,14 @@ async function _confirmSendEmail(){
   const btn=$('confirmSendBtn');if(btn){btn.innerHTML='<span class="spin"></span> Sending...';btn.style.pointerEvents='none'}
   const st=$('confirmSendStatus')
 
-  // capture customer signature — redraw on white bg with dark ink for PDF
+  // capture customer signature — white bg + dark ink (same as tech sig)
   let custSigData=''
   const custSigCanvas=$('custSendSig')
-  if(custSigCanvas){
+  if(custSigCanvas&&custSigCanvas.width>0){
     try{
       const w=custSigCanvas.width,h=custSigCanvas.height
       const tmp=document.createElement('canvas');tmp.width=w;tmp.height=h
-      const tctx=tmp.getContext('2d')
-      tctx.fillStyle='#ffffff';tctx.fillRect(0,0,w,h)
-      // get the original pixel data and draw dark where there was white ink
-      const srcCtx=custSigCanvas.getContext('2d')
-      const src=srcCtx.getImageData(0,0,w,h)
-      const dst=tctx.getImageData(0,0,w,h)
-      for(let i=0;i<src.data.length;i+=4){
-        if(src.data[i+3]>20){dst.data[i]=34;dst.data[i+1]=34;dst.data[i+2]=34;dst.data[i+3]=255}
-      }
-      tctx.putImageData(dst,0,0)
+      const tctx=tmp.getContext('2d');tctx.fillStyle='#ffffff';tctx.fillRect(0,0,w,h);tctx.drawImage(custSigCanvas,0,0)
       custSigData=tmp.toDataURL('image/jpeg',0.7)||''
     }catch(e){console.error('sig capture:',e)}
   }
