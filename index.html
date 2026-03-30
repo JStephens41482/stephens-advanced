@@ -4010,6 +4010,13 @@ async function _showEmailPreview(invId,to,custName,invNum){
     h+=`<div style="background:var(--warns);border:1px solid var(--warn);border-radius:var(--r);padding:12px;margin-bottom:16px;font-size:12px;color:var(--warn)">No reports attached. Complete inspection reports before sending.</div>`
   }
 
+  // customer signature
+  h+=`<div style="border:1.5px solid var(--b1);border-radius:var(--r);padding:14px;margin-bottom:16px;background:var(--c2)">
+    <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--g1);margin-bottom:8px">Customer Signature</div>
+    <div class="sig-wrap" id="cust-send-sig-wrap"><canvas id="custSendSig"></canvas><div class="sig-ph" id="custSendSigPh">Customer signs here</div><button class="sig-clr" onclick="clrCustSendSig()">Clear</button></div>
+    <div style="font-size:10px;color:var(--g2);margin-top:6px;text-align:center">Customer signs once for invoice and all reports</div>
+  </div>`
+
   // store data for the send action
   window._pendingEmail={invId,to,custName:custName||loc.name||'',invNum:inv.invoice_number||invNum,inv,ls,total,loc,rpts}
 
@@ -4018,12 +4025,34 @@ async function _showEmailPreview(invId,to,custName,invNum){
   h+=`<button class="btn-dim" onclick="pop()">← Cancel</button>`
   h+=`</div>`
   push(h)
+  // init customer signature canvas
+  setTimeout(()=>{
+    const c=$('custSendSig');if(!c)return
+    const w=c.parentElement.clientWidth-2;c.width=w;c.height=120
+    const ctx=c.getContext('2d');let drawing=false
+    const ph=$('custSendSigPh')
+    c.addEventListener('pointerdown',e=>{drawing=true;ctx.beginPath();ctx.moveTo(e.offsetX,e.offsetY);if(ph)ph.style.display='none'})
+    c.addEventListener('pointermove',e=>{if(!drawing)return;ctx.lineWidth=2;ctx.lineCap='round';ctx.strokeStyle='#fff';ctx.lineTo(e.offsetX,e.offsetY);ctx.stroke()})
+    c.addEventListener('pointerup',()=>drawing=false)
+    c.addEventListener('pointerleave',()=>drawing=false)
+  },100)
 }
 
 async function _confirmSendEmail(){
   const d=window._pendingEmail;if(!d)return
   const btn=$('confirmSendBtn');if(btn){btn.innerHTML='<span class="spin"></span> Sending...';btn.style.pointerEvents='none'}
   const st=$('confirmSendStatus')
+
+  // save customer signature to job
+  const custSigCanvas=$('custSendSig')
+  if(custSigCanvas&&d.inv.job_id){
+    try{
+      const sigData=custSigCanvas.toDataURL()
+      if(sigData&&sigData.length>100){
+        await SB.from('jobs').update({signature_data:sigData}).eq('id',d.inv.job_id)
+      }
+    }catch(e){console.error('save cust sig:',e)}
+  }
 
   // generate portal link
   let portalUrl=''
@@ -5392,10 +5421,8 @@ async function openDryChemReport(jobId,sysId){
     <div class="fg"><label class="fg-l">Permit No.</label><input id="dc-permit" value="${esc(prev.permit||'FEL-A-2593933')}"></div>
   </div>
 
-  <div class="ds"><div class="ds-t">Customer Signature</div>
-    <div class="sig-wrap" id="dc-sig-wrap"><canvas id="dcSigC"></canvas><div class="sig-ph" id="dcSigPh">Customer signs here</div><button class="sig-clr" onclick="clrDcSig()">Clear</button></div>
-  </div>
-  <div class="fg"><label class="fg-l">Print Name</label><input id="dc-owner-name" value="${esc(prev.ownerName||l.contact_name||'')}"></div>
+  <div class="fg"><label class="fg-l">Owner / Manager Name</label><input id="dc-owner-name" value="${esc(prev.ownerName||l.contact_name||'')}"></div>
+  <div style="font-size:11px;color:var(--g1);padding:8px 0;text-align:center">Customer signature will be collected when sending the invoice.</div>
 
   </div>
   <div class="ov-foot"><button class="btn-p" onclick="saveDryChemReport('${jobId}','${sysId}')">Save Report</button></div>`
@@ -5613,12 +5640,8 @@ async function openSuppReport(jobId,sysId,preLocation){
   <div class="fg"><label class="fg-l">Print Technician Name</label><input id="rpt-tech-name" placeholder="Jon Stephens" value="Jon Stephens"></div>
   <div class="fg"><label class="fg-l">Permit No.</label><input id="rpt-permit" value="FEL-A-2593933"></div>
 
-  <div class="ds"><div class="ds-t">Owner / Manager Signature
-    <span style="font-size:10px;font-weight:600;color:var(--ok);display:block;margin-top:2px">✓ Also signs the invoice</span>
-  </div>
-    <div class="sig-wrap" id="rpt-owner-sig-wrap"><canvas id="rptOwnerSig"></canvas><div class="sig-ph" id="rptOwnerSigPh">Customer signs here</div><button class="sig-clr" onclick="clrRptSig('owner')">Clear</button></div>
-  </div>
-  <div class="fg"><label class="fg-l">Print Owner / Manager Name</label><input id="rpt-owner-name" placeholder="${esc(l.contact_name||'')}"></div>
+  <div class="fg"><label class="fg-l">Print Owner / Manager Name</label><input id="rpt-owner-name" placeholder="${esc(l.contact_name||'')}" value="${esc(prev.ownerName||l.contact_name||'')}"></div>
+  <div style="font-size:11px;color:var(--g1);padding:8px 0;text-align:center">Customer signature will be collected when sending the invoice.</div>
 
   </div>
   <div class="ov-foot">
@@ -5633,7 +5656,6 @@ async function openSuppReport(jobId,sysId,preLocation){
   push(h)
   setTimeout(()=>{
     initRptSig('tech','rptTechSig','rptTechSigPh')
-    initRptSig('owner','rptOwnerSig','rptOwnerSigPh')
     // restore check states from prev report
     checks.forEach((_,i)=>{if(window._rptCheckState[i])setCheck(i,window._rptCheckState[i])})
     // restore toggle states
@@ -5701,6 +5723,12 @@ function clrRptSig(key){
   const c=$(canvasId)
   if(c&&rptSigCtx[key])rptSigCtx[key].clearRect(0,0,c.width,c.height)
   if($(phId))$(phId).style.display=''
+}
+
+function clrCustSendSig(){
+  const c=$('custSendSig');if(!c)return
+  c.getContext('2d').clearRect(0,0,c.width,c.height)
+  const ph=$('custSendSigPh');if(ph)ph.style.display=''
 }
 
 function snapAppliances(){$('applianceInput').click()}
@@ -6078,12 +6106,8 @@ async function openCleanAgentReport(jobId,sysId){
   <div class="fg"><label class="fg-l">Print Technician Name</label><input id="ca-tech-name" placeholder="Jon Stephens" value="${esc(prev.techName||'Jon Stephens')}"></div>
   <div class="fg"><label class="fg-l">License / Permit No.</label><input id="ca-permit" value="${esc(prev.permit||'FEL-A-2593933')}"></div>
 
-  <div class="ds"><div class="ds-t">Owner / Manager Signature
-    <span style="font-size:10px;font-weight:600;color:var(--ok);display:block;margin-top:2px">✓ Also signs the invoice</span>
-  </div>
-    <div class="sig-wrap" id="ca-owner-sig-wrap"><canvas id="caOwnerSig"></canvas><div class="sig-ph" id="caOwnerSigPh">Customer signs here</div><button class="sig-clr" onclick="clrCaSig('owner')">Clear</button></div>
-  </div>
   <div class="fg"><label class="fg-l">Print Owner / Manager Name</label><input id="ca-owner-name" placeholder="${esc(l.contact_name||'')}" value="${esc(prev.ownerName||l.contact_name||'')}"></div>
+  <div style="font-size:11px;color:var(--g1);padding:8px 0;text-align:center">Customer signature will be collected when sending the invoice.</div>
 
   </div>
   <div class="ov-foot">
@@ -6098,7 +6122,7 @@ async function openCleanAgentReport(jobId,sysId){
   push(h)
   setTimeout(()=>{
     initRptSig('ca-tech','caTechSig','caTechSigPh')
-    initRptSig('ca-owner','caOwnerSig','caOwnerSigPh')
+    // owner sig removed — collected at send time
     checks.forEach((_,i)=>{if(window._caCheckState[i])setCaCheck(i,window._caCheckState[i])})
     if(window._caServiceType)toggleCaType(window._caServiceType)
     if(prev.deficiencies&&$('ca-deficiencies'))$('ca-deficiencies').value=prev.deficiencies
