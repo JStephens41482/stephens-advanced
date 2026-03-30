@@ -5988,19 +5988,13 @@ async function handleAppliancePhotos(ev){
 
 async function saveSuppReport(jobId,sysId,silent){
   const btn=silent?null:($('rptSaveBtn2')||$('rptSaveBtn'));if(btn){btn.textContent='Saving...';btn.style.opacity='.5';btn.style.pointerEvents='none'}
+  try{ return await _doSaveSuppReport(jobId,sysId,silent,btn)
+  }catch(e){console.error('saveSuppReport CRASH:',e);if(!silent)toast('Save crashed: '+e.message,false);if(btn){btn.textContent='✓ Save Report';btn.style.opacity='';btn.style.pointerEvents=''}}
+}
+async function _doSaveSuppReport(jobId,sysId,silent,btn){
   // capture all form data BEFORE any async calls
   let techSigData=''
-  try{
-    const c=$('rptTechSig')
-    if(c){
-      // check if canvas has actual content (not blank)
-      const ctx=c.getContext('2d')
-      const px=ctx.getImageData(0,0,c.width,c.height).data
-      let hasContent=false
-      for(let i=3;i<px.length;i+=4){if(px[i]>0){hasContent=true;break}}
-      if(hasContent)techSigData=c.toDataURL('image/jpeg',0.5)||''
-    }
-  }catch(e){console.error('sig capture:',e)}
+  try{const c=$('rptTechSig');if(c&&c.width>0)techSigData=c.toDataURL('image/jpeg',0.5)||''}catch(e){}
   const sysLocation=$('rpt-sys-location')?.value||''
   const formData={
     checks:{...(window._rptCheckState||{})},
@@ -6013,9 +6007,10 @@ async function saveSuppReport(jobId,sysId,silent){
     permit:$('rpt-permit')?.value||'FEL-A-2593933',ownerName:$('rpt-owner-name')?.value||'',
     appliances:$('rpt-appliances')?.value||'',deficiencies:$('rpt-deficiencies')?.value||'',
     sysLocation:sysLocation,
-    techSig:techSigData,
     timein:$('rpt-timein')?.value||'',timeout:$('rpt-timeout')?.value||''
   }
+  // only include sig if it's small enough (skip huge data URLs that blow up JSONB)
+  if(techSigData&&techSigData.length<50000)formData.techSig=techSigData
   // skip storing reportHtml in DB — it's huge and can be regenerated from formData
   // reportHtml will be generated at send time from the saved form data
 
