@@ -2126,7 +2126,8 @@ async function updateJobChecklist(){
       // everything else is kitchen hood (Ansul, Pyro-Chem, Buckeye, Kidde, etc.)
       const rptType=isDC?'dry_chemical':isCA?'clean_agent':'kitchen_suppression'
       const label=isDC?'Dry Chem / Paint Booth Report':isCA?'Clean Agent Report':'Kitchen Hood Report'
-      const action=isDC?`openDryChemReport('${jid}','${sys.id}')`:isCA?`openCleanAgentReport('${jid}','${sys.id}')`: `openSuppReport('${jid}','${sys.id}')`
+      const escapedSysId=(sys.id||'').replace(/'/g,"\\'")
+      const action=isDC?`openDryChemReport('${jid}','${escapedSysId}')`:isCA?`openCleanAgentReport('${jid}','${escapedSysId}')`: `openSuppReport('${jid}','${escapedSysId}')`
       const sysName=(sys.system_type||'').split('(')[0].trim()
       const done=rpts.some(r=>r.report_type===rptType)
       flags.push({label:label+(allSyss.length>1?' — '+sysName:''),done,action})
@@ -2140,22 +2141,17 @@ async function updateJobChecklist(){
 
   // render flags
   let fh=''
-  flags.forEach(f=>{
+  // store flags globally so click handlers can access them
+  window._jobFlags=flags
+
+  flags.forEach((f,fi)=>{
     const color=f.done?'var(--ok)':'var(--g2)'
     const icon=f.done?'✓':'○'
-    if(f.action){
-      fh+=`<button style="display:flex;align-items:center;gap:10px;padding:8px 12px;margin-bottom:4px;border-radius:var(--rs);background:${f.done?'rgba(16,185,129,.08)':'var(--c2)'};border:1px solid ${f.done?'var(--ok)':'var(--b1)'};cursor:pointer;width:100%;text-align:left" onclick="${f.action}">
-        <span style="font-size:16px;font-weight:800;color:${color};width:20px;text-align:center">${icon}</span>
-        <span style="font-size:12px;font-weight:700;color:${f.done?'var(--ok)':'var(--w)'};flex:1">${f.label}</span>
-        ${f.done?'<span style="font-size:9px;font-weight:800;color:var(--ok);text-transform:uppercase">Done</span>':'<span style="font-size:9px;font-weight:700;color:var(--fire);text-transform:uppercase">Tap to fill</span>'}
-      </button>`
-    }else{
-      fh+=`<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;margin-bottom:4px;border-radius:var(--rs);background:${f.done?'rgba(16,185,129,.08)':'var(--c2)'};border:1px solid ${f.done?'var(--ok)':'var(--b1)'}">
-        <span style="font-size:16px;font-weight:800;color:${color};width:20px;text-align:center">${icon}</span>
-        <span style="font-size:12px;font-weight:700;color:${f.done?'var(--ok)':'var(--w)'};flex:1">${f.label}</span>
-        ${f.done?'<span style="font-size:9px;font-weight:800;color:var(--ok);text-transform:uppercase">Done</span>':''}
-      </div>`
-    }
+    fh+=`<div data-flag="${fi}" style="display:flex;align-items:center;gap:10px;padding:10px 12px;margin-bottom:4px;border-radius:var(--rs);background:${f.done?'rgba(16,185,129,.08)':'var(--c2)'};border:1px solid ${f.done?'var(--ok)':'var(--b1)'};cursor:${f.action?'pointer':'default'};min-height:44px">
+      <span style="font-size:16px;font-weight:800;color:${color};width:20px;text-align:center">${icon}</span>
+      <span style="font-size:12px;font-weight:700;color:${f.done?'var(--ok)':'var(--w)'};flex:1">${f.label}</span>
+      ${f.done?'<span style="font-size:9px;font-weight:800;color:var(--ok);text-transform:uppercase">Done</span>':(f.action?'<span style="font-size:9px;font-weight:700;color:var(--fire);text-transform:uppercase">Tap to fill →</span>':'')}
+    </div>`
   })
 
   const allDone=flags.every(f=>f.done)
@@ -2165,6 +2161,14 @@ async function updateJobChecklist(){
     compBtn.style.color=allDone?'#fff':'var(--g1)'
   }
   wrap.innerHTML=fh
+  // attach click handlers via addEventListener (more reliable than onclick attr)
+  wrap.querySelectorAll('[data-flag]').forEach(el=>{
+    const fi=parseInt(el.dataset.flag)
+    const f=flags[fi]
+    if(f&&f.action){
+      el.addEventListener('click',()=>{try{eval(f.action)}catch(e){console.error('flag click:',e);toast('Error: '+e.message,false)}})
+    }
+  })
 }
 
 function addPartLine(sel){
