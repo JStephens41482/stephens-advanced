@@ -4029,12 +4029,23 @@ async function _confirmSendEmail(){
   let portalUrl=''
   try{const pTk=await getOrCreatePortalToken(d.inv.location_id,d.loc.billing_account_id||null);if(pTk)portalUrl='https://stephensadvanced.com/portal?t='+pTk}catch(e){}
 
+  // generate Square payment link
+  let payUrl=''
+  if(st){st.textContent='Creating payment link...';st.style.color='var(--g1)'}
+  try{
+    const payRes=await fetch('/api/create-payment-link',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({invoiceNumber:d.invNum,customerName:d.custName,amount:d.total,invoiceId:d.invId,customerEmail:d.to})
+    })
+    const payData=await payRes.json()
+    if(payData.success&&payData.paymentLink)payUrl=payData.paymentLink
+  }catch(e){console.error('payment link:',e)}
+
   const html=buildInvoiceEmailHtml({
     invNum:d.invNum,custName:d.custName,
     addr:[d.loc.address,d.loc.city,d.loc.state,d.loc.zip].filter(Boolean).join(', '),
     date:d.inv.date?new Date(d.inv.date).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):'',
     dueDate:d.inv.due_date?new Date(d.inv.due_date).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):'',
-    lines:d.ls,total:d.total,portalUrl
+    lines:d.ls,total:d.total,portalUrl,payUrl
   })
 
   // build report PDF attachments — convert HTML to real PDFs
@@ -4099,7 +4110,7 @@ async function getOrCreatePortalToken(locId,baId){
   return token
 }
 
-function buildInvoiceEmailHtml({invNum,custName,addr,date,dueDate,lines,total,portalUrl}){
+function buildInvoiceEmailHtml({invNum,custName,addr,date,dueDate,lines,total,portalUrl,payUrl}){
   const lineRows=lines.map(l=>{const isTrv=(l.description||'').startsWith('Travel —');return`
     <tr>
       <td style="padding:10px 0;border-bottom:1px solid #f0f0f0;font-size:14px;color:${isTrv?'#f59e0b':'#333'}">${isTrv?'🚗 ':''}${l.description||''}${l.quantity>1?' ×'+l.quantity:''}</td>
@@ -4126,13 +4137,17 @@ function buildInvoiceEmailHtml({invNum,custName,addr,date,dueDate,lines,total,po
         <tr><td style="padding-top:16px;font-size:18px;font-weight:900;color:#111;border-top:2px solid #111">Total</td>
             <td style="padding-top:16px;font-size:18px;font-weight:900;color:#f05a28;text-align:right;border-top:2px solid #111">$${total.toFixed(2)}</td></tr>
       </table>
-      <div style="margin-top:28px;padding:16px;background:#fff8f5;border-left:4px solid #f05a28;border-radius:0 8px 8px 0;font-size:13px;color:#555;line-height:1.5">
+      ${payUrl?`<div style="margin-top:28px;text-align:center">
+        <a href="${payUrl}" style="display:inline-block;padding:16px 40px;background:#f05a28;color:#fff;text-decoration:none;border-radius:8px;font-size:16px;font-weight:900;letter-spacing:.3px">💳 Pay Now — $${total.toFixed(2)}</a>
+        <div style="font-size:11px;color:#aaa;margin-top:8px">Secure payment via Square · Credit card, Apple Pay, or Google Pay</div>
+      </div>`:''}
+      <div style="margin-top:20px;padding:16px;background:#fff8f5;border-left:4px solid #f05a28;border-radius:0 8px 8px 0;font-size:13px;color:#555;line-height:1.5">
         To pay by check, make payable to <strong>Stephens Advanced LLC</strong>.<br>
         Questions? Reply to this email or call <strong>(214) 994-4799</strong>.
       </div>
-      ${portalUrl?`<div style="margin-top:20px;text-align:center">
-        <a href="${portalUrl}" style="display:inline-block;padding:14px 32px;background:#f05a28;color:#fff;text-decoration:none;border-radius:8px;font-size:14px;font-weight:800;letter-spacing:.3px">View Your Customer Portal</a>
-        <div style="font-size:11px;color:#aaa;margin-top:8px">View your equipment, service history, reports & upcoming inspections</div>
+      ${portalUrl?`<div style="margin-top:16px;text-align:center">
+        <a href="${portalUrl}" style="display:inline-block;padding:12px 28px;background:#1a1a2e;color:#fff;text-decoration:none;border-radius:8px;font-size:13px;font-weight:700;letter-spacing:.3px">View Customer Portal</a>
+        <div style="font-size:11px;color:#aaa;margin-top:6px">Equipment, service history & upcoming inspections</div>
       </div>`:''}
     </td></tr>
     <tr><td style="padding:20px 32px;background:#fafafa;font-size:11px;color:#aaa;text-align:center;border-top:1px solid #eee">
