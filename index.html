@@ -1780,7 +1780,7 @@ let jobNotes=''
 let invLines=[] // for editing existing invoices in openInvDetail
 
 function buildJobLines(j){
-  const l=j.location||{},rc=D.rc,sc=j.scope||[]
+  const l=D.locs.find(x=>x.id===(j.location_id||j.location?.id))||j.location||{},rc=D.rc,sc=j.scope||[]
   const lines=[]
   // suppression
   if(sc.includes('suppression'))for(const s of(l.suppression_systems||[])){
@@ -4210,7 +4210,17 @@ async function saveJob(){
       setLoad('saveJobBtn',false,'Create Job');return
     }
   }
-  const{data:newJob,error}=await SB.from('jobs').insert({location_id:lid,billing_account_id:ba,type:ty,scope:sc.length?sc:['extinguishers','suppression'],scheduled_date:jobDate,scheduled_time:jobTime,status:'scheduled',notes:jobNoteTxt||null,assigned_to:assignTo||null}).select().single()
+  // auto-detect scope from location equipment if not manually set
+  let finalScope=sc
+  if(!finalScope.length){
+    const loc2=D.locs.find(x=>x.id===lid)||{}
+    finalScope=[]
+    if(loc2.suppression_systems?.length)finalScope.push('suppression')
+    if(loc2.extinguishers?.length)finalScope.push('extinguishers')
+    if(loc2.emergency_lights?.[0]?.fixture_count)finalScope.push('elights')
+    if(!finalScope.length)finalScope=['extinguishers','suppression']
+  }
+  const{data:newJob,error}=await SB.from('jobs').insert({location_id:lid,billing_account_id:ba,type:ty,scope:finalScope,scheduled_date:jobDate,scheduled_time:jobTime,status:'scheduled',notes:jobNoteTxt||null,assigned_to:assignTo||null}).select().single()
   if(error){toast('Error creating job',false);setLoad('saveJobBtn',false,'Create Job');return}
   await load();toast('Job created ✓')
   nSt={loc:null,mk:false};window._preCalDate=null;window._preCalTime=null
