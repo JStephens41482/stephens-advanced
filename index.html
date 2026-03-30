@@ -4060,15 +4060,18 @@ async function _confirmSendEmail(){
     const rType=rpt.report_type==='extinguisher'?'Extinguisher-Report':rpt.report_type==='clean_agent'?'Clean-Agent-Report':rpt.report_type==='dry_chemical'?'Dry-Chemical-Report':'Suppression-Report'
     const suffix=d.rpts.length>1?'-'+(sysLoc||ri+1):''
     try{
-      // render full HTML doc in hidden iframe so <style> tags work
+      // render full HTML doc in hidden iframe — force white background
       const iframe=document.createElement('iframe')
-      iframe.style.cssText='position:absolute;left:-9999px;top:0;width:800px;height:1200px;border:none'
+      iframe.style.cssText='position:absolute;left:-9999px;top:0;width:816px;height:1056px;border:none;background:#fff'
       document.body.appendChild(iframe)
       const idoc=iframe.contentDocument||iframe.contentWindow.document
-      idoc.open();idoc.write(rHtml.replace(/<script[\s\S]*?<\/script>/gi,''));idoc.close()
-      // wait for content to render
-      await new Promise(r=>setTimeout(r,300))
-      const pdfBlob=await html2pdf().set({margin:0.3,filename:'report.pdf',image:{type:'jpeg',quality:0.95},html2canvas:{scale:2,useCORS:true,windowWidth:800},jsPDF:{unit:'in',format:'letter',orientation:'portrait'}}).from(idoc.body).outputPdf('blob')
+      // strip scripts, force white bg and black text on all elements
+      let cleanHtml=rHtml.replace(/<script[\s\S]*?<\/script>/gi,'')
+      cleanHtml=cleanHtml.replace('</head>','<style>*{color-scheme:light!important}html,body{background:#fff!important;color:#222!important}@media(prefers-color-scheme:dark){html,body{background:#fff!important;color:#222!important}}</style></head>')
+      idoc.open();idoc.write(cleanHtml);idoc.close()
+      // wait for content + fonts to render
+      await new Promise(r=>setTimeout(r,500))
+      const pdfBlob=await html2pdf().set({margin:[0.5,0.5,0.5,0.5],filename:'report.pdf',image:{type:'jpeg',quality:0.98},html2canvas:{scale:2,useCORS:true,windowWidth:816,backgroundColor:'#ffffff'},jsPDF:{unit:'in',format:'letter',orientation:'portrait'}}).from(idoc.body).outputPdf('blob')
       document.body.removeChild(iframe)
       const buf=await pdfBlob.arrayBuffer()
       const b64=btoa(new Uint8Array(buf).reduce((s,b)=>s+String.fromCharCode(b),''))
@@ -4903,10 +4906,11 @@ async function handleExtPhoto(ev){
 const RPT_LOGO=`<svg width="44" height="50" viewBox="0 0 32 38" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M16 2C16 2 6 10 6 20C6 26 10 30 16 30C22 30 26 26 26 20C26 10 16 2 16 2Z" fill="#f05a28"/><path d="M16 8C16 8 10 14 10 20C10 23 12 25 14 26C13 23 14 20 16 18C18 20 19 23 18 26C20 25 22 23 22 20C22 14 16 8 16 8Z" fill="#ff7847"/><ellipse cx="16" cy="30" rx="5" ry="6" fill="#3498db"/><ellipse cx="16" cy="29" rx="3" ry="3.5" fill="#5dade2"/></svg>`
 
 function rptShell(title,subtitle,content){
-  return`<!DOCTYPE html><html><head><meta charset="UTF-8">
+  return`<!DOCTYPE html><html style="background:#fff"><head><meta charset="UTF-8"><meta name="color-scheme" content="light">
 <style>
-*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'Segoe UI',Arial,Helvetica,sans-serif;font-size:9.5pt;color:#222;background:#fff;padding:28px 32px;line-height:1.4}
+*{margin:0;padding:0;box-sizing:border-box;color-scheme:light}
+html{background:#ffffff!important}
+body{font-family:'Segoe UI',Arial,Helvetica,sans-serif;font-size:9.5pt;color:#222!important;background:#ffffff!important;padding:28px 32px;line-height:1.4}
 .rpt-header{display:flex;align-items:center;gap:14px;padding-bottom:14px;border-bottom:3px solid #f05a28;margin-bottom:18px}
 .rpt-logo{flex-shrink:0}
 .rpt-co{flex:1}
