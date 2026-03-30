@@ -4086,18 +4086,7 @@ function showInv(d){
   h+=`<div class="inv-tot"><div>Total</div><div>${fmtD(d.total)}</div></div>`
   if(d.ro)h+=`<div style="background:#f0f4f8;border-radius:8px;padding:10px 14px;margin-top:14px;font-size:12px;color:#777;text-align:center">Recorded — not sent to customer</div>`
 
-  // report suggestion banner
-  if(d.jobId&&(hasKitchenSupp||hasCleanAgent)){
-    const rptType=hasCleanAgent?'clean_agent':'kitchen'
-    const rptLabel=hasCleanAgent?'Clean Agent System Report':'Kitchen Hood Suppression Report'
-    const rptIcon=hasCleanAgent?'🔵':'🍳'
-    const sysId=syss[0]?.id||''
-    h+=`<div style="background:#fff8f0;border:2px solid #f05a28;border-radius:10px;padding:12px 14px;margin-top:14px">
-      <div style="font-size:11px;font-weight:800;color:#f05a28;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">${rptIcon} Report Required</div>
-      <div style="font-size:13px;color:#333;margin-bottom:10px">Fill out the ${rptLabel} for this job.</div>
-      <button onclick="$('invOv').classList.remove('open');${rptType==='kitchen'?`openSuppReport('${d.jobId}','${sysId}')`:`openCleanAgentReport('${d.jobId}','${sysId}')`}" style="width:100%;padding:12px;border-radius:8px;background:#f05a28;color:#fff;font-size:13px;font-weight:800;border:none;cursor:pointer">${rptIcon} Fill ${rptLabel}</button>
-    </div>`
-  }
+  // report banner removed — reports handled via checklist flags on job card
 
   h+=`<div class="inv-acts">
     <button class="inv-close" onclick="$('invOv').classList.remove('open');rJobs()">Done</button>
