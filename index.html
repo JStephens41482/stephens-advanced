@@ -2128,7 +2128,7 @@ async function updateJobChecklist(){
       const label=isDC?'Dry Chem / Paint Booth Report':isCA?'Clean Agent Report':'Kitchen Hood Report'
       const action=isDC?`openDryChemReport('${jid}','${sys.id}')`:isCA?`openCleanAgentReport('${jid}','${sys.id}')`: `openSuppReport('${jid}','${sys.id}')`
       const sysName=(sys.system_type||'').split('(')[0].trim()
-      const done=rpts.some(r=>r.report_type===rptType&&(r.report_data?.sysId===sys.id||allSyss.length===1))
+      const done=rpts.some(r=>r.report_type===rptType)
       flags.push({label:label+(allSyss.length>1?' — '+sysName:''),done,action})
     })
     // if suppression line exists but no systems on file
@@ -5967,21 +5967,16 @@ async function _doSaveSuppReport(jobId,sysId,silent,btn){
 
   let saveOk=false
   try{
-    if(sysId){
-      const{data:allRpts}=await SB.from('reports').select('id,report_data').eq('job_id',jobId).eq('report_type','kitchen_suppression')
-      const existing=(allRpts||[]).find(r=>r.report_data?.sysId===sysId)
-      if(existing){
-        const{error}=await SB.from('reports').update({report_data:{...formData,sysId}}).eq('id',existing.id)
-        if(error){toast('Save error: '+error.message,false);console.error('report update:',error)}else saveOk=true
-      }else{
-        const{error}=await SB.from('reports').insert({job_id:jobId,location_id:locId,report_type:'kitchen_suppression',report_data:{...formData,sysId}})
-        if(error){toast('Save error: '+error.message,false);console.error('report insert:',error)}else saveOk=true
-      }
+    // simplified — always upsert by job_id + report_type, ignore sysId matching for now
+    const{data:existing}=await SB.from('reports').select('id').eq('job_id',jobId).eq('report_type','kitchen_suppression').limit(1)
+    if(existing?.length){
+      const{error}=await SB.from('reports').update({report_data:{...formData,sysId:sysId||null}}).eq('id',existing[0].id)
+      if(error){alert('SAVE ERROR: '+error.message);console.error(error)}else saveOk=true
     }else{
-      const{error}=await SB.from('reports').insert({job_id:jobId,location_id:locId,report_type:'kitchen_suppression',report_data:formData})
-      if(error){toast('Save error: '+error.message,false);console.error('report insert:',error)}else saveOk=true
+      const{error}=await SB.from('reports').insert({job_id:jobId,location_id:locId,report_type:'kitchen_suppression',report_data:{...formData,sysId:sysId||null}})
+      if(error){alert('SAVE ERROR: '+error.message);console.error(error)}else saveOk=true
     }
-  }catch(e){console.error('report save exception:',e);toast('Save failed: '+e.message,false)}
+  }catch(e){alert('SAVE CRASHED: '+e.message);console.error(e)}
 
   if(!saveOk){if(btn){btn.textContent='✓ Save Report';btn.style.opacity='';btn.style.pointerEvents=''}return}
 
