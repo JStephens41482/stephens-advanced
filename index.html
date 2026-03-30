@@ -4149,11 +4149,17 @@ async function _showEmailPreview(invId,to,custName,invNum){
   h+=`<button class="btn-dim" onclick="pop()">← Back</button>`
   h+=`</div>`
   push(h)
-  // init customer signature canvas — use same touch handler as report sigs
-  setTimeout(()=>{
+  // init customer signature canvas
+  function _initCustSig(){
     const c=$('custSendSig');if(!c)return
-    const r=c.parentElement.getBoundingClientRect();c.width=r.width;c.height=r.height||120
-    const ctx=c.getContext('2d');ctx.strokeStyle='#ffffff';ctx.lineWidth=2.5;ctx.lineCap='round';ctx.lineJoin='round'
+    const wrap=c.parentElement;if(!wrap)return
+    const w=wrap.offsetWidth||wrap.clientWidth||300
+    const h=wrap.offsetHeight||wrap.clientHeight||120
+    if(w<10){setTimeout(_initCustSig,200);return} // not visible yet, retry
+    c.width=w;c.height=h
+    c.style.width=w+'px';c.style.height=h+'px'
+    const ctx=c.getContext('2d')
+    ctx.strokeStyle='#ffffff';ctx.lineWidth=3;ctx.lineCap='round';ctx.lineJoin='round'
     let on=false
     const ph=$('custSendSigPh')
     const gp=(e)=>{const cr=c.getBoundingClientRect(),t=e.touches?e.touches[0]:e;return{x:t.clientX-cr.left,y:t.clientY-cr.top}}
@@ -4162,7 +4168,9 @@ async function _showEmailPreview(invId,to,custName,invNum){
     const se=()=>{on=false}
     c.addEventListener('touchstart',sp,{passive:false});c.addEventListener('touchmove',sm,{passive:false});c.addEventListener('touchend',se)
     c.addEventListener('mousedown',sp);c.addEventListener('mousemove',sm);c.addEventListener('mouseup',se)
-  },150)
+    c.addEventListener('pointerdown',sp);c.addEventListener('pointermove',sm);c.addEventListener('pointerup',se)
+  }
+  setTimeout(_initCustSig,400)
 }
 
 async function _confirmSendEmail(){
