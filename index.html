@@ -385,13 +385,49 @@ function push(html,opts={}){
   return slot
 }
 
+let _autoSaving=false
 function pop(){
   if(!stk.length)return
+  // auto-save any open report before closing (skip if already auto-saving to avoid recursion)
+  if(!_autoSaving){_autoSaving=true;_autoSaveOpenReport();_autoSaving=false}
   const id=stk.pop()
   const el=document.getElementById(id)
   el.classList.remove('open')
   delete el.dataset.jobId
   _popTimers[id]=setTimeout(()=>{el.style.display='none';el.innerHTML='';delete _popTimers[id]},250)
+}
+
+function _autoSaveOpenReport(){
+  // detect which report form is open by checking for specific elements
+  const rptSaveBtn=$('rptSaveBtn2')||$('rptSaveBtn')
+  const dcSaveBtn=document.querySelector('[onclick*="saveDryChemReport"]')
+  const caSaveBtn=$('caRptSaveBtn2')||$('caRptSaveBtn')
+  const extShell=$('ext-edit-shell')
+
+  if(rptSaveBtn&&$('rpt-mfg')){
+    // kitchen suppression report is open — fire save silently
+    const jid=rptSaveBtn.getAttribute('onclick')?.match(/'([^']+)'/)?.[1]
+    const sid=rptSaveBtn.getAttribute('onclick')?.match(/'([^']+)',\s*'([^']*)'/)
+    if(jid){saveSuppReport(jid,sid?.[2]||'',true).catch(e=>console.error('auto-save supp:',e))}
+    return
+  }
+  if(dcSaveBtn&&$('dc-sys-type')){
+    // dry chem report is open
+    dcSaveBtn.click()
+    return
+  }
+  if(caSaveBtn&&$('ca-agent-type')){
+    // clean agent report is open
+    const onclick=caSaveBtn.getAttribute('onclick')||''
+    const match=onclick.match(/saveCleanAgentReport\('([^']+)','([^']*)'\)/)
+    if(match){saveCleanAgentReport(match[1],match[2]).catch(e=>console.error('auto-save ca:',e))}
+    return
+  }
+  if(extShell&&window._extJobId){
+    // extinguisher report is open
+    finishExtReport(window._extJobId,true).catch(e=>console.error('auto-save ext:',e))
+    return
+  }
 }
 
 function popAll(){
@@ -4950,7 +4986,7 @@ async function saveManExtAndReturn(locId,jobId){
   openExtReport(jobId,Math.max(0,newIdx))
 }
 
-async function finishExtReport(jobId){
+async function finishExtReport(jobId,silent){
   // save current entry if we're on one
   const i=_extRptIdx
   if(i<_extRptData.length){
@@ -4974,9 +5010,10 @@ async function finishExtReport(jobId){
     const upd={};if(d.lastInternal)upd.last_internal=d.lastInternal;if(d.lastHydro)upd.last_hydro=d.lastHydro
     if(Object.keys(upd).length){try{await SB.from('extinguishers').update(upd).eq('id',d.id)}catch(e){}}
   }
-  toast('Extinguisher report saved ✓')
   await load()
-  pop() // just pop the single shell
+  if(silent)return
+  toast('Extinguisher report saved ✓')
+  pop()
 }
 
 
@@ -5937,8 +5974,8 @@ async function handleAppliancePhotos(ev){
   if(st)st.style.display='none'
 }
 
-async function saveSuppReport(jobId,sysId){
-  const btn=$('rptSaveBtn2')||$('rptSaveBtn');if(btn){btn.textContent='Saving...';btn.style.opacity='.5';btn.style.pointerEvents='none'}
+async function saveSuppReport(jobId,sysId,silent){
+  const btn=silent?null:($('rptSaveBtn2')||$('rptSaveBtn'));if(btn){btn.textContent='Saving...';btn.style.opacity='.5';btn.style.pointerEvents='none'}
   // capture all form data BEFORE any async calls
   let techSigData=''
   try{
@@ -5995,6 +6032,7 @@ async function saveSuppReport(jobId,sysId){
   if(!saveOk){if(btn){btn.textContent='✓ Save Report';btn.style.opacity='';btn.style.pointerEvents=''}return}
 
   await load()
+  if(silent)return // auto-save — don't pop or show prompts
   toast('Report saved ✓')
   pop()
   // only offer additional report if location has multiple suppression systems
