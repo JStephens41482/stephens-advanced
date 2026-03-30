@@ -3966,13 +3966,13 @@ async function saveJob(){
   const jobTime=$('ntm')?.value||'09:00'
   const jobNoteTxt=$('nnt')?.value?.trim()||''
   const assignTo=$('nAssign')?.value||null
-  const{error}=await SB.from('jobs').insert({location_id:lid,billing_account_id:ba,type:ty,scope:sc.length?sc:['extinguishers','suppression'],scheduled_date:jobDate,scheduled_time:jobTime,status:'scheduled',notes:jobNoteTxt||null,assigned_to:assignTo||null})
+  const{data:newJob,error}=await SB.from('jobs').insert({location_id:lid,billing_account_id:ba,type:ty,scope:sc.length?sc:['extinguishers','suppression'],scheduled_date:jobDate,scheduled_time:jobTime,status:'scheduled',notes:jobNoteTxt||null,assigned_to:assignTo||null}).select().single()
   if(error){toast('Error creating job',false);setLoad('saveJobBtn',false,'Create Job');return}
   await load();toast('Job created ✓')
   nSt={loc:null,mk:false}
   popAll()
   rJobs();rDash()
-  go(document.querySelector('[data-v="vJobs"]'))
+  if(newJob?.id)openJob(newJob.id)
   // offer to add to iPhone calendar
   const calLoc=D.locs.find(x=>x.id===lid)||{}
   addToCalendar({
