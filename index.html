@@ -1549,20 +1549,168 @@ function jCard(j,isOv=false){
 }
 
 // JOBS LIST
-function rJobs(q){
+let _calYear,_calMonth,_jobsView='calendar'
+
+function rJobs(){
+  if(_jobsView==='list')rJobsList()
+  else rJobsCal()
+}
+
+function rJobsCal(){
+  const now=new Date()
+  if(!_calYear){_calYear=now.getFullYear();_calMonth=now.getMonth()}
+  const t=td()
+  const monthNames=['January','February','March','April','May','June','July','August','September','October','November','December']
+  const dayNames=['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
+  const firstDay=new Date(_calYear,_calMonth,1).getDay()
+  const daysInMonth=new Date(_calYear,_calMonth+1,0).getDate()
+  const all=D.jobs.filter(j=>j.status!=='cancelled')
+
+  let h=`<div style="display:flex;align-items:center;justify-content:space-between;margin:8px 0 12px">
+    <button style="font-size:22px;color:var(--fire);padding:8px 12px;background:none;border:none;cursor:pointer;min-height:44px" onclick="_calMonth--;if(_calMonth<0){_calMonth=11;_calYear--}rJobsCal()">‹</button>
+    <div style="text-align:center">
+      <div style="font-size:17px;font-weight:800">${monthNames[_calMonth]} ${_calYear}</div>
+      <button style="font-size:10px;color:var(--info);font-weight:700;background:none;border:none;cursor:pointer;margin-top:2px" onclick="_calYear=${now.getFullYear()};_calMonth=${now.getMonth()};rJobsCal()">Today</button>
+    </div>
+    <button style="font-size:22px;color:var(--fire);padding:8px 12px;background:none;border:none;cursor:pointer;min-height:44px" onclick="_calMonth++;if(_calMonth>11){_calMonth=0;_calYear++}rJobsCal()">›</button>
+  </div>
+  <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+    <button style="font-size:11px;font-weight:700;color:var(--g1);padding:6px 12px;border-radius:var(--rs);background:var(--c2);border:1px solid var(--b1);cursor:pointer" onclick="_jobsView='list';rJobsList()">☰ List View</button>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:1px;margin-bottom:4px">`
+  dayNames.forEach(d=>h+=`<div style="text-align:center;font-size:9px;font-weight:800;color:var(--g2);padding:4px;text-transform:uppercase;letter-spacing:.5px">${d}</div>`)
+  h+=`</div><div style="display:grid;grid-template-columns:repeat(7,1fr);gap:1px">`
+
+  // empty cells before first day
+  for(let i=0;i<firstDay;i++)h+=`<div style="min-height:52px;background:var(--c1);border-radius:4px"></div>`
+
+  for(let d=1;d<=daysInMonth;d++){
+    const ds=`${_calYear}-${(_calMonth+1).toString().padStart(2,'0')}-${d.toString().padStart(2,'0')}`
+    const dayJobs=all.filter(j=>j.scheduled_date===ds)
+    const isToday=ds===t
+    const scheduled=dayJobs.filter(j=>j.status==='scheduled'&&j.scheduled_date>=t)
+    const overdue=dayJobs.filter(j=>j.status==='scheduled'&&j.scheduled_date<t)
+    const completed=dayJobs.filter(j=>j.status==='completed')
+
+    h+=`<div style="min-height:52px;background:${isToday?'var(--fires)':'var(--c1)'};border-radius:4px;padding:4px;cursor:pointer;border:${isToday?'1.5px solid var(--fire)':'1px solid var(--b1)'};position:relative;overflow:hidden" onclick="openCalDay('${ds}')">
+      <div style="font-size:12px;font-weight:${isToday?'900':'600'};color:${isToday?'var(--fire)':'var(--w)'};margin-bottom:2px">${d}</div>`
+    if(dayJobs.length){
+      h+=`<div style="display:flex;gap:2px;flex-wrap:wrap">`
+      if(overdue.length)h+=`<div style="width:6px;height:6px;border-radius:50%;background:var(--bad)"></div>`.repeat(Math.min(overdue.length,3))
+      if(scheduled.length)h+=`<div style="width:6px;height:6px;border-radius:50%;background:var(--info)"></div>`.repeat(Math.min(scheduled.length,3))
+      if(completed.length)h+=`<div style="width:6px;height:6px;border-radius:50%;background:var(--g3)"></div>`.repeat(Math.min(completed.length,3))
+      if(dayJobs.length>3)h+=`<div style="font-size:8px;font-weight:800;color:var(--g1)">+${dayJobs.length-3}</div>`
+      h+=`</div>`
+    }
+    h+=`</div>`
+  }
+
+  // fill remaining cells
+  const totalCells=firstDay+daysInMonth
+  const remaining=totalCells%7?7-totalCells%7:0
+  for(let i=0;i<remaining;i++)h+=`<div style="min-height:52px;background:var(--c1);border-radius:4px;opacity:.3"></div>`
+
+  h+=`</div>`
+
+  // overdue summary below calendar
+  const ovAll=all.filter(j=>j.status==='scheduled'&&j.scheduled_date<t)
+  if(ovAll.length){
+    h+=`<div style="background:var(--bads);border:1.5px solid var(--bad);border-radius:var(--r);padding:10px 14px;margin-top:12px;cursor:pointer" onclick="openCalDay('overdue')">
+      <span style="font-size:12px;font-weight:800;color:var(--bad)">${ovAll.length} Overdue Job${ovAll.length>1?'s':''}</span>
+    </div>`
+  }
+
+  $('jobsC').innerHTML=h
+}
+
+function openCalDay(ds){
+  const t=td()
+  let dayJobs
+  let title
+  if(ds==='overdue'){
+    dayJobs=D.jobs.filter(j=>j.status==='scheduled'&&j.scheduled_date<t)
+    title='Overdue Jobs'
+  }else{
+    dayJobs=D.jobs.filter(j=>j.scheduled_date===ds&&j.status!=='cancelled')
+    const dt=new Date(ds+'T12:00:00')
+    title=dt.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})
+  }
+
+  // time slots from 7am to 6pm
+  const slots=[]
+  for(let hr=7;hr<=18;hr++){
+    const hStr=hr.toString().padStart(2,'0')+':00'
+    const label=hr>12?(hr-12)+' PM':(hr===12?'12 PM':hr+' AM')
+    const slotJobs=dayJobs.filter(j=>{
+      const jh=parseInt((j.scheduled_time||'09:00').split(':')[0])
+      return jh===hr
+    })
+    slots.push({hr,hStr,label,jobs:slotJobs})
+  }
+  // jobs with no time or outside range
+  const unslotted=dayJobs.filter(j=>{
+    const jh=parseInt((j.scheduled_time||'99').split(':')[0])
+    return jh<7||jh>18||isNaN(jh)
+  })
+
+  let h=`<div class="ov-hdr"><button class="ov-back" onclick="pop()">‹</button><div class="ov-title">${title}</div>
+    ${ds!=='overdue'?`<button class="ov-act" onclick="pop();schedFromCal('${ds}')">+ Add</button>`:''}
+  </div><div class="ov-body">`
+
+  if(!dayJobs.length&&ds!=='overdue'){
+    h+=`<div style="text-align:center;padding:40px;color:var(--g2)">
+      <div style="font-size:32px;margin-bottom:8px;opacity:.3">📅</div>
+      <div style="font-size:14px;margin-bottom:16px">No jobs on this day</div>
+      <button class="btn-p" style="max-width:240px;margin:0 auto" onclick="pop();schedFromCal('${ds}')">Schedule a Job Here</button>
+    </div>`
+  }else{
+    if(unslotted.length){
+      h+=`<div style="margin-bottom:12px">`
+      unslotted.forEach(j=>h+=jCard(j,ds!=='overdue'&&j.scheduled_date<t))
+      h+=`</div>`
+    }
+    slots.forEach(s=>{
+      if(!s.jobs.length&&ds==='overdue')return
+      h+=`<div style="display:flex;gap:8px;min-height:48px;margin-bottom:2px">
+        <div style="width:52px;font-size:11px;font-weight:600;color:var(--g2);padding-top:6px;flex-shrink:0;text-align:right">${s.label}</div>
+        <div style="flex:1;border-left:1px solid var(--b1);padding-left:8px;min-height:48px${!s.jobs.length?';cursor:pointer':''}"${!s.jobs.length&&ds!=='overdue'?` onclick="pop();schedFromCal('${ds}','${s.hStr}')"`:''}>`
+      if(s.jobs.length){
+        s.jobs.forEach(j=>{
+          const l=D.locs?.find(x=>x.id===(j.location_id||j.location?.id))||j.location||{}
+          const sc=j.scope||[]
+          h+=`<div style="background:var(--c1);border:1px solid var(--b1);border-radius:var(--rs);padding:10px;margin-bottom:4px;cursor:pointer;border-left:3px solid ${j.status==='completed'?'var(--g3)':j.scheduled_date<t?'var(--bad)':'var(--info)'}" onclick="openJob('${j.id}')">
+            <div style="font-size:13px;font-weight:700">${esc(l.name||'Unknown')}</div>
+            <div style="font-size:11px;color:var(--g1);margin-top:2px">${(j.scheduled_time||'').slice(0,5)} · ${sc.join(', ')}</div>
+          </div>`
+        })
+      }
+      h+=`</div></div>`
+    })
+  }
+
+  h+=`</div>`
+  push(h);setTimeout(initSwipes,50)
+}
+
+function schedFromCal(date,time){
+  window._preCalDate=date
+  window._preCalTime=time||null
+  openSchedJob()
+}
+
+function rJobsList(q){
   const t=td(),all=D.jobs.filter(j=>j.status!=='cancelled')
   let filtered=all
   if(q){
     const ql=q.toLowerCase()
     filtered=all.filter(j=>{
-      const l=j.location||{}
+      const l=D.locs?.find(x=>x.id===(j.location_id||j.location?.id))||j.location||{}
       return(l.name||'').toLowerCase().includes(ql)||(l.address||'').toLowerCase().includes(ql)||(l.city||'').toLowerCase().includes(ql)||(j.scheduled_date||'').includes(ql)
     })
   }
   const ov=filtered.filter(j=>j.status==='scheduled'&&j.scheduled_date<t)
   const up=filtered.filter(j=>j.status==='scheduled'&&j.scheduled_date>=t)
   const done=filtered.filter(j=>j.status==='completed').slice(0,20)
-  // only rebuild the list part if search box already exists
   if($('jobs-list')){
     let h2=''
     if(ov.length){h2+=`<div class="sec"><div class="sec-t" style="color:var(--bad)">Overdue · ${ov.length}</div></div>`;ov.forEach(j=>h2+=jCard(j,true))}
@@ -1572,8 +1720,11 @@ function rJobs(q){
     $('jobs-list').innerHTML=h2
     return
   }
-  let h=`<div class="sec" style="margin-top:8px"><div class="sec-t">Jobs · ${all.length}</div></div>
-    <input class="srch" placeholder="Search by customer, city, or date..." oninput="rJobs(this.value)">`
+  let h=`<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 12px">
+    <div class="sec-t">Jobs · ${all.length}</div>
+    <button style="font-size:11px;font-weight:700;color:var(--g1);padding:6px 12px;border-radius:var(--rs);background:var(--c2);border:1px solid var(--b1);cursor:pointer" onclick="_jobsView='calendar';rJobsCal()">📅 Calendar</button>
+  </div>
+  <input class="srch" placeholder="Search by customer, city, or date..." oninput="rJobsList(this.value)">`
   h+=`<div id="jobs-list">`
   if(ov.length){h+=`<div class="sec"><div class="sec-t" style="color:var(--bad)">Overdue · ${ov.length}</div></div>`;ov.forEach(j=>h+=jCard(j,true))}
   if(up.length){h+=`<div class="sec"><div class="sec-t">Scheduled · ${up.length}</div></div>`;up.forEach(j=>h+=jCard(j))}
@@ -3907,8 +4058,8 @@ function rNewJob(){
   }
   h+=`</div>
   <div class="fg"><div class="fg-l">Date &amp; Time</div><div class="row2">
-    <input type="date" id="ndt" value="${new Date(Date.now()+86400000).toISOString().split('T')[0]}">
-    <input type="time" id="ntm" value="09:00">
+    <input type="date" id="ndt" value="${window._preCalDate||new Date(Date.now()+86400000).toISOString().split('T')[0]}">
+    <input type="time" id="ntm" value="${window._preCalTime||'09:00'}">
   </div></div>
   <div class="fg"><div class="fg-l">Type</div><div class="tgl" id="nTy">`
   ;[['inspection','Inspection'],['emergency','Emergency'],['misc','Misc']].forEach(([k,v])=>h+=`<button data-k="${k}" ${k==='inspection'?'class="on"':''} onclick="document.querySelectorAll('#nTy button').forEach(b=>b.classList.remove('on'));this.classList.add('on')">${v}</button>`)
@@ -3966,10 +4117,18 @@ async function saveJob(){
   const jobTime=$('ntm')?.value||'09:00'
   const jobNoteTxt=$('nnt')?.value?.trim()||''
   const assignTo=$('nAssign')?.value||null
+  // double-booking check
+  const conflicts=D.jobs.filter(j2=>j2.scheduled_date===jobDate&&j2.scheduled_time===jobTime&&j2.status==='scheduled')
+  if(conflicts.length){
+    const cNames=conflicts.map(j2=>{const cl=D.locs?.find(x=>x.id===j2.location_id);return cl?.name||'Unknown'}).join(', ')
+    if(!confirm(`Warning: ${conflicts.length} job${conflicts.length>1?'s':''} already scheduled at ${jobTime} on ${jobDate} (${cNames}). Schedule anyway?`)){
+      setLoad('saveJobBtn',false,'Create Job');return
+    }
+  }
   const{data:newJob,error}=await SB.from('jobs').insert({location_id:lid,billing_account_id:ba,type:ty,scope:sc.length?sc:['extinguishers','suppression'],scheduled_date:jobDate,scheduled_time:jobTime,status:'scheduled',notes:jobNoteTxt||null,assigned_to:assignTo||null}).select().single()
   if(error){toast('Error creating job',false);setLoad('saveJobBtn',false,'Create Job');return}
   await load();toast('Job created ✓')
-  nSt={loc:null,mk:false}
+  nSt={loc:null,mk:false};window._preCalDate=null;window._preCalTime=null
   popAll()
   rJobs();rDash()
   if(newJob?.id)openJob(newJob.id)
