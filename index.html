@@ -2448,12 +2448,10 @@ async function openInvDetail(id){
     }
   }
 
-  h+=`</div>`
-
   if(!isPaid){
-    h+=`<div class="ov-foot" style="display:flex;flex-direction:column;gap:8px">
+    h+=`<div style="padding:16px 0;display:flex;flex-direction:column;gap:12px">
       <button class="btn-p" id="inv-save-lines-btn" onclick="saveInvLines('${id}')">💾 Save Changes</button>
-      <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:var(--g2);margin-bottom:2px">Collect Payment</div>
+      <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:var(--g2);margin-top:8px">Collect Payment</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
         <button class="qa-btn ok2" style="flex:1;font-size:11px;min-width:60px" onclick="collectPayment('${id}','check')">✓ Check</button>
         <button class="qa-btn ok2" style="flex:1;font-size:11px;min-width:60px" onclick="collectPayment('${id}','cash')">💵 Cash</button>
@@ -2466,14 +2464,14 @@ async function openInvDetail(id){
         <button id="det-send-btn" style="background:var(--info);color:#fff;padding:0 16px;border-radius:var(--rs);font-size:13px;font-weight:800;min-height:44px;white-space:nowrap;flex-shrink:0" onclick="sendInvoiceEmailFromDetail('${id}','${esc(loc.name||'')}','${esc(inv.invoice_number||'')}')">✉️ Send</button>
       </div>
       <div id="det-email-status" style="font-size:12px;color:var(--g1);text-align:center;min-height:16px"></div>
-      <button class="btn-dim" style="margin-top:0" onclick="pop()">← Back</button>
-    </div>`
+      <button class="btn-dim" style="margin-top:4px" onclick="pop()">← Back</button>
+    </div></div>`
   }else{
     const invAge=inv.date?Math.round((new Date()-new Date(inv.date+'T12:00:00'))/(1000*60*60*24)):0
     const canChange=invAge<=90
-    h+=`<div class="ov-foot" style="display:flex;flex-direction:column;gap:8px">`
+    h+=`<div style="padding:16px 0;display:flex;flex-direction:column;gap:12px">`
     if(canChange){
-      h+=`<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:var(--g2);margin-bottom:2px">Change Payment Method</div>
+      h+=`<div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:var(--g2)">Change Payment Method</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
         <button class="qa-btn ok2" style="flex:1;font-size:11px;min-width:60px" onclick="collectPayment('${id}','check')">✓ Check</button>
         <button class="qa-btn ok2" style="flex:1;font-size:11px;min-width:60px" onclick="collectPayment('${id}','cash')">💵 Cash</button>
@@ -2487,8 +2485,8 @@ async function openInvDetail(id){
         <button id="det-send-btn" style="background:var(--info);color:#fff;padding:0 16px;border-radius:var(--rs);font-size:13px;font-weight:800;min-height:44px;white-space:nowrap;flex-shrink:0" onclick="sendInvoiceEmailFromDetail('${id}','${esc(loc.name||'')}','${esc(inv.invoice_number||'')}')">✉️ Send</button>
       </div>
       <div id="det-email-status" style="font-size:12px;color:var(--g1);text-align:center;min-height:16px"></div>
-      <button class="btn-dim" style="margin-top:0" onclick="pop()">← Back</button>
-    </div>`
+      <button class="btn-dim" style="margin-top:4px" onclick="pop()">← Back</button>
+    </div></div>`
   }
   push(h)
   setTimeout(()=>renderInvLines(isPaid),60)
