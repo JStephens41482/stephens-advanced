@@ -274,7 +274,7 @@ select{-webkit-appearance:none;appearance:none}
 .swipe-inner{transition:transform .2s ease;position:relative;z-index:1}
 .swipe-del{position:absolute;right:0;top:0;bottom:0;width:90px;background:var(--bad);display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:800;z-index:0}
 .swipe-resched+.swipe-del{width:45px;font-size:10px}
-.swipe-resched{position:absolute;right:45px;top:0;bottom:0;width:45px;background:var(--info);display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:700;z-index:0;flex-direction:column;gap:1px;text-align:center;line-height:1.1}
+.swipe-resched{position:absolute;right:45px;top:0;bottom:0;width:45px;background:var(--info);display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px;font-weight:700;z-index:0}
 .chat-fab{position:fixed;bottom:140px;right:16px;width:48px;height:48px;border-radius:50%;background:var(--info);color:#fff;font-size:22px;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 20px rgba(99,102,241,.4);z-index:90;cursor:pointer;border:none;transition:transform .1s}
 .chat-fab:active{transform:scale(.9)}
 .chat-ov{display:none;position:fixed;inset:0;z-index:300;background:var(--bg);flex-direction:column}
@@ -931,7 +931,7 @@ function openRouteView(){
         <div style="font-size:14px;font-weight:700">${esc(l.name||'Unknown')}</div>
         <div style="font-size:11px;color:var(--g1);margin-top:2px">${esc(a)}</div>
         <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
-          <span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:4px;background:${isOv?'var(--bads)':'var(--infos)'};color:${isOv?'var(--bad)':'var(--info)'}">${dateLabel}</span>
+          <span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:4px;background:${isOv?'var(--bads)':'var(--infos)'};color:${isOv?'var(--bad)':'var(--info)'};cursor:pointer;text-decoration:underline;text-decoration-color:rgba(255,255,255,.2)" onclick="event.stopPropagation();pop();reschedJob('${j.id}')">${dateLabel}${j.scheduled_time?' · '+j.scheduled_time.slice(0,5):''}</span>
           ${(j.scope||[]).map(s=>`<span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:4px;background:var(--c2);color:var(--g1)">${s}</span>`).join('')}
           <span style="font-size:10px;color:var(--g1)">${i===0?Math.round(r.dist)+' mi from base':Math.round(r.dist)+' mi from prev'}</span>
         </div>
@@ -1599,11 +1599,11 @@ function jCard(j,isOv=false){
   const isSvcReq=(j.notes||'').includes('WEB SERVICE REQUEST')
   const cls=isSvcReq?'jrd':isOv?'jrd':j.status==='active'?'jgn':j.status==='completed'?'jgy':'jbl'
   return`<div class="swipe-wrap" data-swipe-job="${j.id}">
-    <div class="swipe-resched" onclick="event.stopPropagation();reschedJob('${j.id}')">${ds||'Date'}</div>
+    <div class="swipe-resched" onclick="event.stopPropagation();reschedJob('${j.id}')">📅</div>
     <div class="swipe-del">Delete</div>
     <div class="swipe-inner jc ${cls}" onclick="openJob('${j.id}')" style="margin-bottom:0${isSvcReq?';border-left:4px solid #f59e0b;background:rgba(245,158,11,.06)':''}">
     ${isSvcReq?'<div style="background:#f59e0b;color:#000;font-size:10px;font-weight:900;padding:3px 10px;border-radius:4px;margin-bottom:6px;display:inline-block;letter-spacing:1px">SERVICE REQUEST</div>':''}
-    <div class="jc-r1"><div class="jc-nm"><span style="color:var(--fire);text-decoration:underline;text-decoration-color:rgba(240,90,40,.3);text-underline-offset:2px;cursor:pointer" onclick="event.stopPropagation();openCust('${j.location_id||l.id}')">${esc(l.name||'Unknown')} ›</span></div><div class="jc-tm"><span style="cursor:pointer;text-decoration:underline;text-decoration-color:rgba(255,255,255,.2);text-underline-offset:2px" onclick="event.stopPropagation();reschedJob('${j.id}')">${ds}${j.scheduled_time?' '+j.scheduled_time.slice(0,5):''}</span></div></div>
+    <div class="jc-r1"><div class="jc-nm"><span style="color:var(--fire);text-decoration:underline;text-decoration-color:rgba(240,90,40,.3);text-underline-offset:2px;cursor:pointer" onclick="event.stopPropagation();openCust('${j.location_id||l.id}')">${esc(l.name||'Unknown')} ›</span></div><div class="jc-tm"><span style="cursor:pointer;color:var(--info);text-decoration:underline;text-decoration-color:rgba(99,102,241,.3);text-underline-offset:2px" onclick="event.stopPropagation();reschedJob('${j.id}')">${ds?(ds+(j.scheduled_time?' '+j.scheduled_time.slice(0,5):'')):'Unscheduled'}</span></div></div>
     <div class="jc-addr">${esc(a)||'No address'}</div>
     <div class="jc-tags">${sc.includes('suppression')?'<span class="tg ts">Suppression</span>':''}${sc.includes('extinguishers')?'<span class="tg te">Ext</span>':''}${sc.includes('elights')?'<span class="tg tl">E-Lights</span>':''}${sc.includes('hydro')?'<span class="tg th">Hydro</span>':''}${isOv?'<span class="tg to2">Overdue</span>':''}${l.is_brycer_jurisdiction?'<span class="tg tb">Brycer</span>':''}${j.assigned_to?(()=>{const tk2=D.techs?.find(x=>x.id===j.assigned_to);return tk2?'<span class="tg" style="background:'+tk2.color+'22;color:'+tk2.color+'">'+esc(tk2.name.split(' ')[0])+'</span>':''})():''}</div>
     <div class="jc-val">${v?fmt(v):'<span style="color:var(--g2);font-size:12px">Add equipment to estimate</span>'}</div>
@@ -1839,7 +1839,7 @@ function openCalDay(ds){
           const sc=j.scope||[]
           h+=`<div style="background:var(--c1);border:1px solid var(--b1);border-radius:var(--rs);padding:10px;margin-bottom:4px;cursor:pointer;border-left:3px solid ${j.status==='completed'?'var(--g3)':j.scheduled_date<t?'var(--bad)':'var(--info)'}" onclick="openJob('${j.id}')">
             <div style="font-size:13px;font-weight:700">${esc(l.name||'Unknown')}</div>
-            <div style="font-size:11px;color:var(--g1);margin-top:2px">${(j.scheduled_time||'').slice(0,5)} · ${sc.join(', ')}</div>
+            <div style="font-size:11px;color:var(--g1);margin-top:2px"><span style="cursor:pointer;color:var(--info);text-decoration:underline;text-decoration-color:rgba(99,102,241,.3)" onclick="event.stopPropagation();reschedJob('${j.id}')">${(j.scheduled_time||'').slice(0,5)||'No time'}</span> · ${sc.join(', ')}</div>
           </div>`
         })
       }
@@ -2087,7 +2087,7 @@ async function openJob(id){
   <!-- STATUS BAR -->
   <div style="background:var(--c1);border:1px solid var(--b1);border-radius:var(--r);padding:12px 14px;margin-bottom:16px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:${D.techs?.length?'8px':'0'}">
-      <div style="font-size:13px;color:var(--g1)">${j.scheduled_date||'No date'}${j.scheduled_time?' · '+j.scheduled_time.slice(0,5):''}</div>
+      <div style="font-size:13px;color:var(--info);cursor:pointer;text-decoration:underline;text-decoration-color:rgba(99,102,241,.3)" onclick="reschedJob('${j.id}')">${j.scheduled_date||'Unscheduled'}${j.scheduled_time?' · '+j.scheduled_time.slice(0,5):''}</div>
       <span style="font-size:11px;font-weight:800;text-transform:uppercase;color:${statC}">${j.status}</span>
     </div>
     ${D.techs?.length?`<div style="display:flex;align-items:center;gap:8px">
