@@ -316,11 +316,11 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;color:#222;backgroun
   <div class="section-inner" style="text-align:center">
     <div class="section-label">Get Started</div>
     <div class="section-title">Request Service</div>
-    <div class="section-sub" style="max-width:480px;margin-left:auto;margin-right:auto">Fill out the form below and we'll get back to you within one business day.</div>
+    <div class="section-sub" style="max-width:520px;margin-left:auto;margin-right:auto">Fill out the form below and we'll get back to you to confirm scheduling.</div>
     <form class="request-form" id="serviceForm" onsubmit="submitServiceRequest(event)">
       <div class="fg">
         <label>Request Type</label>
-        <select id="req-type">
+        <select id="req-type" onchange="updatePricing()">
           <option value="inspection">Inspection / Service</option>
           <option value="emergency">Emergency Service</option>
           <option value="install">New Installation</option>
@@ -328,26 +328,91 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;color:#222;backgroun
         </select>
       </div>
       <div class="fg">
-        <label>Business Name</label>
-        <input type="text" id="req-business" placeholder="Your business name" required>
+        <label>Business Name *</label>
+        <input type="text" id="req-business" placeholder="e.g. Primo Brothers Pizza" required>
       </div>
       <div class="fg">
-        <label>Contact Name</label>
+        <label>Contact Name *</label>
         <input type="text" id="req-name" placeholder="Your name" required>
       </div>
       <div class="fg">
-        <label>Phone Number</label>
+        <label>Phone Number *</label>
         <input type="tel" id="req-phone" placeholder="(xxx) xxx-xxxx" required>
       </div>
       <div class="fg">
-        <label>Address</label>
-        <input type="text" id="req-address" placeholder="Street address, city">
+        <label>Email</label>
+        <input type="email" id="req-email" placeholder="For invoice and report delivery">
       </div>
       <div class="fg">
-        <label>Description</label>
-        <textarea id="req-desc" placeholder="What do you need? (type of system, number of extinguishers, etc.)"></textarea>
+        <label>Street Address *</label>
+        <input type="text" id="req-address" placeholder="123 Main St" required>
       </div>
-      <button type="submit" class="submit-btn" id="req-submit">Submit Request</button>
+      <div style="display:flex;gap:12px">
+        <div class="fg" style="flex:2">
+          <label>City *</label>
+          <input type="text" id="req-city" placeholder="Fort Worth" required>
+        </div>
+        <div class="fg" style="flex:1">
+          <label>State</label>
+          <input type="text" id="req-state" value="TX" style="text-align:center">
+        </div>
+        <div class="fg" style="flex:1">
+          <label>Zip</label>
+          <input type="text" id="req-zip" placeholder="76040">
+        </div>
+      </div>
+
+      <div style="text-align:left;margin:20px 0 8px">
+        <label style="display:block;margin-bottom:12px">What do you need serviced? <span style="color:#888;font-weight:400;text-transform:none;letter-spacing:0">(check all that apply)</span></label>
+        <div style="display:flex;flex-wrap:wrap;gap:8px" id="scope-checks">
+          <label style="display:flex;align-items:center;gap:6px;padding:10px 16px;border:2px solid #eee;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600;text-transform:none;letter-spacing:0;color:#444"><input type="checkbox" value="suppression" onchange="updatePricing()"> Kitchen Hood System</label>
+          <label style="display:flex;align-items:center;gap:6px;padding:10px 16px;border:2px solid #eee;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600;text-transform:none;letter-spacing:0;color:#444"><input type="checkbox" value="extinguishers" onchange="updatePricing()"> Fire Extinguishers</label>
+          <label style="display:flex;align-items:center;gap:6px;padding:10px 16px;border:2px solid #eee;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600;text-transform:none;letter-spacing:0;color:#444"><input type="checkbox" value="clean_agent" onchange="updatePricing()"> Clean Agent System</label>
+          <label style="display:flex;align-items:center;gap:6px;padding:10px 16px;border:2px solid #eee;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600;text-transform:none;letter-spacing:0;color:#444"><input type="checkbox" value="elights" onchange="updatePricing()"> Emergency Lighting</label>
+          <label style="display:flex;align-items:center;gap:6px;padding:10px 16px;border:2px solid #eee;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600;text-transform:none;letter-spacing:0;color:#444"><input type="checkbox" value="paint_booth" onchange="updatePricing()"> Paint Booth System</label>
+        </div>
+      </div>
+
+      <div class="fg" style="text-align:left">
+        <label>How many fire extinguishers? <span style="color:#888;font-weight:400;text-transform:none;letter-spacing:0">(if applicable)</span></label>
+        <input type="number" id="req-ext-count" placeholder="0" min="0" value="0" onchange="updatePricing()">
+      </div>
+
+      <div class="fg" style="text-align:left">
+        <label>How many suppression systems? <span style="color:#888;font-weight:400;text-transform:none;letter-spacing:0">(hood lines, paint booths, etc.)</span></label>
+        <input type="number" id="req-sys-count" placeholder="1" min="0" value="1" onchange="updatePricing()">
+      </div>
+
+      <div class="fg" style="text-align:left">
+        <label>Preferred Date</label>
+        <input type="date" id="req-date">
+      </div>
+
+      <div class="fg">
+        <label>Notes / Special Instructions</label>
+        <textarea id="req-desc" placeholder="Anything we should know — access instructions, gate codes, specific issues, etc."></textarea>
+      </div>
+
+      <!-- PRICING ESTIMATE -->
+      <div id="pricing-box" style="text-align:left;background:#f8f9fb;border:2px solid #eee;border-radius:12px;padding:20px;margin:20px 0">
+        <div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:#999;margin-bottom:12px">Estimated Service Minimum</div>
+        <div id="pricing-lines" style="font-size:14px;color:#444;line-height:2"></div>
+        <div style="border-top:2px solid #ddd;margin-top:12px;padding-top:12px;display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:16px;font-weight:900;color:#1a1a2e">Estimated Minimum</span>
+          <span style="font-size:22px;font-weight:900;color:#f05a28" id="pricing-total">$250.00</span>
+        </div>
+        <div style="font-size:11px;color:#aaa;margin-top:8px;line-height:1.5">Final invoice may vary based on equipment count, parts, and conditions found on-site. Extinguisher pricing is per unit ($20/ea). Suppression system minimums start at $250 per system.</div>
+      </div>
+
+      <!-- AGREEMENT -->
+      <div style="text-align:left;margin:16px 0">
+        <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;font-size:13px;font-weight:500;color:#666;text-transform:none;letter-spacing:0;line-height:1.5">
+          <input type="checkbox" id="req-agree" required style="margin-top:3px;width:18px;height:18px;flex-shrink:0">
+          I understand the estimated service minimums shown above. Final pricing will be confirmed before work begins. I authorize Stephens Advanced LLC to perform the requested inspection/service at the address provided.
+        </label>
+      </div>
+
+      <button type="submit" class="submit-btn" id="req-submit">Submit Service Request</button>
       <div class="form-status" id="req-status"></div>
     </form>
   </div>
@@ -420,6 +485,52 @@ document.querySelectorAll('a[href^="#"]').forEach(a=>{
 // Service Request Form
 const SB=supabase.createClient('https://motjasdokoxwiodwzyps.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1vdGphc2Rva294d2lvZHd6eXBzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzNDI2NTcsImV4cCI6MjA4ODkxODY1N30.IMf0plnDRhVgts9LjJr219Tax4J175iuWN1u6ZKTZ-I',{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}})
 
+function updatePricing(){
+  const checks=Array.from(document.querySelectorAll('#scope-checks input:checked')).map(c=>c.value)
+  const sysCount=parseInt(document.getElementById('req-sys-count')?.value)||0
+  const extCount=parseInt(document.getElementById('req-ext-count')?.value)||0
+  const type=document.getElementById('req-type').value
+  let lines=[],total=0
+
+  if(type==='emergency'){
+    lines.push({desc:'Emergency Service Call',price:500})
+    total+=500
+  }
+
+  const hasSuppression=checks.includes('suppression')||checks.includes('clean_agent')||checks.includes('paint_booth')
+
+  if(hasSuppression){
+    const count=Math.max(sysCount,1)
+    lines.push({desc:'Suppression System Semi-Annual Inspection ('+count+' system'+(count>1?'s':'')+')',price:250*count})
+    total+=250*count
+  }
+
+  if(checks.includes('extinguishers')&&extCount>0){
+    if(!hasSuppression){
+      lines.push({desc:'Trip Charge (extinguisher-only visit)',price:150})
+      total+=150
+    }
+    lines.push({desc:'Annual Jobsite Inspection (NFPA 10)',price:50})
+    total+=50
+    lines.push({desc:'Fire Extinguisher Inspection ('+extCount+' units @ $20/ea)',price:extCount*20})
+    total+=extCount*20
+  }
+
+  if(checks.includes('elights')){
+    lines.push({desc:'Emergency Lighting Annual Test',price:20})
+    total+=20
+  }
+
+  if(!lines.length){
+    lines.push({desc:'Service minimum',price:250})
+    total=250
+  }
+
+  const box=document.getElementById('pricing-lines')
+  box.innerHTML=lines.map(l=>`<div style="display:flex;justify-content:space-between"><span>${l.desc}</span><span style="font-weight:700">$${l.price.toFixed(2)}</span></div>`).join('')
+  document.getElementById('pricing-total').textContent='$'+total.toFixed(2)
+}
+
 async function submitServiceRequest(e){
   e.preventDefault()
   const btn=document.getElementById('req-submit')
@@ -431,50 +542,97 @@ async function submitServiceRequest(e){
   const business=document.getElementById('req-business').value.trim()
   const name=document.getElementById('req-name').value.trim()
   const phone=document.getElementById('req-phone').value.trim()
+  const email=document.getElementById('req-email').value.trim()
   const address=document.getElementById('req-address').value.trim()
+  const city=document.getElementById('req-city').value.trim()
+  const state=document.getElementById('req-state').value.trim()||'TX'
+  const zip=document.getElementById('req-zip').value.trim()
+  const extCount=parseInt(document.getElementById('req-ext-count')?.value)||0
+  const sysCount=parseInt(document.getElementById('req-sys-count')?.value)||0
+  const prefDate=document.getElementById('req-date')?.value||''
   const desc=document.getElementById('req-desc').value.trim()
+  const checks=Array.from(document.querySelectorAll('#scope-checks input:checked')).map(c=>c.value)
+  const scope=[]
+  if(checks.includes('suppression'))scope.push('suppression')
+  if(checks.includes('extinguishers'))scope.push('extinguishers')
+  if(checks.includes('clean_agent'))scope.push('suppression')
+  if(checks.includes('elights'))scope.push('elights')
+  if(checks.includes('paint_booth'))scope.push('suppression')
+  if(!scope.length)scope.push('suppression','extinguishers')
+
+  const estimate=document.getElementById('pricing-total')?.textContent||''
 
   try{
-    // Create location if needed
-    const city=(address.split(',')[1]||'').trim()||''
+    // Create location
     const{data:loc}=await SB.from('locations').insert({
-      name:business,address:address.split(',')[0]||address,city:city,state:'TX',
-      contact_name:name,contact_phone:phone
+      name:business,address:address,city:city,state:state,zip:zip,
+      contact_name:name,contact_phone:phone,contact_email:email||null,
+      is_brycer_jurisdiction:false
     }).select().single()
 
-    // Create job as service request
     if(loc){
+      // Create job
       await SB.from('jobs').insert({
-        location_id:loc.id,type:type==='emergency'?'emergency':'inspection',
-        scope:['suppression','extinguishers'],status:'scheduled',
-        scheduled_date:new Date().toISOString().split('T')[0],
-        notes:'WEB SERVICE REQUEST — '+type.toUpperCase()+'\nContact: '+name+' / '+phone+'\n'+(desc||'No description provided')
+        location_id:loc.id,
+        type:type==='emergency'?'emergency':'inspection',
+        scope:[...new Set(scope)],
+        status:'scheduled',
+        scheduled_date:prefDate||new Date().toISOString().split('T')[0],
+        scheduled_time:'09:00',
+        notes:'WEB SERVICE REQUEST — '+type.toUpperCase()+
+          '\nContact: '+name+' / '+phone+(email?' / '+email:'')+
+          '\nSystems: '+sysCount+' | Extinguishers: '+extCount+
+          '\nServices: '+checks.join(', ')+
+          '\nEstimate: '+estimate+
+          '\n\n'+(desc||'No additional notes')
       })
     }
 
-    // Also send notification email
+    // Send notification email
     try{
       await fetch('/api/send-email',{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({
           to:'jonathan@stephensadvanced.com',
-          subject:'New Service Request — '+business,
-          html:`<div style="font-family:Arial;font-size:14px;color:#333;max-width:500px"><h2 style="color:#f05a28">New Service Request</h2><p><b>Type:</b> ${type}</p><p><b>Business:</b> ${business}</p><p><b>Contact:</b> ${name}</p><p><b>Phone:</b> ${phone}</p><p><b>Address:</b> ${address}</p><p><b>Description:</b> ${desc||'None'}</p></div>`
+          subject:'SERVICE REQUEST — '+business+' — '+city,
+          html:`<div style="font-family:Arial;font-size:14px;color:#333;max-width:560px">
+            <div style="background:#f05a28;color:#fff;padding:16px 20px;border-radius:8px 8px 0 0;font-size:18px;font-weight:900">New Service Request</div>
+            <div style="padding:20px;border:1px solid #eee;border-top:none;border-radius:0 0 8px 8px">
+              <p style="margin:8px 0"><b>Type:</b> ${type}</p>
+              <p style="margin:8px 0"><b>Business:</b> ${business}</p>
+              <p style="margin:8px 0"><b>Contact:</b> ${name}</p>
+              <p style="margin:8px 0"><b>Phone:</b> <a href="tel:${phone}">${phone}</a></p>
+              ${email?'<p style="margin:8px 0"><b>Email:</b> '+email+'</p>':''}
+              <p style="margin:8px 0"><b>Address:</b> ${address}, ${city}, ${state} ${zip}</p>
+              <p style="margin:8px 0"><b>Systems:</b> ${sysCount} | <b>Extinguishers:</b> ${extCount}</p>
+              <p style="margin:8px 0"><b>Services:</b> ${checks.join(', ')||'Not specified'}</p>
+              <p style="margin:8px 0"><b>Preferred Date:</b> ${prefDate||'ASAP'}</p>
+              <p style="margin:8px 0"><b>Estimate:</b> ${estimate}</p>
+              ${desc?'<p style="margin:8px 0"><b>Notes:</b> '+desc+'</p>':''}
+              <div style="margin-top:16px;padding-top:12px;border-top:1px solid #eee;text-align:center">
+                <a href="https://stephensadvanced.com/app" style="display:inline-block;padding:12px 28px;background:#f05a28;color:#fff;text-decoration:none;border-radius:8px;font-weight:800">Open App</a>
+              </div>
+            </div>
+          </div>`
         })
       })
     }catch(emailErr){console.error('email notify:',emailErr)}
 
-    st.textContent='Request submitted! We\'ll be in touch within one business day.'
+    st.textContent='Request submitted! We\'ll contact you to confirm scheduling.'
     st.style.color='#10b981'
     btn.textContent='Submitted!'
     document.getElementById('serviceForm').reset()
-    setTimeout(()=>{btn.disabled=false;btn.textContent='Submit Request'},4000)
+    updatePricing()
+    setTimeout(()=>{btn.disabled=false;btn.textContent='Submit Service Request'},5000)
   }catch(err){
     console.error('submit error:',err)
     st.textContent='Error submitting. Please call (214) 994-4799 instead.'
     st.style.color='#ef4444'
-    btn.disabled=false;btn.textContent='Submit Request'
+    btn.disabled=false;btn.textContent='Submit Service Request'
   }
 }
+
+// init pricing on load
+document.addEventListener('DOMContentLoaded',updatePricing)
 </script>
 </body>
 </html>
