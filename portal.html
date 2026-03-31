@@ -96,6 +96,7 @@ const SB=supabase.createClient('https://motjasdokoxwiodwzyps.supabase.co','eyJhb
 
 const esc=s=>(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')
 const fmt=n=>'$'+Math.round(n||0).toLocaleString()
+function fmtDate(d,opts){if(!d)return'';try{const s=String(d).split('T')[0];return new Date(s+'T12:00:00').toLocaleDateString('en-US',opts||{month:'short',day:'numeric',year:'numeric'})}catch(e){return String(d).split('T')[0]}}
 let _portalData={}
 let _activeTab='overview'
 
@@ -214,7 +215,7 @@ function renderTab(){
       h+=`<div class="card"><div class="card-t">Upcoming Services</div>`
       upcoming.forEach(j=>{
         const loc=locs.find(l=>l.id===j.location_id)
-        const dt=j.scheduled_date?new Date(j.scheduled_date+'T12:00:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'}):''
+        const dt=fmtDate(j.scheduled_date,{weekday:'long',month:'long',day:'numeric',year:'numeric'})
         h+=`<div class="job-row">
           <div class="job-date">${dt}</div>
           <div class="job-scope">${esc(loc?.name||'')} · ${(j.scope||[]).join(', ')}${j.scheduled_time?' · '+j.scheduled_time.slice(0,5):''}</div>
@@ -337,7 +338,7 @@ function renderTab(){
           <div class="inv-row" style="cursor:pointer" onclick="toggleInvDetail('inv-detail-${i.id}')">
             <div>
               <div class="inv-num">${esc(i.invoice_number||'—')}${loc?' · '+esc(loc.name):''}</div>
-              <div class="inv-date">${i.date?new Date(i.date+'T12:00:00').toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):''}</div>
+              <div class="inv-date">${fmtDate(i.date,{month:'long',day:'numeric',year:'numeric'})}</div>
             </div>
             <div style="text-align:right;display:flex;align-items:center;gap:8px">
               <div><div class="inv-amt" style="color:${i.status==='paid'?'var(--ok)':'var(--fire)'}">${fmt(+i.total)}</div><span class="badge ${bc}">${i.status}</span></div>
@@ -362,7 +363,7 @@ function renderTab(){
         if(!li.length)return
         h+=`<div class="card"><div class="card-t">${esc(l.name)}</div>`
         li.forEach(i=>{
-          const dt=i.date?new Date(i.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):''
+          const dt=fmtDate(i.date)
           const bc=i.status==='paid'?'b-paid':i.status==='sent'?'b-sent':'b-draft'
           h+=`<div style="border-bottom:1px solid #f0f0f0">
             <div class="inv-row" style="cursor:pointer" onclick="toggleInvDetail('inv-detail-${i.id}')">
@@ -467,7 +468,7 @@ function openLocation(locId){
   if(locInvs.length){
     h+=`<div class="card"><div class="card-t">Invoices · ${locInvs.length}</div>`
     locInvs.forEach(i=>{
-      const dt=i.date?new Date(i.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):''
+      const dt=fmtDate(i.date)
       const bc=i.status==='paid'?'b-paid':i.status==='sent'?'b-sent':i.status==='overdue'?'b-over':'b-draft'
       const paidInfo=i.status==='paid'?(i.payment_method?' · Paid by '+i.payment_method:''):''
       h+=`<div style="border-bottom:1px solid #f0f0f0">
@@ -496,7 +497,7 @@ function openLocation(locId){
   if(upcomingHere.length){
     h+=`<div class="card"><div class="card-t">Upcoming Services</div>`
     upcomingHere.forEach(j=>{
-      const dt=j.scheduled_date?new Date(j.scheduled_date+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'}):''
+      const dt=fmtDate(j.scheduled_date,{weekday:'short',month:'short',day:'numeric',year:'numeric'})
       h+=`<div class="job-row">
         <div class="job-date">${dt}</div>
         <div class="job-scope">${(j.scope||[]).join(', ')}${j.scheduled_time?' · '+j.scheduled_time.slice(0,5):''}</div>
@@ -544,10 +545,11 @@ async function toggleInvDetail(elId){
         const icon=r.report_type==='extinguisher'?'🧯':r.report_type==='dry_chemical'?'🏭':r.report_type==='clean_agent'?'💨':'🔥'
         const name=r.report_type==='extinguisher'?'Extinguisher Report':r.report_type==='dry_chemical'?'Dry Chemical Report':r.report_type==='clean_agent'?'Clean Agent Report':'Kitchen Hood Report'
         const dt=r.created_at?new Date(r.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric'}):''
-        ih+=`<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #f5f5f5">
+        ih+=`<div style="display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid #f5f5f5;cursor:pointer" onclick="viewReport('${r.id}')">
           <span>${icon}</span>
-          <span style="font-size:13px;font-weight:600;color:#444;flex:1">${name}</span>
+          <span style="font-size:13px;font-weight:600;color:var(--fire);flex:1;text-decoration:underline">${name}</span>
           <span style="font-size:11px;color:#999">${dt}</span>
+          <span style="font-size:12px;color:#ccc">View ›</span>
         </div>`
       })
     }
@@ -565,6 +567,72 @@ async function toggleInvDetail(elId){
 
   if(!ih)ih=`<div style="font-size:12px;color:#ccc;padding:8px 0">No details available</div>`
   linesWrap.innerHTML=ih
+}
+
+async function viewReport(rptId){
+  const{data:rpt}=await SB.from('reports').select('*').eq('id',rptId).single()
+  if(!rpt){alert('Report not found');return}
+  const rd=rpt.report_data||{}
+  const loc=_portalData.locs.find(l=>l.id===rpt.location_id)||{}
+
+  // build simple viewable HTML
+  let html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+    body{font-family:Arial,sans-serif;max-width:700px;margin:20px auto;padding:20px;color:#222;background:#fff}
+    h1{font-size:20px;color:#f05a28;margin-bottom:4px}h2{font-size:14px;color:#888;margin-bottom:20px}
+    .section{border:1px solid #ddd;border-radius:8px;padding:14px;margin-bottom:14px}
+    .section-t{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#f05a28;margin-bottom:8px}
+    .row{display:flex;gap:10px;margin-bottom:4px}.lbl{font-size:10px;color:#999;font-weight:700}.val{font-size:13px}
+    table{width:100%;border-collapse:collapse;font-size:12px}th{background:#f05a28;color:#fff;padding:4px 8px;text-align:left;font-size:10px}
+    td{padding:4px 8px;border-bottom:1px solid #eee}
+    .sig-row{display:flex;gap:20px;margin-top:16px;padding-top:12px;border-top:2px solid #222}
+    .sig{flex:1}.sig-line{border-bottom:1px solid #333;height:30px;margin-bottom:2px}
+    .sig-label{font-size:8px;color:#888;text-transform:uppercase}
+    @media print{body{padding:0}}
+  </style></head><body>`
+
+  html+=`<h1>Stephens Advanced LLC</h1><h2>${rpt.report_type==='extinguisher'?'Extinguisher Inspection Report':rpt.report_type==='dry_chemical'?'Dry Chemical Report':rpt.report_type==='clean_agent'?'Clean Agent Report':'Kitchen Hood Suppression Report'}</h2>`
+
+  html+=`<div class="section"><div class="section-t">Customer</div>
+    <div class="row"><div><div class="lbl">Business</div><div class="val">${loc.name||''}</div></div></div>
+    <div class="row"><div><div class="lbl">Address</div><div class="val">${[loc.address,loc.city,loc.state,loc.zip].filter(Boolean).join(', ')}</div></div></div>
+  </div>`
+
+  if(rpt.report_type==='extinguisher'&&rd.units?.length){
+    html+=`<div class="section"><div class="section-t">Extinguishers · ${rd.units.length}</div>
+      <table><tr><th>#</th><th>Type / Size</th><th>Location</th><th>Status</th><th>Notes</th></tr>`
+    rd.units.forEach((u,i)=>{
+      html+=`<tr><td>${i+1}</td><td>${u.type||''} ${u.size||''}</td><td>${u.location||''}</td><td style="color:${u.condition==='pass'?'#10b981':'#ef4444'};font-weight:700">${(u.condition||'').toUpperCase()}</td><td>${u.notes||''}</td></tr>`
+    })
+    html+=`</table></div>`
+  }
+
+  if(rpt.report_type==='kitchen_suppression'||rpt.report_type==='dry_chemical'||rpt.report_type==='clean_agent'){
+    html+=`<div class="section"><div class="section-t">System Info</div>
+      <div class="row"><div><div class="lbl">Manufacturer</div><div class="val">${rd.mfg||''}</div></div><div><div class="lbl">Model</div><div class="val">${rd.model||''}</div></div></div>
+      <div class="row"><div><div class="lbl">Serial</div><div class="val">${rd.serial||''}</div></div><div><div class="lbl">Cylinder</div><div class="val">${rd.cyl||''}</div></div></div>
+    </div>`
+    // checks
+    const checks=rd.checks||{}
+    const checkKeys=Object.keys(checks).filter(k=>checks[k])
+    if(checkKeys.length){
+      html+=`<div class="section"><div class="section-t">Inspection Checklist · ${checkKeys.length} items</div>
+        <div style="font-size:12px;color:#10b981;font-weight:700">All items checked: ${checkKeys.filter(k=>checks[k]==='yes').length} Yes / ${checkKeys.filter(k=>checks[k]==='no').length} No</div>
+      </div>`
+    }
+    if(rd.deficiencies){
+      html+=`<div class="section"><div class="section-t">Deficiencies</div><div style="font-size:13px">${rd.deficiencies}</div></div>`
+    }
+  }
+
+  html+=`<div class="sig-row">
+    <div class="sig"><div class="sig-line">${rd.techSig?'<img src="'+rd.techSig+'" style="max-height:28px">':''}</div><div class="sig-label">Service Technician: ${rd.techName||'Jon Stephens'}</div></div>
+    <div class="sig"><div class="sig-line"></div><div class="sig-label">Owner / Manager: ${rd.ownerName||''}</div></div>
+  </div>`
+  html+=`<div style="margin-top:20px;text-align:center;font-size:10px;color:#ccc">Stephens Advanced LLC · (214) 994-4799</div>`
+  html+=`</body></html>`
+
+  const w=window.open('','_blank')
+  if(w){w.document.write(html);w.document.close()}
 }
 
 async function portalPayNow(invId,invNum,custName,amount,btn){
