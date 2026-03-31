@@ -2342,7 +2342,7 @@ async function openCust(id){
   <div class="qa">
     ${a?`<button class="qa-btn" onclick="window.open('https://maps.apple.com/?daddr='+encodeURIComponent('${esc(a)}'))">🗺 Navigate</button>`:''}
     ${l.contact_phone?`<button class="qa-btn" onclick="window.open('tel:${l.contact_phone}')">📞 Call</button>`:''}
-    <button class="qa-btn pri" onclick="schedFor('${l.id}','${esc(l.name)}','${esc(l.address||'')}','${esc(l.city||'')}')">+ New Job</button>
+    <button class="qa-btn pri" onclick="schedFor('${l.id}','${esc(l.name).replace(/'/g,'&#39;')}','${esc(l.address||'').replace(/'/g,'&#39;')}','${esc(l.city||'').replace(/'/g,'&#39;')}')">+ New Job</button>
   </div>`
 
   // Parent company & sibling locations
