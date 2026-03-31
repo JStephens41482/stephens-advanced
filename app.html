@@ -2461,25 +2461,24 @@ async function openCust(id){
 // EDIT CLIENT
 function assignToParent(locId){
   const l=D.locs.find(x=>x.id===locId);if(!l)return
-  // show list of existing billing accounts + option to create new
-  const baList=D.bas||[]
+  const others=D.locs.filter(x=>x.id!==locId).sort((a,b)=>(a.name||'').localeCompare(b.name||''))
+
   let h=`<div class="ov-hdr"><button class="ov-back" onclick="pop()">‹</button><div class="ov-title">Assign to Parent Co.</div></div><div class="ov-body">
-    <div style="font-size:13px;color:var(--w2);margin-bottom:16px">Link <strong>${esc(l.name)}</strong> to a parent company or management group.</div>`
+    <div style="font-size:13px;color:var(--w2);margin-bottom:16px">Link <strong>${esc(l.name)}</strong> to another client as a sibling location.</div>
+    <input class="srch" placeholder="Search clients..." oninput="filterParentList(this.value,'${locId}')" style="margin-bottom:12px">
+    <div id="parent-list">`
 
-  if(baList.length){
-    h+=`<div class="ds"><div class="ds-t">Existing Companies</div>`
-    baList.forEach(b=>{
-      const count=D.locs.filter(x=>x.billing_account_id===b.id).length
-      h+=`<div style="padding:12px 0;border-bottom:1px solid var(--b1);cursor:pointer;display:flex;justify-content:space-between;align-items:center" onclick="doAssignParent('${locId}','${b.id}')">
-        <div><div style="font-size:14px;font-weight:700;color:var(--w)">${esc(b.name)}</div>
-          <div style="font-size:11px;color:var(--g1)">${count} location${count!==1?'s':''}</div></div>
-        <span style="color:var(--fire);font-size:12px;font-weight:700">Select</span>
-      </div>`
-    })
-    h+=`</div>`
-  }
+  others.forEach(o=>{
+    const siblings=o.billing_account_id?D.locs.filter(x=>x.billing_account_id===o.billing_account_id).length:0
+    h+=`<div class="parent-pick" style="padding:12px 0;border-bottom:1px solid var(--b1);cursor:pointer;display:flex;justify-content:space-between;align-items:center" data-name="${esc(o.name?.toLowerCase()||'')}" onclick="linkToClient('${locId}','${o.id}')">
+      <div><div style="font-size:14px;font-weight:700;color:var(--w)">${esc(o.name)}</div>
+        <div style="font-size:11px;color:var(--g1)">${esc([o.address,o.city].filter(Boolean).join(', '))}${siblings>1?' · '+siblings+' locations':''}</div></div>
+      <span style="color:var(--fire);font-size:12px;font-weight:700">Link</span>
+    </div>`
+  })
 
-  h+=`<div class="ds" style="margin-top:16px"><div class="ds-t">Or Create New Parent Company</div>
+  h+=`</div>
+  <div class="ds" style="margin-top:20px"><div class="ds-t">Or Create New Parent Company</div>
     <div class="fg"><label class="fg-l">Company Name</label><input id="new-parent-name" placeholder="e.g. ABC Restaurant Group"></div>
     <div class="fg"><label class="fg-l">Contact Name</label><input id="new-parent-contact" placeholder="Main contact"></div>
     <div class="fg"><label class="fg-l">Phone</label><input id="new-parent-phone" placeholder="Phone"></div>
@@ -2487,6 +2486,34 @@ function assignToParent(locId){
     <button class="btn-p" onclick="createAndAssignParent('${locId}')">Create & Assign</button>
   </div></div>`
   push(h)
+}
+
+function filterParentList(q,locId){
+  const items=document.querySelectorAll('.parent-pick')
+  const ql=q.toLowerCase()
+  items.forEach(el=>{el.style.display=el.dataset.name.includes(ql)?'':'none'})
+}
+
+async function linkToClient(locId,targetLocId){
+  const target=D.locs.find(x=>x.id===targetLocId)
+  if(!target)return
+  let baId=target.billing_account_id
+  // if target doesn't have a billing account, create one
+  if(!baId){
+    const{data:ba}=await SB.from('billing_accounts').insert({
+      name:target.name,contact_name:target.contact_name||null,
+      phone:target.contact_phone||null,email:target.contact_email||null
+    }).select().single()
+    if(ba){
+      baId=ba.id
+      await SB.from('locations').update({billing_account_id:ba.id}).eq('id',targetLocId)
+    }
+  }
+  if(baId){
+    await SB.from('locations').update({billing_account_id:baId}).eq('id',locId)
+    await load();toast('Locations linked')
+    pop();pop();openCust(locId)
+  }
 }
 
 async function doAssignParent(locId,baId){
