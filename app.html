@@ -2342,7 +2342,7 @@ async function openCust(id){
   <div class="qa">
     ${a?`<button class="qa-btn" onclick="window.open('https://maps.apple.com/?daddr='+encodeURIComponent('${esc(a)}'))">🗺 Navigate</button>`:''}
     ${l.contact_phone?`<button class="qa-btn" onclick="window.open('tel:${l.contact_phone}')">📞 Call</button>`:''}
-    <button class="qa-btn pri" onclick="schedFor('${l.id}','${esc(l.name).replace(/'/g,'&#39;')}','${esc(l.address||'').replace(/'/g,'&#39;')}','${esc(l.city||'').replace(/'/g,'&#39;')}')">+ New Job</button>
+    <button class="qa-btn pri" onclick="newJobForLoc('${l.id}')">+ New Job</button>
   </div>`
 
   // Parent company & sibling locations
@@ -4586,8 +4586,36 @@ function buildInvoiceEmailHtml({invNum,custName,addr,date,dueDate,lines,total,po
 // SCHEDULE JOB
 let nSt={loc:null,mk:false}
 
+function newJobForLoc(locId){
+  const l=D.locs.find(x=>x.id===locId);if(!l)return
+  const ba=l.billing_account_id?D.bas.find(b=>b.id===l.billing_account_id):null
+  const siblings=ba?D.locs.filter(x=>x.billing_account_id===ba.id):[]
+
+  if(siblings.length>1){
+    // multi-location — let them pick which location
+    let h=`<div class="ov-hdr"><button class="ov-back" onclick="pop()">‹</button><div class="ov-title">New Job — Pick Location</div></div><div class="ov-body">
+      <div style="font-size:13px;color:var(--w2);margin-bottom:16px">${esc(ba.name)} has ${siblings.length} locations. Which one is this job for?</div>`
+    siblings.forEach(s=>{
+      h+=`<div style="padding:12px 0;border-bottom:1px solid var(--b1);cursor:pointer;display:flex;justify-content:space-between;align-items:center" onclick="pop();schedFor('${s.id}')">
+        <div><div style="font-size:14px;font-weight:700;color:var(--w)">${esc(s.name)}</div>
+          <div style="font-size:11px;color:var(--g1)">${esc([s.address,s.city].filter(Boolean).join(', '))}</div></div>
+        <span style="color:var(--fire);font-size:20px">+</span>
+      </div>`
+    })
+    h+=`</div>`
+    push(h)
+  }else{
+    schedFor(locId)
+  }
+}
+
 function schedFor(locId,locName,locAddr,locCity){
-  nSt={loc:{id:locId,name:unesc(locName||''),address:unesc(locAddr||''),city:unesc(locCity||''),ba:''},mk:false}
+  // if called with just locId, look up the rest
+  if(!locName){
+    const loc=D.locs.find(x=>x.id===locId)
+    if(loc){locName=loc.name;locAddr=loc.address||'';locCity=loc.city||''}
+  }
+  nSt={loc:{id:locId,name:locName||'',address:locAddr||'',city:locCity||'',ba:''},mk:false}
   // don't push if job form is already on top
   const top=stk[stk.length-1]
   if(top&&document.getElementById(top)?.querySelector('#saveJobBtn'))return
