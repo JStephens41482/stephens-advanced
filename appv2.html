@@ -453,7 +453,7 @@ document.addEventListener('touchend',e=>{
 document.getElementById('invOv').addEventListener('click',function(e){if(e.target===this)this.classList.remove('open')})
 
 async function load(){
-  const[j,l,i,b,r,ci,td2,mz,bq,tk,sr,pt,ce]=await Promise.all([
+  const[j,l,i,b,r,ci,td2,mz,bq,tk,sr,pt,ce,ct,cl2]=await Promise.all([
     SB.from('jobs').select('*,location:locations(*)').order('updated_at',{ascending:false}),
     SB.from('locations').select('*,extinguishers(id,type,size,serial_number,location_in_building,manufacture_date,last_internal,last_hydro),suppression_systems(id,system_type,category,tank_count,nozzle_count,fusible_link_count),emergency_lights(id,fixture_count),billing_account:billing_accounts(*)').order('name'),
     SB.from('invoices').select('*').order('date',{ascending:false}).limit(100),
@@ -466,7 +466,9 @@ async function load(){
     SB.from('techs').select('*').order('name'),
     SB.from('service_requests').select('*').eq('status','pending').order('created_at',{ascending:false}),
     SB.from('portal_tokens').select('*').order('created_at',{ascending:false}),
-    SB.from('calendar_events').select('*').order('start_time')
+    SB.from('calendar_events').select('*').order('start_time'),
+    SB.from('contacts').select('*').order('name'),
+    SB.from('contact_links').select('*,contact:contacts(*)').order('created_at')
   ])
   if(j.error)console.error('jobs error:',j.error)
   if(l.error)console.error('locations error:',l.error)
@@ -481,6 +483,8 @@ async function load(){
   if(sr.error)console.error('service_requests error:',sr.error)
   if(pt.error)console.error('portal_tokens error:',pt.error)
   if(ce.error)console.error('calendar_events error:',ce.error)
+  if(ct.error)console.error('contacts error:',ct.error)
+  if(cl2.error)console.error('contact_links error:',cl2.error)
   console.log('loaded:',j.data?.length,'jobs,',l.data?.length,'locs,',i.data?.length,'invs,',td2.data?.length,'todos')
   D.jobs=j.data||[];D.locs=l.data||[];D.invs=i.data||[];D.bas=b.data||[]
   const rc={};(r.data||[]).forEach(x=>rc[x.key]=+x.price);D.rc=rc
@@ -492,6 +496,17 @@ async function load(){
   D.serviceRequests=sr.data||[]
   D.portalTokens=pt.data||[]
   D.calEvents=ce.data||[]
+  D.contacts=ct.data||[]
+  D.contactLinks=cl2.data||[]
+}
+
+function contactsForEntity(entityType,entityId){
+  return (D.contactLinks||[]).filter(cl=>cl.entity_type===entityType&&cl.entity_id===entityId).map(cl=>cl.contact||D.contacts?.find(c=>c.id===cl.contact_id)).filter(Boolean)
+}
+
+function primaryContactFor(entityType,entityId){
+  const contacts=contactsForEntity(entityType,entityId)
+  return contacts.find(c=>c.is_primary)||contacts[0]||null
 }
 
 const td=()=>new Date().toISOString().split('T')[0]
@@ -2621,6 +2636,39 @@ async function openCust(id){
     <button class="qa-btn pri" onclick="newJobForLoc('${l.id}')">+ New Job</button>
   </div>`
 
+  // Contacts section
+  const locContacts=contactsForEntity('location',id)
+  h+=`<div class="ds"><div class="ds-t" style="display:flex;justify-content:space-between;align-items:center">
+    <span>Contacts · ${locContacts.length}</span>
+    <button style="font-size:11px;font-weight:700;color:var(--fire);background:none;border:none;cursor:pointer" onclick="openAddContact('${l.id}')">+ Add Contact</button>
+  </div>`
+  if(locContacts.length){
+    locContacts.forEach(c=>{
+      const roleBadge=c.role?`<span style="font-size:9px;font-weight:800;padding:2px 6px;border-radius:3px;background:var(--infos);color:var(--info);text-transform:uppercase">${esc(c.role)}</span>`:''
+      h+=`<div class="swipe-wrap" data-swipe-contact="${c.id}" data-contact-loc="${l.id}">
+        <div class="swipe-del" onclick="event.stopPropagation()">Delete</div>
+        <div class="swipe-inner" style="padding:10px 0;border-bottom:1px solid var(--b1);margin-bottom:0;display:flex;align-items:center;gap:10px">
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:6px">
+              ${c.is_primary?'<span style="font-size:12px" title="Primary">⭐</span>':''}
+              <span style="font-size:13px;font-weight:700">${esc(c.name)}</span>
+              ${roleBadge}
+            </div>
+            <div style="display:flex;gap:8px;margin-top:4px;flex-wrap:wrap">
+              ${c.phone?`<a href="tel:${c.phone}" style="font-size:11px;color:var(--fire)" onclick="event.stopPropagation()">📞 ${c.phone}</a>`:''}
+              ${c.email?`<a href="mailto:${esc(c.email)}" style="font-size:11px;color:var(--fire)" onclick="event.stopPropagation()">✉ ${esc(c.email)}</a>`:''}
+            </div>
+          </div>
+        </div>
+      </div>`
+    })
+  }else{
+    // fallback to legacy location fields
+    if(l.contact_name)h+=`<div style="padding:10px 0;font-size:12px;color:var(--g1)">Legacy: ${esc(l.contact_name)}${l.contact_phone?' · '+l.contact_phone:''}${l.contact_email?' · '+esc(l.contact_email):''}</div>`
+    else h+=`<div style="padding:10px 0;font-size:12px;color:var(--g2)">No contacts yet</div>`
+  }
+  h+=`</div>`
+
   // Parent company & sibling locations
   const ba=l.billing_account_id?D.bas.find(b=>b.id===l.billing_account_id):null
   const siblings=ba?D.locs.filter(x=>x.billing_account_id===ba.id&&x.id!==l.id):[]
@@ -2860,6 +2908,54 @@ async function saveSiblingLocation(origLocId,baId){
   if(error){toast('Error: '+error.message,false);return}
   await load();toast('Location added')
   pop();pop();if(newLoc)openCust(newLoc.id)
+}
+
+function openAddContact(locId){
+  let h=`<div class="ov-hdr"><button class="ov-back" onclick="pop()">‹</button><div class="ov-title">Add Contact</div></div><div class="ov-body">
+    <label class="f-lbl">Name *</label>
+    <input class="f-in" id="ctName" placeholder="Full name">
+    <label class="f-lbl">Role</label>
+    <select class="f-in" id="ctRole">
+      <option value="">Select role...</option>
+      <option value="Owner">Owner</option>
+      <option value="Manager">Manager</option>
+      <option value="Accounting">Accounting</option>
+      <option value="On-Site">On-Site</option>
+      <option value="Other">Other</option>
+    </select>
+    <label class="f-lbl">Phone</label>
+    <input class="f-in" id="ctPhone" type="tel" placeholder="(xxx) xxx-xxxx">
+    <label class="f-lbl">Email</label>
+    <input class="f-in" id="ctEmail" type="email" placeholder="email@example.com">
+    <label style="display:flex;align-items:center;gap:8px;margin:12px 0;font-size:13px;color:var(--w)">
+      <input type="checkbox" id="ctPrimary"> Primary contact
+    </label>
+    <button class="btn-p" id="saveCtBtn" onclick="saveContact('${locId}')">Save Contact</button>
+  </div>`
+  push(h)
+}
+
+async function saveContact(locId){
+  const name=$('ctName')?.value?.trim()
+  if(!name){toast('Name is required',false);return}
+  const role=$('ctRole')?.value||null
+  const phone=$('ctPhone')?.value?.trim()||null
+  const email=$('ctEmail')?.value?.trim()||null
+  const isPrimary=$('ctPrimary')?.checked||false
+  setLoad('saveCtBtn',true)
+  const{data:contact,error}=await SB.from('contacts').insert({name,role,phone,email,is_primary:isPrimary}).select().single()
+  if(error){toast('Error saving contact',false);setLoad('saveCtBtn',false,'Save Contact');return}
+  await SB.from('contact_links').insert({contact_id:contact.id,entity_type:'location',entity_id:locId,relationship:role||'contact'})
+  // if marked primary, unmark others
+  if(isPrimary){
+    const others=contactsForEntity('location',locId).filter(c=>c.id!==contact.id&&c.is_primary)
+    for(const o of others)await SB.from('contacts').update({is_primary:false}).eq('id',o.id)
+  }
+  await load()
+  setLoad('saveCtBtn',false,'Save Contact')
+  pop()
+  toast('Contact added')
+  openCust(locId)
 }
 
 function editCust(id){
@@ -3551,6 +3647,17 @@ function initSwipes(){
       try{await SB.from('extinguisher_results').delete().eq('job_id',id)}catch(e){}
       await SB.from('jobs').delete().eq('id',id)
       await load();toast('Job deleted');rJobs();rJobs()
+    })
+  })
+  document.querySelectorAll('.swipe-wrap[data-swipe-contact]').forEach(el=>{
+    initSwipe(el,async()=>{
+      const cid=el.dataset.swipeContact
+      const locId=el.dataset.contactLoc
+      await SB.from('contact_links').delete().eq('contact_id',cid).eq('entity_type','location').eq('entity_id',locId)
+      // if contact has no other links, delete the contact too
+      const{data:remaining}=await SB.from('contact_links').select('id').eq('contact_id',cid)
+      if(!remaining?.length)await SB.from('contacts').delete().eq('id',cid)
+      await load();toast('Contact removed');openCust(locId)
     })
   })
 }
@@ -4610,7 +4717,31 @@ async function sendInvEmail(invId){
   const inv=D.invs.find(x=>x.id===invId)||{}
   const loc=D.locs.find(x=>x.id===inv.location_id)||{}
   const ba=loc.billing_account_id?D.bas.find(b=>b.id===loc.billing_account_id):null
-  const to=$('det-email-to')?.value?.trim()||$('inv-email-to')?.value?.trim()||loc.contact_email||ba?.email||''
+  // gather all contact emails for this location
+  const locContacts=contactsForEntity('location',inv.location_id).filter(c=>c.email)
+  const manualTo=$('det-email-to')?.value?.trim()||$('inv-email-to')?.value?.trim()||''
+  if(locContacts.length>1||locContacts.length===1&&manualTo){
+    // show contact picker
+    const primary=locContacts.find(c=>c.is_primary)||locContacts[0]
+    let ph=`<div class="ov-hdr"><button class="ov-back" onclick="pop()">‹</button><div class="ov-title">Send To</div></div><div class="ov-body">
+      <div style="font-size:12px;color:var(--g2);margin-bottom:12px">Choose who receives Invoice ${inv.invoice_number||''}</div>`
+    locContacts.forEach(c=>{
+      ph+=`<div style="background:var(--c1);border:1px solid var(--b1);border-radius:var(--rs);padding:12px;margin-bottom:8px;cursor:pointer;display:flex;align-items:center;gap:10px" onclick="pop();_showEmailPreview('${invId}','${esc(c.email)}','${esc(loc.name)}','${esc(inv.invoice_number||'')}')">
+        ${c.is_primary?'<span style="font-size:14px">⭐</span>':'<span style="width:14px"></span>'}
+        <div><div style="font-size:13px;font-weight:700">${esc(c.name)}</div>
+        <div style="font-size:11px;color:var(--g1)">${esc(c.email)}${c.role?' · '+c.role:''}</div></div>
+      </div>`
+    })
+    if(manualTo&&!locContacts.find(c=>c.email===manualTo)){
+      ph+=`<div style="background:var(--c1);border:1px solid var(--b1);border-radius:var(--rs);padding:12px;margin-bottom:8px;cursor:pointer" onclick="pop();_showEmailPreview('${invId}','${esc(manualTo)}','${esc(loc.name)}','${esc(inv.invoice_number||'')}')">
+        <div style="font-size:13px;font-weight:700">Custom: ${esc(manualTo)}</div>
+      </div>`
+    }
+    ph+=`</div>`
+    push(ph)
+    return
+  }
+  const to=manualTo||locContacts[0]?.email||loc.contact_email||ba?.email||''
   if(!to){toast('No email — enter one in the email field',false);return}
   await _showEmailPreview(invId,to,loc.name||'',inv.invoice_number||'')
 }
@@ -7371,6 +7502,8 @@ UNPAID: ${unpaidInvs.slice(0,10).map(i=>{const loc2=D.locs.find(l=>l.id===i.loca
 TECHS: ${(D.techs||[]).map(t2=>`${t2.name} [id:${t2.id}]`).join(', ')||'None'}
 RATE CARD: ${Object.entries(D.rc||{}).map(([k,v])=>`${k}=$${v}`).join(', ')}
 
+CONTACTS: ${(D.contactLinks||[]).slice(0,30).map(cl=>{const c=cl.contact;if(!c)return null;const eName=cl.entity_type==='location'?(D.locs.find(l=>l.id===cl.entity_id)?.name||'?'):(D.bas.find(b=>b.id===cl.entity_id)?.name||'?');return c.name+(c.role?' ('+c.role+')':'')+' at '+eName+(c.email?' <'+c.email+'>':'')}).filter(Boolean).join('; ')||'None'}
+
 SCHEDULING — CALENDAR EVENTS (hard blocks — NEVER schedule jobs over these):
 ${(()=>{const todayStart=new Date(t+'T00:00:00'),weekEnd=new Date(new Date(todayStart).setDate(todayStart.getDate()+7));const wk=expandRecurring(D.calEvents||[],todayStart,weekEnd).filter(e=>e.event_type!=='job');return wk.map(e=>{const d=new Date(e.start_time);const day=d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});const st2=d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0');const et=new Date(e.end_time);const et2=et.getHours().toString().padStart(2,'0')+':'+et.getMinutes().toString().padStart(2,'0');return day+' '+st2+'-'+et2+' '+e.title+' ['+e.event_type+']'}).join('; ')||'None this week'})()}
 
@@ -7407,6 +7540,7 @@ AVAILABLE ACTIONS:
 - {"type":"build_route","date":"YYYY-MM-DD","anchor_time":"HH:MM","anchor_location":"city","anchor_type":"arrive_by|depart_after","job_ids":["id1","id2"]} — builds optimized route for the given day, optionally anchored to a time/place constraint. If job_ids provided, uses those. If empty, AI picks best jobs from pool.
 - {"type":"modify_route","add_job_ids":["id"],"remove_job_ids":["id"]} — adds or removes jobs from current active route
 - {"type":"suggest_job","location_id":"...","reason":"..."} — AI detected equipment is due for service from a photo, suggests creating a job with single-tap confirmation
+- {"type":"add_contact","name":"...","role":"Owner|Manager|Accounting|On-Site|Other","phone":"...","email":"...","location_id":"..."} — adds a contact to a location
 
 IMPORTANT RULES:
 1. ALWAYS describe what you're about to do BEFORE the action block. Example: "I'll add Dave's Hot Chicken as a new client in McKinney, TX." then the action block.
@@ -7579,6 +7713,12 @@ async function execChatAction(act){
       const loc=D.locs.find(l=>l.id===act.location_id)
       const name=loc?.name||'this location'
       _chatMsgs.push({role:'assistant',content:'**Service suggested for '+name+'**\nReason: '+(act.reason||'Equipment may be due for service')+'\n\nSay "yes, schedule it" to create the job, or "no" to skip.'})
+    }
+    else if(t==='add_contact'){
+      const{data:newCt}=await SB.from('contacts').insert({name:act.name,role:act.role||null,phone:act.phone||null,email:act.email||null,is_primary:false}).select().single()
+      if(newCt&&act.location_id)await SB.from('contact_links').insert({contact_id:newCt.id,entity_type:'location',entity_id:act.location_id,relationship:act.role||'contact'})
+      await load()
+      _chatMsgs.push({role:'assistant',content:`✓ Added contact: **${act.name}**${act.role?' ('+act.role+')':''}${act.location_id?' to '+(D.locs.find(l=>l.id===act.location_id)?.name||'location'):''}`})
     }
     else if(t==='toast'){toast(act.message)}
   }catch(e){
