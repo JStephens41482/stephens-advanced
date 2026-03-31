@@ -410,10 +410,16 @@ function openLocation(locId){
     h+=`</div>`
   }
 
-  // Reports
-  if(locReports.length){
+  // Reports — deduplicate: keep latest per job + report_type
+  const dedupReports=[]
+  const seenRptKeys=new Set()
+  locReports.forEach(r=>{
+    const key=r.job_id+'_'+r.report_type
+    if(!seenRptKeys.has(key)){seenRptKeys.add(key);dedupReports.push(r)}
+  })
+  if(dedupReports.length){
     h+=`<div class="card"><div class="card-t">Inspection Reports</div>`
-    locReports.forEach(r=>{
+    dedupReports.forEach(r=>{
       const icon=r.report_type==='extinguisher'?'🧯':r.report_type==='dry_chemical'?'🏭':r.report_type==='clean_agent'?'💨':'🔥'
       const name=r.report_type==='extinguisher'?'Extinguisher Report':r.report_type==='dry_chemical'?'Dry Chemical Report':r.report_type==='clean_agent'?'Clean Agent Report':'Kitchen Hood Report'
       const dt=r.created_at?new Date(r.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):''

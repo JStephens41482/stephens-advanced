@@ -386,11 +386,11 @@ function push(html,opts={}){
   return slot
 }
 
-let _autoSaving=false
+let _autoSaving=false,_manualSaving=false
 function pop(){
   if(!stk.length)return
-  // auto-save any open report before closing (skip if already auto-saving to avoid recursion)
-  if(!_autoSaving){_autoSaving=true;_autoSaveOpenReport();_autoSaving=false}
+  // auto-save any open report before closing (skip if manual save triggered this pop)
+  if(!_autoSaving&&!_manualSaving){_autoSaving=true;_autoSaveOpenReport();_autoSaving=false}
   const id=stk.pop()
   const el=document.getElementById(id)
   el.classList.remove('open')
@@ -5068,7 +5068,7 @@ async function finishExtReport(jobId,silent){
   await load()
   if(silent)return
   toast('Extinguisher report saved ✓')
-  pop()
+  _manualSaving=true;pop();_manualSaving=false
   setTimeout(()=>updateJobChecklist(),200)
 }
 
@@ -5799,7 +5799,7 @@ async function saveDryChemReport(jobId,sysId,silent){
   await load()
   if(silent)return
   toast('Report saved ✓')
-  pop()
+  _manualSaving=true;pop();_manualSaving=false
   setTimeout(()=>updateJobChecklist(),200)
 }
 
@@ -6258,7 +6258,7 @@ async function _doSaveSuppReport(jobId,sysId,silent,btn){
   await load()
   if(silent)return // auto-save — don't pop or show prompts
   toast('Report saved ✓')
-  pop()
+  _manualSaving=true;pop();_manualSaving=false
   setTimeout(()=>updateJobChecklist(),200)
   // only offer additional report if location has multiple suppression systems
   const loc2=D.locs.find(x=>x.id===locId)||{}
@@ -6675,7 +6675,7 @@ async function saveCleanAgentReport(jobId,sysId,silent){
   await load()
   if(silent)return
   toast('Report saved ✓')
-  pop()
+  _manualSaving=true;pop();_manualSaving=false
   setTimeout(()=>updateJobChecklist(),200)
 }
 
