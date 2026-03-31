@@ -129,7 +129,7 @@ async function initPortal(){
 
   const locIds=locs.map(l=>l.id)
 
-  // fetch jobs and invoices
+  // fetch jobs, invoices, and line items
   const[jobsRes,invsRes,reportsRes]=await Promise.all([
     SB.from('jobs').select('*').in('location_id',locIds).order('scheduled_date',{ascending:false}),
     SB.from('invoices').select('*').in('location_id',locIds).order('date',{ascending:false}),
@@ -139,11 +139,19 @@ async function initPortal(){
   const jobs=jobsRes.data||[]
   const invs=invsRes.data||[]
   const reports=reportsRes.data||[]
+
+  // fetch all line items for these invoices to derive equipment
+  let allLines=[]
+  if(invs.length){
+    const invIds=invs.map(i=>i.id)
+    const{data:lines}=await SB.from('invoice_lines').select('*,invoice:invoices(location_id)').in('invoice_id',invIds)
+    allLines=lines||[]
+  }
   const upcoming=jobs.filter(j=>j.status==='scheduled'&&j.scheduled_date>=new Date().toISOString().split('T')[0])
   const completed=jobs.filter(j=>j.status==='completed')
   const totalOwed=invs.filter(i=>!['paid','void','record'].includes(i.status)).reduce((s,i)=>s+(+i.total||0),0)
 
-  _portalData={locs,jobs,invs,reports,upcoming,completed,totalOwed,locIds,token:tk}
+  _portalData={locs,jobs,invs,reports,upcoming,completed,totalOwed,locIds,token:tk,allLines}
 
   document.getElementById('portalCustName').textContent=locs[0]?.name||(locs.length+' locations')
   renderPortal()
@@ -242,27 +250,80 @@ function renderTab(){
   }
 
   if(_activeTab==='equipment'){
+    const al=_portalData.allLines||[]
+    // derive equipment from invoice line items per location
+    let totalSys=0,totalExt=0,totalLights=0
+
     locs.forEach(l=>{
-      h+=`<div class="card"><div class="card-t">${esc(l.name)}</div>`
+      // get line items for this location's invoices
+      const locInvIds=invs.filter(i=>i.location_id===l.id).map(i=>i.id)
+      const locLines=al.filter(ln=>locInvIds.includes(ln.invoice_id))
+
+      // count systems from line items
+      let sysList=[],extCount=0,lightCount=0
+      locLines.forEach(ln=>{
+        const d=(ln.description||'').toLowerCase()
+        if(d.match(/semi.?annual|suppression|kitchen|ansul|pyro|buckeye|kidde|captive|clean.?agent|fm.?200|paint.?booth|dry.?chem/)){
+          sysList.push(ln.description)
+        }
+        if(d.match(/extinguisher/)){
+          extCount+=+(ln.quantity||0)
+        }
+        if(d.match(/e.?light|emergency.?light/)){
+          lightCount+=+(ln.quantity||0)
+        }
+      })
+      // also include equipment from DB tables
       if(l.suppression_systems?.length){
-        h+=`<div style="font-size:10px;font-weight:800;color:#999;text-transform:uppercase;letter-spacing:1px;margin:8px 0 4px">Suppression Systems</div>`
         l.suppression_systems.forEach(s=>{
-          h+=`<div class="eq-item"><div><div class="eq-name">${esc(s.system_type)}</div><div class="eq-detail">${s.tank_count} tank${s.tank_count!==1?'s':''} · ${s.nozzle_count} nozzles · ${s.fusible_link_count} links</div></div></div>`
+          if(!sysList.some(x=>x.toLowerCase().includes((s.system_type||'').toLowerCase().split(' ')[0]))){
+            sysList.push(s.system_type)
+          }
         })
       }
-      if(l.extinguishers?.length){
-        h+=`<div style="font-size:10px;font-weight:800;color:#999;text-transform:uppercase;letter-spacing:1px;margin:12px 0 4px">Extinguishers</div>`
-        l.extinguishers.forEach(e=>{
-          h+=`<div class="eq-item"><div><div class="eq-name">${esc(e.type)} ${esc(e.size||'')}</div><div class="eq-detail">${esc(e.location_in_building||'')}</div></div></div>`
+      if(l.extinguishers?.length&&!extCount)extCount=l.extinguishers.length
+      if(l.emergency_lights?.[0]?.fixture_count&&!lightCount)lightCount=l.emergency_lights[0].fixture_count
+
+      // deduplicate systems
+      const uniqueSys=[...new Set(sysList)]
+      totalSys+=uniqueSys.length
+      totalExt+=extCount
+      totalLights+=lightCount
+
+      h+=`<div class="card"><div class="card-t">${esc(l.name)}</div>
+        <div class="loc-addr" style="margin-bottom:12px">${esc([l.address,l.city].filter(Boolean).join(', '))}</div>`
+      if(uniqueSys.length){
+        h+=`<div style="font-size:10px;font-weight:800;color:#999;text-transform:uppercase;letter-spacing:1px;margin:4px 0 6px">Suppression Systems · ${uniqueSys.length}</div>`
+        uniqueSys.forEach(s=>{
+          h+=`<div class="eq-item"><div class="eq-name">🔥 ${esc(s)}</div></div>`
         })
       }
-      if(l.emergency_lights?.[0]?.fixture_count){
-        h+=`<div style="font-size:10px;font-weight:800;color:#999;text-transform:uppercase;letter-spacing:1px;margin:12px 0 4px">Emergency Lighting</div>
-          <div class="eq-item"><div class="eq-name">${l.emergency_lights[0].fixture_count} fixtures</div></div>`
+      if(extCount){
+        h+=`<div style="font-size:10px;font-weight:800;color:#999;text-transform:uppercase;letter-spacing:1px;margin:12px 0 6px">Fire Extinguishers</div>
+          <div class="eq-item"><div class="eq-name">🧯 ${extCount} unit${extCount!==1?'s':''} on file</div></div>`
       }
-      if(!l.suppression_systems?.length&&!l.extinguishers?.length)h+=`<div class="empty">No equipment on file</div>`
+      if(lightCount){
+        h+=`<div style="font-size:10px;font-weight:800;color:#999;text-transform:uppercase;letter-spacing:1px;margin:12px 0 6px">Emergency Lighting</div>
+          <div class="eq-item"><div class="eq-name">💡 ${lightCount} fixture${lightCount!==1?'s':''}</div></div>`
+      }
+      if(!uniqueSys.length&&!extCount&&!lightCount){
+        h+=`<div class="empty">No equipment on file</div>`
+      }
       h+=`</div>`
     })
+
+    // totals bar at top
+    if(locs.length>1||totalSys||totalExt){
+      const totalsHtml=`<div class="card" style="border-left:4px solid var(--fire)">
+        <div class="card-t">Equipment Totals — All Locations</div>
+        <div style="display:flex;gap:16px;flex-wrap:wrap">
+          ${totalSys?`<div><div style="font-size:24px;font-weight:900;color:var(--fire)">${totalSys}</div><div style="font-size:10px;font-weight:700;color:#999;text-transform:uppercase">System${totalSys!==1?'s':''}</div></div>`:''}
+          ${totalExt?`<div><div style="font-size:24px;font-weight:900;color:var(--fire)">${totalExt}</div><div style="font-size:10px;font-weight:700;color:#999;text-transform:uppercase">Extinguisher${totalExt!==1?'s':''}</div></div>`:''}
+          ${totalLights?`<div><div style="font-size:24px;font-weight:900;color:var(--fire)">${totalLights}</div><div style="font-size:10px;font-weight:700;color:#999;text-transform:uppercase">Light Fixture${totalLights!==1?'s':''}</div></div>`:''}
+        </div>
+      </div>`
+      h=totalsHtml+h
+    }
   }
 
   if(_activeTab==='invoices'){
