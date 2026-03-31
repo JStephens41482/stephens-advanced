@@ -1581,10 +1581,12 @@ function filterMoney(type){
 function jCard(j,isOv=false){
   const l=D.locs?.find(x=>x.id===(j.location_id||j.location?.id))||j.location||{},sc=j.scope||[],v=est(j),a=[l.address,l.city].filter(Boolean).join(', ')
   const ds=j.scheduled_date?new Date(j.scheduled_date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}):''
-  const cls=isOv?'jrd':j.status==='active'?'jgn':j.status==='completed'?'jgy':'jbl'
+  const isSvcReq=(j.notes||'').includes('WEB SERVICE REQUEST')
+  const cls=isSvcReq?'jrd':isOv?'jrd':j.status==='active'?'jgn':j.status==='completed'?'jgy':'jbl'
   return`<div class="swipe-wrap" data-swipe-job="${j.id}">
     <div class="swipe-del">Delete</div>
-    <div class="swipe-inner jc ${cls}" onclick="openJob('${j.id}')" style="margin-bottom:0">
+    <div class="swipe-inner jc ${cls}" onclick="openJob('${j.id}')" style="margin-bottom:0${isSvcReq?';border-left:4px solid #f59e0b;background:rgba(245,158,11,.06)':''}">
+    ${isSvcReq?'<div style="background:#f59e0b;color:#000;font-size:10px;font-weight:900;padding:3px 10px;border-radius:4px;margin-bottom:6px;display:inline-block;letter-spacing:1px">SERVICE REQUEST</div>':''}
     <div class="jc-r1"><div class="jc-nm"><span style="color:var(--fire);text-decoration:underline;text-decoration-color:rgba(240,90,40,.3);text-underline-offset:2px;cursor:pointer" onclick="event.stopPropagation();openCust('${j.location_id||l.id}')">${esc(l.name||'Unknown')} ›</span></div><div class="jc-tm">${ds}${j.scheduled_time?' '+j.scheduled_time.slice(0,5):''}</div></div>
     <div class="jc-addr">${esc(a)||'No address'}</div>
     <div class="jc-tags">${sc.includes('suppression')?'<span class="tg ts">Suppression</span>':''}${sc.includes('extinguishers')?'<span class="tg te">Ext</span>':''}${sc.includes('elights')?'<span class="tg tl">E-Lights</span>':''}${sc.includes('hydro')?'<span class="tg th">Hydro</span>':''}${isOv?'<span class="tg to2">Overdue</span>':''}${l.is_brycer_jurisdiction?'<span class="tg tb">Brycer</span>':''}${j.assigned_to?(()=>{const tk2=D.techs?.find(x=>x.id===j.assigned_to);return tk2?'<span class="tg" style="background:'+tk2.color+'22;color:'+tk2.color+'">'+esc(tk2.name.split(' ')[0])+'</span>':''})():''}</div>
