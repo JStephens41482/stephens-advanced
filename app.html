@@ -299,13 +299,15 @@ select{-webkit-appearance:none;appearance:none}
     </div>
     <div class="hdr-date" id="hdrDate"></div>
   </div>
-  <div class="vw on" id="vJobs"><div class="vw-pad" id="jobsC"></div></div>
+  <div class="vw on" id="vCal"><div class="vw-pad" id="calC"></div></div>
+  <div class="vw" id="vJobs"><div class="vw-pad" id="jobsC"></div></div>
   <div class="vw" id="vCust"><div class="vw-pad" id="custC"></div></div>
   <div class="vw" id="vMoney"><div class="vw-pad" id="moneyC"></div></div>
   <div class="vw" id="vTechs"><div class="vw-pad" id="techsC"></div></div>
   <button class="fab" onclick="openNew()">+</button>
   <div class="nav">
-    <button class="on" data-v="vJobs" onclick="go(this)"><span class="ni">📋</span><span class="nt">Jobs</span></button>
+    <button class="on" data-v="vCal" onclick="go(this)"><span class="ni">📅</span><span class="nt">Calendar</span></button>
+    <button data-v="vJobs" onclick="go(this)"><span class="ni">📋</span><span class="nt">Jobs</span></button>
     <button data-v="vCust" onclick="go(this)"><span class="ni">👤</span><span class="nt">Clients</span></button>
     <button data-v="vMoney" onclick="go(this)"><span class="ni">💰</span><span class="nt">Money</span></button>
     <button data-v="vTechs" onclick="go(this)"><span class="ni">👥</span><span class="nt">Techs</span></button>
@@ -720,7 +722,7 @@ function go(btn){
   const v=btn.dataset.v
   document.querySelectorAll('.vw').forEach(e=>e.classList.remove('on'));$(v).classList.add('on')
   document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('on'));btn.classList.add('on')
-  if(v==='vJobs')rJobs();else if(v==='vCust'){load().then(rCust)}else if(v==='vTechs')rTechs();else rMoney()
+  if(v==='vCal')rCal();else if(v==='vJobs')rJobs();else if(v==='vCust'){load().then(rCust)}else if(v==='vTechs')rTechs();else rMoney()
 }
 
 function toast(m,ok=true){
@@ -901,6 +903,7 @@ function openRouteView(){
   let h=`<div class="ov-hdr">
     <button class="ov-back" onclick="pop()">‹</button>
     <div class="ov-title">Route Plan</div>
+    <button style="font-size:18px;background:none;border:none;cursor:pointer;padding:4px 8px;min-width:44px;min-height:44px" onclick="pop();openChat();setTimeout(()=>{const i=$('chatInput');if(i){i.value='Adjust my route — any suggestions based on schedule constraints?';sendChat()}},300)">💬</button>
     <div class="ov-act" style="font-size:11px;color:var(--g1)">${Math.round(totalDist)} mi est.</div>
   </div><div class="ov-body">
   <div style="background:var(--c2);border:1.5px solid var(--info);border-radius:var(--r);padding:12px 14px;margin-bottom:16px">
@@ -1642,8 +1645,7 @@ function rJobs(){
     </div>`
   }
   $('jobsC').innerHTML=top+'<div id="jobsContent"></div>'
-  if(_jobsView==='list')rJobsList()
-  else rJobsCal()
+  rJobsList()
 }
 
 function rJobsCal(){
@@ -1812,7 +1814,6 @@ function rJobsList(q){
   }
   let h=`<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 12px">
     <div class="sec-t">Jobs · ${all.length}</div>
-    <button style="font-size:11px;font-weight:700;color:var(--g1);padding:6px 12px;border-radius:var(--rs);background:var(--c2);border:1px solid var(--b1);cursor:pointer" onclick="_jobsView='calendar';rJobsCal()">📅 Calendar</button>
   </div>
   <input class="srch" placeholder="Search by customer, city, or date..." oninput="rJobsList(this.value)">`
   h+=`<div id="jobs-list">`
@@ -7085,6 +7086,16 @@ UNPAID: ${unpaidInvs.slice(0,10).map(i=>{const loc2=D.locs.find(l=>l.id===i.loca
 TECHS: ${(D.techs||[]).map(t2=>`${t2.name} [id:${t2.id}]`).join(', ')||'None'}
 RATE CARD: ${Object.entries(D.rc||{}).map(([k,v])=>`${k}=$${v}`).join(', ')}
 
+SCHEDULING CONSTRAINTS:
+- Mon/Tue/Wed mornings: Drop off at school by 8:45 AM, unavailable until 9:15 AM
+- Thursday/Friday mornings: Available early
+- Mon/Tue/Wed: Pick up at 4:10 PM. No jobs after 3 PM in far cities (Frisco/McKinney/Plano)
+- Tuesday special: Unavailable 10:30 AM - 1:45 PM (counseling)
+- Sat/Sun: Emergency only
+- Base: Euless TX. Buffer 30 min between jobs.
+
+When analyzing photos of extinguisher tags or suppression system tags, check dates and determine if service is due. If due, suggest creating a job using the schedule_job action type.
+
 TO TAKE AN ACTION, include a JSON block in your response wrapped in \`\`\`action tags:
 \`\`\`action
 {"type":"...", ...params}
@@ -7105,6 +7116,7 @@ AVAILABLE ACTIONS:
 - {"type":"add_suppression","location_id":"...","system_type":"...","category":"standard","tank_count":1,"nozzle_count":0,"fusible_link_count":0} — adds suppression system
 - {"type":"send_sms","to":"phone","body":"message"} — sends a text message
 - {"type":"toast","message":"..."} — shows a notification
+- {"type":"build_route","date":"YYYY-MM-DD","job_ids":["id1","id2"]} — builds optimized route
 
 IMPORTANT RULES:
 1. ALWAYS describe what you're about to do BEFORE the action block. Example: "I'll add Dave's Hot Chicken as a new client in McKinney, TX." then the action block.
@@ -7246,6 +7258,16 @@ async function execChatAction(act){
     else if(t==='send_sms'){
       // AUTO-SEND DISABLED — AI chat cannot send SMS automatically
       _chatMsgs.push({role:'assistant',content:`⚠️ SMS sending is disabled. Use the Send Text button on the job card instead.`})
+    }
+    else if(t==='build_route'){
+      const pool = act.job_ids?.length ? D.jobs.filter(j=>act.job_ids.includes(j.id)) : D.jobs.filter(j=>j.status==='scheduled'&&j.scheduled_date<=td())
+      if(!pool.length){_chatMsgs.push({role:'assistant',content:'No jobs to route.'});return}
+      const routed=routeJobs(pool)
+      window._activeRoute=routed
+      let summary='**Route: '+routed.length+' stops**\n'
+      routed.forEach((r,i)=>{const l=r.job.location||{};summary+=(i+1)+'. '+(l.name||'?')+' ('+(l.city||'?')+')\n'})
+      _chatMsgs.push({role:'assistant',content:summary})
+      closeChat();openRouteView()
     }
     else if(t==='toast'){toast(act.message)}
   }catch(e){

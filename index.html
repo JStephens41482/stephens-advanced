@@ -700,6 +700,16 @@ async function submitServiceRequest(e){
       })
     }
 
+    // Generate portal token
+    let portalUrl = ''
+    if (loc) {
+      const arr = new Uint8Array(16)
+      crypto.getRandomValues(arr)
+      const token = Array.from(arr, b => b.toString(16).padStart(2, '0')).join('')
+      await SB.from('portal_tokens').insert({token, location_id: loc.id, billing_account_id: null})
+      portalUrl = 'https://stephensadvanced.com/portal?t=' + token
+    }
+
     // Send notification email
     try{
       await fetch('/api/send-email',{method:'POST',headers:{'Content-Type':'application/json'},
@@ -729,7 +739,11 @@ async function submitServiceRequest(e){
       })
     }catch(emailErr){console.error('email notify:',emailErr)}
 
-    st.textContent='Request submitted! We\'ll contact you to confirm scheduling.'
+    if (portalUrl) {
+      st.innerHTML = 'Request submitted! <br><br><a href="' + portalUrl + '" style="display:inline-block;padding:14px 28px;background:#f05a28;color:#fff;text-decoration:none;border-radius:8px;font-weight:800;font-size:16px">Access Your Portal →</a><br><br><span style="font-size:12px;color:#888">View your equipment, track service status, and download documents.</span>'
+    } else {
+      st.textContent = 'Request submitted! We\'ll contact you to confirm scheduling.'
+    }
     st.style.color='#10b981'
     btn.textContent='Submitted!'
     document.getElementById('serviceForm').reset()
@@ -865,6 +879,20 @@ async function submitMultiRequest(e){
       }
     }
 
+    // Generate portal token for first location
+    let portalUrl = ''
+    const firstLoc = document.querySelector('.multi-loc .ml-name')?.value?.trim()
+    if (locCount > 0) {
+      const {data:firstLocData} = await SB.from('locations').select('id').eq('billing_account_id', ba.id).limit(1).single()
+      if (firstLocData) {
+        const arr = new Uint8Array(16)
+        crypto.getRandomValues(arr)
+        const token = Array.from(arr, b => b.toString(16).padStart(2, '0')).join('')
+        await SB.from('portal_tokens').insert({token, location_id: firstLocData.id, billing_account_id: ba.id})
+        portalUrl = 'https://stephensadvanced.com/portal?t=' + token
+      }
+    }
+
     // Email notification
     try{
       await fetch('/api/send-email',{method:'POST',headers:{'Content-Type':'application/json'},
@@ -884,7 +912,11 @@ async function submitMultiRequest(e){
       })
     }catch(emailErr){}
 
-    st.textContent=locCount+' location'+(locCount!==1?'s':'')+' submitted! We\'ll contact you to confirm scheduling.'
+    if (portalUrl) {
+      st.innerHTML = locCount+' location'+(locCount!==1?'s':'')+' submitted! <br><br><a href="' + portalUrl + '" style="display:inline-block;padding:14px 28px;background:#f05a28;color:#fff;text-decoration:none;border-radius:8px;font-weight:800;font-size:16px">Access Your Portal →</a><br><br><span style="font-size:12px;color:#888">View your equipment, track service status, and download documents.</span>'
+    } else {
+      st.textContent=locCount+' location'+(locCount!==1?'s':'')+' submitted! We\'ll contact you to confirm scheduling.'
+    }
     st.style.color='#10b981'
     btn.textContent='Submitted!'
     setTimeout(()=>{btn.disabled=false;btn.textContent='Submit All Locations'},5000)
