@@ -79,6 +79,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+select,option{color-scheme:dark}
 :root{--bg:#0d0f14;--c1:#151820;--c2:#1c1f2a;--c3:#252937;--b1:#2a2f3e;--b2:#353b4d;--w:#f0f1f4;--w2:#c8ccd6;--g1:#7c8497;--g2:#555d72;--g3:#3d4456;--fire:#f05a28;--fires:rgba(240,90,40,.08);--ok:#10b981;--oks:rgba(16,185,129,.08);--warn:#f59e0b;--warns:rgba(245,158,11,.08);--bad:#ef4444;--bads:rgba(239,68,68,.08);--info:#6366f1;--infos:rgba(99,102,241,.08);--r:12px;--rs:8px}
 html,body{height:100%;overflow:hidden;overscroll-behavior:none}
 body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--w);font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased}
@@ -5831,18 +5832,18 @@ async function openSuppReport(jobId,sysId,preLocation){
   <!-- SYSTEM INFO -->
   <div class="ds"><div class="ds-t">System Information</div>
     <div class="ds-row"><div class="ds-lbl">Manufacturer</div><div class="ds-val">
-      <select id="rpt-mfg" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600;width:100%" onchange="updateRptModels()">
+      <select id="rpt-mfg" style="text-align:right;border:none;background:var(--c1);color:var(--w);font-size:13px;font-weight:600;width:100%;border-radius:6px;padding:4px" onchange="updateRptModels()">
         ${['','Amerex','Ansul','Badger','Buckeye','Captive-Aire','Kidde','Lehavot','Protex','Pyro-Chem','Range Guard','Other'].map(m=>`<option value="${m}"${(prev.mfg||(sys.system_type||'').split(' ')[0]||'')===m?' selected':''}>${m||'— Select —'}</option>`).join('')}
       </select>
     </div></div>
     <div class="ds-row"><div class="ds-lbl">Model</div><div class="ds-val">
-      <select id="rpt-model" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600;width:100%">
+      <select id="rpt-model" style="text-align:right;border:none;background:var(--c1);color:var(--w);font-size:13px;font-weight:600;width:100%;border-radius:6px;padding:4px">
         <option value="${esc(prev.model||sys.system_type||'')}">${esc(prev.model||sys.system_type||'— Select —')}</option>
       </select>
     </div></div>
     <div class="ds-row"><div class="ds-lbl">Serial Number</div><div class="ds-val"><input id="rpt-serial" placeholder="Serial #" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600" value="${esc(prev.serial||'')}"></div></div>
     <div class="ds-row"><div class="ds-lbl">Cylinder Size</div><div class="ds-val">
-      <select id="rpt-cyl" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600;width:100%">
+      <select id="rpt-cyl" style="text-align:right;border:none;background:var(--c1);color:var(--w);font-size:13px;font-weight:600;width:100%;border-radius:6px;padding:4px">
         <option value="">— Select —</option>
         ${prev.cyl?`<option value="${esc(prev.cyl)}" selected>${esc(prev.cyl)}</option>`:''}
       </select>
