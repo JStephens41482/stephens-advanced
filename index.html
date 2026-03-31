@@ -706,7 +706,7 @@ async function submitServiceRequest(e){
       const arr = new Uint8Array(16)
       crypto.getRandomValues(arr)
       const token = Array.from(arr, b => b.toString(16).padStart(2, '0')).join('')
-      await SB.from('portal_tokens').insert({token, location_id: loc.id, billing_account_id: null})
+      await SB.from('portal_tokens').insert({token, location_id: loc.id, billing_account_id: null, expires_at: new Date(Date.now() + 15*24*60*60*1000).toISOString()})
       portalUrl = 'https://stephensadvanced.com/portal?t=' + token
     }
 
@@ -740,7 +740,7 @@ async function submitServiceRequest(e){
     }catch(emailErr){console.error('email notify:',emailErr)}
 
     if (portalUrl) {
-      st.innerHTML = 'Request submitted! <br><br><a href="' + portalUrl + '" style="display:inline-block;padding:14px 28px;background:#f05a28;color:#fff;text-decoration:none;border-radius:8px;font-weight:800;font-size:16px">Access Your Portal →</a><br><br><span style="font-size:12px;color:#888">View your equipment, track service status, and download documents.</span>'
+      st.innerHTML = 'Request submitted! <br><br><a href="' + portalUrl + '" style="display:inline-block;padding:14px 28px;background:#f05a28;color:#fff;text-decoration:none;border-radius:8px;font-weight:800;font-size:16px">Access Your Portal →</a><br><br><span style="font-size:12px;color:#888">Your portal link is active for 15 days. You can edit your information, review equipment, and track service status.</span>'
     } else {
       st.textContent = 'Request submitted! We\'ll contact you to confirm scheduling.'
     }
@@ -888,7 +888,7 @@ async function submitMultiRequest(e){
         const arr = new Uint8Array(16)
         crypto.getRandomValues(arr)
         const token = Array.from(arr, b => b.toString(16).padStart(2, '0')).join('')
-        await SB.from('portal_tokens').insert({token, location_id: firstLocData.id, billing_account_id: ba.id})
+        await SB.from('portal_tokens').insert({token, location_id: firstLocData.id, billing_account_id: ba.id, expires_at: new Date(Date.now() + 15*24*60*60*1000).toISOString()})
         portalUrl = 'https://stephensadvanced.com/portal?t=' + token
       }
     }
@@ -913,7 +913,7 @@ async function submitMultiRequest(e){
     }catch(emailErr){}
 
     if (portalUrl) {
-      st.innerHTML = locCount+' location'+(locCount!==1?'s':'')+' submitted! <br><br><a href="' + portalUrl + '" style="display:inline-block;padding:14px 28px;background:#f05a28;color:#fff;text-decoration:none;border-radius:8px;font-weight:800;font-size:16px">Access Your Portal →</a><br><br><span style="font-size:12px;color:#888">View your equipment, track service status, and download documents.</span>'
+      st.innerHTML = locCount+' location'+(locCount!==1?'s':'')+' submitted! <br><br><a href="' + portalUrl + '" style="display:inline-block;padding:14px 28px;background:#f05a28;color:#fff;text-decoration:none;border-radius:8px;font-weight:800;font-size:16px">Access Your Portal →</a><br><br><span style="font-size:12px;color:#888">Your portal link is active for 15 days. You can edit your information, review equipment, and track service status.</span>'
     } else {
       st.textContent=locCount+' location'+(locCount!==1?'s':'')+' submitted! We\'ll contact you to confirm scheduling.'
     }
