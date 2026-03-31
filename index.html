@@ -4196,7 +4196,7 @@ async function _confirmSendEmail(){
 
   // generate portal link
   let portalUrl=''
-  try{const pTk=await getOrCreatePortalToken(d.inv.location_id,d.loc.billing_account_id||null);if(pTk)portalUrl='https://stephens-advanced.vercel.app/portal?t='+pTk}catch(e){}
+  try{const pTk=await getOrCreatePortalToken(d.inv.location_id,d.loc.billing_account_id||null);if(pTk)portalUrl='https://stephensadvanced.com/portal?t='+pTk}catch(e){}
 
   // generate Square payment link
   let payUrl=''
