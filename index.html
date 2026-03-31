@@ -488,6 +488,14 @@ async function load(){
 }
 
 const td=()=>new Date().toISOString().split('T')[0]
+
+// Brycer / TCE jurisdiction detection — DFW cities that require compliance reporting
+const BRYCER_CITIES=['fort worth','arlington','frisco','mckinney','allen','plano','denton','lewisville','flower mound','mansfield','grand prairie','southlake','keller','grapevine','colleyville','north richland hills','hurst','euless','bedford','weatherford','burleson','crowley','benbrook','saginaw','lake worth','river oaks','white settlement','forest hill','everman','kennedale','watauga','richland hills','haltom city']
+function _isBrycerCity(city){
+  if(!city)return false
+  const c=city.toLowerCase().trim()
+  return BRYCER_CITIES.some(bc=>c.includes(bc)||bc.includes(c))
+}
 const $=id=>document.getElementById(id)
 const fmt=n=>'$'+Math.round(n||0).toLocaleString()
 // normalize description for fuzzy matching — strip punctuation/spaces/case
@@ -2456,7 +2464,7 @@ async function saveCustEdit(id){
     contact_phone:$('ec-phone')?.value?.trim()||null,contact_email:$('ec-email')?.value?.trim()||null,
     address:$('ec-addr')?.value?.trim()||null,city:$('ec-city')?.value?.trim()||null,
     zip:$('ec-zip')?.value?.trim()||null,notes:$('ec-notes')?.value?.trim()||null,
-    is_brycer_jurisdiction:bry,brycer_ahj_name:bry?'Fort Worth Fire Department':null
+    is_brycer_jurisdiction:bry,brycer_ahj_name:bry?(city||'').trim()+' Fire Department':null
   }).eq('id',id)
   if(error){if($('ec-err'))$('ec-err').textContent='Error: '+error.message;if(b){b.textContent='Save';b.style.opacity='';b.style.pointerEvents=''}return}
   await load();toast('Client updated')
@@ -3038,7 +3046,7 @@ async function saveNewCust(){
     contact_email:$('nc-email')?.value?.trim()||null,address:$('nc-addr')?.value?.trim()||null,
     city:$('nc-city')?.value?.trim()||null,zip:$('nc-zip')?.value?.trim()||null,
     notes:$('nc-notes')?.value?.trim()||null,is_brycer_jurisdiction:bry,
-    brycer_ahj_name:bry?'Fort Worth Fire Department':null
+    brycer_ahj_name:bry?(city||'').trim()+' Fire Department':null
   }).select().single()
   if(error){if($('nc-err'))$('nc-err').textContent='Error: '+error.message;if(b){b.textContent='Save';b.style.opacity='';b.style.pointerEvents=''}return}
   await load();toast('Client added')
@@ -3931,8 +3939,8 @@ async function saveAIInv(ro){
       contact_name:$('ai-nc-contact')?.value?.trim()||null,contact_phone:$('ai-nc-phone')?.value?.trim()||null,
       contact_email:$('ai-nc-email')?.value?.trim()||null,
       billing_account_id:baId||null,
-      is_brycer_jurisdiction:city.toLowerCase().includes('fort worth'),
-      brycer_ahj_name:city.toLowerCase().includes('fort worth')?'Fort Worth Fire Department':null
+      is_brycer_jurisdiction:_isBrycerCity(city),
+      brycer_ahj_name:_isBrycerCity(city)?(city||'').trim()+' Fire Department':null
     }).select().single()
     if(error){toast('Error saving customer',false);setLoad('aiSaveBtn',false,'Save Invoice');return}
     _parentBillingId=null
@@ -4420,7 +4428,7 @@ async function saveJob(){
   if(nSt.mk){
     const nm=$('nn')?.value?.trim();if(!nm){toast('Enter business name',false);setLoad('saveJobBtn',false,'Create Job');return}
     const city=$('nc2')?.value?.trim()||''
-    const{data,error}=await SB.from('locations').insert({name:nm,address:$('na')?.value?.trim()||null,city:city||null,state:$('ns2')?.value?.trim()||'TX',zip:$('nz2')?.value?.trim()||null,contact_name:$('nco2')?.value?.trim()||null,contact_phone:$('np2')?.value?.trim()||null,is_brycer_jurisdiction:city.toLowerCase().includes('fort worth'),brycer_ahj_name:city.toLowerCase().includes('fort worth')?'Fort Worth Fire Department':null}).select().single()
+    const{data,error}=await SB.from('locations').insert({name:nm,address:$('na')?.value?.trim()||null,city:city||null,state:$('ns2')?.value?.trim()||'TX',zip:$('nz2')?.value?.trim()||null,contact_name:$('nco2')?.value?.trim()||null,contact_phone:$('np2')?.value?.trim()||null,is_brycer_jurisdiction:_isBrycerCity(city),brycer_ahj_name:_isBrycerCity(city)?(city||'').trim()+' Fire Department':null}).select().single()
     if(error){toast('Error creating customer',false);setLoad('saveJobBtn',false,'Create Job');return}
     lid=data.id
   }
