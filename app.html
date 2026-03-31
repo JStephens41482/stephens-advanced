@@ -5412,12 +5412,19 @@ const RPT_LOGO=`<svg width="44" height="50" viewBox="0 0 32 38" fill="none" xmln
 
 function rptShell(title,subtitle,content){
   return`<!DOCTYPE html><html style="background:#ffffff;color-scheme:light"><head><meta charset="UTF-8"><meta name="color-scheme" content="light"></head>
-<body style="margin:0;padding:8px;font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#222;background:#ffffff;line-height:1.4">
+<body style="margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#222;background:#ffffff;line-height:1.4;width:100%;overflow:hidden">
 
-<div style="border-bottom:3px solid #f05a28;padding-bottom:8px;margin-bottom:14px">
-  <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">${RPT_LOGO}<div><div style="font-size:13pt;font-weight:900;color:#1a1a2e">Stephens <span style="color:#f05a28">Advanced</span> LLC</div><div style="font-size:7pt;color:#666">3801 Alder Trail · Euless, TX 76040 · (214) 994-4799</div></div></div>
-  <div style="font-size:9pt;font-weight:800;color:#1a1a2e;margin-top:4px">${title}${subtitle?' <span style="font-size:7pt;font-weight:400;color:#888"> · '+subtitle+'</span>':''}</div>
-</div>
+<table style="width:100%;table-layout:fixed;border-collapse:collapse;border-bottom:3px solid #f05a28;padding-bottom:10px;margin-bottom:16px">
+<tr><td style="vertical-align:middle;width:50px;padding-bottom:10px">${RPT_LOGO}</td>
+<td style="vertical-align:middle;padding-bottom:10px;padding-left:10px">
+  <div style="font-size:15pt;font-weight:900;color:#1a1a2e">Stephens <span style="color:#f05a28">Advanced</span> LLC</div>
+  <div style="font-size:7pt;color:#666;margin-top:1px">3801 Alder Trail · Euless, TX 76040</div>
+  <div style="font-size:9pt;font-weight:700;color:#f05a28;margin-top:1px">(214) 994-4799</div>
+</td>
+<td style="vertical-align:middle;text-align:right;padding-bottom:10px;width:40%;overflow:hidden;word-wrap:break-word">
+  <div style="font-size:9pt;font-weight:800;color:#1a1a2e">${title}</div>
+  ${subtitle?`<div style="font-size:6.5pt;color:#888;margin-top:1px">${subtitle}</div>`:''}
+</td></tr></table>
 
 ${content}
 
@@ -5440,17 +5447,21 @@ function buildExtReportHtml(data,loc,custSig){
   let rows=units.map((u,i)=>{
     const nfpa=NFPA10[u.type]||NFPA10['ABC Dry Chemical']
     return`<tr>
-      <td style="padding:3px 4px;border:1px solid #ddd;font-size:7pt">${i+1}</td>
-      <td style="padding:3px 4px;border:1px solid #ddd;font-size:7pt">${u.type||''} ${u.size||''}</td>
-      <td style="padding:3px 4px;border:1px solid #ddd;font-size:7pt;text-align:center;font-weight:700;color:${u.condition==='pass'?'#10b981':'#ef4444'}">${(u.condition||'').toUpperCase()}</td>
-      <td style="padding:3px 4px;border:1px solid #ddd;font-size:7pt">${u.location||''}</td>
-      <td style="padding:3px 4px;border:1px solid #ddd;font-size:7pt">${u.notes||''}</td>
+      <td style="padding:6px;border:1px solid #ddd">${i+1}</td>
+      <td style="padding:6px;border:1px solid #ddd">${u.type||''} ${u.size||''}</td>
+      <td style="padding:6px;border:1px solid #ddd">${u.location||''}</td>
+      <td style="padding:6px;border:1px solid #ddd">${u.mfgDate||''}</td>
+      <td style="padding:6px;border:1px solid #ddd;text-align:center;font-weight:700;color:${u.condition==='pass'?'#10b981':'#ef4444'}">${(u.condition||'').toUpperCase()}</td>
+      <td style="padding:6px;border:1px solid #ddd">${u.lastInternal||'N/A'}</td>
+      <td style="padding:6px;border:1px solid #ddd">${u.lastHydro||'N/A'}</td>
+      <td style="padding:6px;border:1px solid #ddd;font-size:9px">${nfpa.internal?nfpa.internal+'yr':'N/A'} / ${nfpa.hydro}yr</td>
+      <td style="padding:6px;border:1px solid #ddd;font-size:9px">${u.notes||''}</td>
     </tr>`
   }).join('')
   const content=rptSection('Customer Information',
     rptRow(rptField('Business Name',loc?.name||'',2),rptField('Address',[loc?.address,loc?.city,loc?.state].filter(Boolean).join(', '),2),rptField('Date',today,1))
-  )+`<table style="width:100%;table-layout:fixed;border-collapse:collapse;margin-bottom:10px;font-size:7pt;color:#333;background:#fff">
-<tr>${['#','Type / Size','Status','Location','Notes'].map(h=>`<th style="background:#f05a28;color:#fff;padding:3px 4px;font-size:6pt;text-align:left;font-weight:700">${h}</th>`).join('')}</tr>
+  )+`<table style="width:100%;border-collapse:collapse;margin-bottom:10px;font-size:7.5pt;color:#333;background:#fff">
+<tr>${['#','Type / Size','Location','Mfg Date','Condition','Last Int.','Last Hydro','Interval','Notes'].map(h=>`<th style="background:#f05a28;color:#fff;padding:4px 5px;font-size:6.5pt;text-align:left;font-weight:700">${h}</th>`).join('')}</tr>
 ${rows}
 </table>
 <div style="display:flex;gap:20px;margin-top:12px;padding-top:10px;border-top:2px solid #1a1a2e">
@@ -5474,13 +5485,10 @@ function buildKitchenReportFromData(d,loc,inv,custSig){
   const content=rptSection('Customer Information',
     rptRow(rptField('Business Name',loc?.name||'',2),rptField('Phone',loc?.contact_phone||''))+
     rptRow(rptField('Address',a,2),rptField('Email',loc?.contact_email||''))+
-    rptRow(rptField('Owner/Manager',loc?.contact_name||''),rptField('Date',date||d.timein||''))+
-    rptRow(rptField('Time In',d.timein||''),rptField('Time Out',d.timeout||''))
+    rptRow(rptField('Owner/Manager',loc?.contact_name||''),rptField('Date',date||d.timein||''),rptField('Time In',d.timein||''),rptField('Time Out',d.timeout||''))
   )+rptSection('System Information',
-    rptRow(rptField('Manufacturer',d.mfg||''),rptField('Model',d.model||''))+
-    rptRow(rptField('Serial #',d.serial||''),rptField('Cylinder',d.cyl||''))+
-    rptRow(rptField('Last Hydro',d.hydro||''),rptField('Last Recharge',d.recharge||''))+
-    rptRow(rptField('Fusible Links',d.links||''))
+    rptRow(rptField('Manufacturer',d.mfg||''),rptField('Model',d.model||''),rptField('Serial #',d.serial||''))+
+    rptRow(rptField('Cylinder Size(s)',d.cyl||''),rptField('Last Hydro',d.hydro||''),rptField('Last Recharge',d.recharge||''),rptField('Fusible Links',d.links||''))
   )+`<div style="display:flex;gap:6px;margin-bottom:10px"><div style="flex:1"><div style="font-size:7pt;font-weight:800;text-transform:uppercase;color:#fff;background:#f05a28;padding:3px 6px;border-radius:3px;margin-bottom:3px">Checks (1–17)</div>${leftHtml}</div><div style="flex:1"><div style="font-size:7pt;font-weight:800;text-transform:uppercase;color:#fff;background:#f05a28;padding:3px 6px;border-radius:3px;margin-bottom:3px">Checks (18–33)</div>${rightHtml}</div></div>`
   +(d.sysLocation?rptSection('System Location',`<div style="font-size:8pt;color:#333">${d.sysLocation}</div>`):'')
   +(d.appliances?rptSection('Cooking Appliances',`<div style="font-size:8pt;color:#333">${(d.appliances||'').replace(/\n/g,'<br>')}</div>`):'')
@@ -5499,8 +5507,7 @@ function buildDryChemReportFromData(d,loc,inv,custSig){
     rptRow(rptField('Business Name',loc?.name||'',2),rptField('Address',a,2),rptField('Date',date||''))
   )+rptSection('System Information',
     rptRow(rptField('System Type',d.sysType||''),rptField('Agent',d.agent||''))+
-    rptRow(rptField('Cylinders',d.cylCount||''),rptField('Nozzles',d.nozzleCount||''))+
-    rptRow(rptField('Protected Area',d.area||''),rptField('Last Hydro',d.lastHydro||''))
+    rptRow(rptField('Cylinders',d.cylCount||''),rptField('Nozzles',d.nozzleCount||''),rptField('Protected Area',d.area||''),rptField('Last Hydro',d.lastHydro||''))
   )+`<table style="width:100%;border-collapse:collapse;margin-bottom:10px;background:#fff"><tr><th style="background:#f05a28;color:#fff;padding:4px 6px;font-size:6.5pt;text-align:left">Inspection Item</th><th style="background:#f05a28;color:#fff;padding:4px;font-size:6.5pt;width:30px;text-align:center">Yes</th><th style="background:#f05a28;color:#fff;padding:4px;font-size:6.5pt;width:30px;text-align:center">No</th></tr>${checkRows}</table>`
   +rptSection('Deficiencies',`<div style="font-size:8pt;color:#333">${(d.deficiencies||'None noted').replace(/\n/g,'<br>')}</div>`)
   +`<div style="display:flex;gap:20px;margin-top:10px;padding-top:10px;border-top:2px solid #1a1a2e">${rptSigBlock(d.techSig||'','Service Technician',d.techName||'Jon Stephens','<div style="font-size:6.5pt;color:#666">'+(d.permit||'FEL-A-2593933')+'</div>')}${rptSigBlock(custSig||'','Owner / Manager / Auth. Agent',d.ownerName||loc?.contact_name||'')}</div>`
