@@ -615,6 +615,21 @@ async function syncJobToCalendar(jobId,locationId,date,time){
   })
 }
 
+// ═══ DOCUMENT STORAGE ═══
+async function uploadDocument(blob, filename, docType, entityType, entityId, metadata={}){
+  const path=`${docType}/${entityId}/${Date.now()}-${filename}`
+  const{data,error}=await SB.storage.from('sa-documents').upload(path,blob,{contentType:blob.type})
+  if(error)throw error
+  const{data:{publicUrl}}=SB.storage.from('sa-documents').getPublicUrl(path)
+  await SB.from('documents').insert({
+    doc_type:docType,filename,storage_path:path,storage_url:publicUrl,
+    mime_type:blob.type,file_size_bytes:blob.size,
+    entity_type:entityType,entity_id:entityId,
+    uploaded_by:'system',metadata
+  })
+  return publicUrl
+}
+
 // Brycer / TCE jurisdiction detection — DFW cities that require compliance reporting
 const BRYCER_CITIES=['fort worth','arlington','frisco','mckinney','allen','plano','denton','lewisville','flower mound','mansfield','grand prairie','southlake','keller','grapevine','colleyville','north richland hills','hurst','euless','bedford','weatherford','burleson','crowley','benbrook','saginaw','lake worth','river oaks','white settlement','forest hill','everman','kennedale','watauga','richland hills','haltom city']
 function _isBrycerCity(city){
@@ -2669,6 +2684,36 @@ async function openCust(id){
   }
   h+=`</div>`
 
+  // Documents section
+  const locJobIds=D.jobs.filter(j=>j.location_id===id||j.location?.id===id).map(j=>j.id)
+  h+=`<div class="ds"><div class="ds-t">Documents</div><div id="cust-docs-${id}" style="font-size:12px;color:var(--g2);padding:8px 0">Loading...</div></div>`
+  // async load docs after render
+  setTimeout(async()=>{
+    const el=$('cust-docs-'+id);if(!el)return
+    try{
+      let docs=[]
+      if(locJobIds.length){
+        const{data}=await SB.from('documents').select('*').eq('entity_type','job').in('entity_id',locJobIds).order('created_at',{ascending:false}).limit(20)
+        docs=data||[]
+      }
+      if(!docs.length){el.innerHTML='<div style="color:var(--g2);padding:4px 0">No documents yet</div>';return}
+      const icons={report_pdf:'📄',photo:'📸',invoice_pdf:'🧾'}
+      el.innerHTML=docs.map(d=>{
+        const dt=new Date(d.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})
+        const icon=icons[d.doc_type]||'📎'
+        const size=d.file_size_bytes?(Math.round(d.file_size_bytes/1024)+'KB'):''
+        return`<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--b1)">
+          <span style="font-size:16px">${icon}</span>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(d.filename)}</div>
+            <div style="font-size:10px;color:var(--g2)">${dt} · ${size}${d.metadata?.report_type?' · '+d.metadata.report_type:''}</div>
+          </div>
+          <a href="${d.storage_url}" target="_blank" style="font-size:11px;color:var(--fire);font-weight:700;text-decoration:none;white-space:nowrap" onclick="event.stopPropagation()">View ↗</a>
+        </div>`
+      }).join('')
+    }catch(e){el.innerHTML='<div style="color:var(--g2)">Could not load documents</div>';console.error('docs:',e)}
+  },100)
+
   // Parent company & sibling locations
   const ba=l.billing_account_id?D.bas.find(b=>b.id===l.billing_account_id):null
   const siblings=ba?D.locs.filter(x=>x.billing_account_id===ba.id&&x.id!==l.id):[]
@@ -3838,6 +3883,8 @@ function openPhotoFlow(){
 
 function handlePhoto(ev){
   const file=ev.target.files[0];if(!file)return
+  // upload photo to storage in background
+  try{uploadDocument(file,file.name,'photo','general','00000000-0000-0000-0000-000000000000',{source:'camera'})}catch(e){console.error('photo upload:',e)}
   const reader=new FileReader()
   reader.onload=e=>{
     const prev=$('photoPrev');if(prev){prev.src=e.target.result;prev.style.display='block'}
@@ -4909,6 +4956,8 @@ async function _confirmSendEmail(){
       await new Promise(r=>setTimeout(r,500))
       const pdfBlob=await html2pdf().set({margin:[0.5,0.5,0.5,0.5],filename:'report.pdf',image:{type:'jpeg',quality:0.98},html2canvas:{scale:2,useCORS:true,windowWidth:580,backgroundColor:'#ffffff'},jsPDF:{unit:'in',format:'letter',orientation:'portrait'}}).from(idoc.body).outputPdf('blob')
       document.body.removeChild(iframe)
+      // Store PDF permanently — DO NOT modify the PDF generation above this line
+      try{await uploadDocument(pdfBlob,'Stephens-Advanced-'+rType+suffix+'.pdf','report_pdf','job',d.inv.job_id,{report_type:rpt.report_type,invoice_id:d.inv.id})}catch(e){console.error('doc upload:',e)}
       const buf=await pdfBlob.arrayBuffer()
       const b64=btoa(new Uint8Array(buf).reduce((s,b)=>s+String.fromCharCode(b),''))
       attachments.push({filename:'Stephens-Advanced-'+rType+suffix+'.pdf',content:b64})
@@ -6805,6 +6854,8 @@ async function handleAppliancePhotos(ev){
   const st=$('appliance-ai-status');if(st)st.style.display='block'
 
   for(const file of files.slice(0,3)){
+    // upload photo to storage in background
+    try{uploadDocument(file,file.name,'photo','general','00000000-0000-0000-0000-000000000000',{source:'appliance_photo'})}catch(e){}
     const reader=new FileReader()
     const b64=await new Promise(r=>{reader.onload=e=>r(e.target.result);reader.readAsDataURL(file)})
     if(wrap){
