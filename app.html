@@ -2345,6 +2345,41 @@ async function openCust(id){
     <button class="qa-btn pri" onclick="schedFor('${l.id}','${esc(l.name)}','${esc(l.address||'')}','${esc(l.city||'')}')">+ New Job</button>
   </div>`
 
+  // Parent company & sibling locations
+  const ba=l.billing_account_id?D.bas.find(b=>b.id===l.billing_account_id):null
+  const siblings=ba?D.locs.filter(x=>x.billing_account_id===ba.id&&x.id!==l.id):[]
+
+  h+=`<div class="ds"><div class="ds-t" style="display:flex;justify-content:space-between;align-items:center">
+    <span>Locations${ba?' · '+esc(ba.name):''}</span>
+    <div style="display:flex;gap:6px">
+      ${!ba?`<button style="font-size:11px;font-weight:700;color:var(--info);background:none;border:none;cursor:pointer" onclick="assignToParent('${l.id}')">Assign to Parent Co.</button>`:''}
+      <button style="font-size:11px;font-weight:700;color:var(--fire);background:none;border:none;cursor:pointer" onclick="addSiblingLocation('${l.id}','${ba?.id||''}')">+ Add Location</button>
+    </div>
+  </div>`
+
+  // current location
+  h+=`<div style="padding:10px 0;border-bottom:1px solid var(--b1);display:flex;align-items:center;gap:8px">
+    <div style="width:6px;height:6px;border-radius:50%;background:var(--fire);flex-shrink:0"></div>
+    <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--fire)">${esc(l.name)}</div>
+      <div style="font-size:11px;color:var(--g1)">${esc([l.address,l.city].filter(Boolean).join(', '))}</div></div>
+    <span style="font-size:9px;font-weight:800;color:var(--fire);text-transform:uppercase">Current</span>
+  </div>`
+
+  // sibling locations
+  siblings.forEach(s=>{
+    h+=`<div style="padding:10px 0;border-bottom:1px solid var(--b1);display:flex;align-items:center;gap:8px;cursor:pointer" onclick="pop();setTimeout(()=>openCust('${s.id}'),100)">
+      <div style="width:6px;height:6px;border-radius:50%;background:var(--g3);flex-shrink:0"></div>
+      <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--w)">${esc(s.name)}</div>
+        <div style="font-size:11px;color:var(--g1)">${esc([s.address,s.city].filter(Boolean).join(', '))}</div></div>
+      <span style="font-size:14px;color:var(--g3)">›</span>
+    </div>`
+  })
+
+  if(!siblings.length&&!ba){
+    h+=`<div style="padding:10px 0;font-size:12px;color:var(--g2)">Single location. Tap "Assign to Parent Co." to link to a multi-location account, or "+ Add Location" to add another site.</div>`
+  }
+  h+=`</div>`
+
   if(l.suppression_systems?.length){
     h+=`<div class="ds"><div class="ds-t" style="display:flex;justify-content:space-between;align-items:center"><span>Suppression Systems · ${l.suppression_systems.length}</span><button style="font-size:11px;font-weight:700;color:var(--fire)" onclick="openAddSupp('${l.id}')">+ Add</button></div>`
     l.suppression_systems.forEach(s=>{
@@ -2424,6 +2459,106 @@ async function openCust(id){
 }
 
 // EDIT CLIENT
+function assignToParent(locId){
+  const l=D.locs.find(x=>x.id===locId);if(!l)return
+  // show list of existing billing accounts + option to create new
+  const baList=D.bas||[]
+  let h=`<div class="ov-hdr"><button class="ov-back" onclick="pop()">‹</button><div class="ov-title">Assign to Parent Co.</div></div><div class="ov-body">
+    <div style="font-size:13px;color:var(--w2);margin-bottom:16px">Link <strong>${esc(l.name)}</strong> to a parent company or management group.</div>`
+
+  if(baList.length){
+    h+=`<div class="ds"><div class="ds-t">Existing Companies</div>`
+    baList.forEach(b=>{
+      const count=D.locs.filter(x=>x.billing_account_id===b.id).length
+      h+=`<div style="padding:12px 0;border-bottom:1px solid var(--b1);cursor:pointer;display:flex;justify-content:space-between;align-items:center" onclick="doAssignParent('${locId}','${b.id}')">
+        <div><div style="font-size:14px;font-weight:700;color:var(--w)">${esc(b.name)}</div>
+          <div style="font-size:11px;color:var(--g1)">${count} location${count!==1?'s':''}</div></div>
+        <span style="color:var(--fire);font-size:12px;font-weight:700">Select</span>
+      </div>`
+    })
+    h+=`</div>`
+  }
+
+  h+=`<div class="ds" style="margin-top:16px"><div class="ds-t">Or Create New Parent Company</div>
+    <div class="fg"><label class="fg-l">Company Name</label><input id="new-parent-name" placeholder="e.g. ABC Restaurant Group"></div>
+    <div class="fg"><label class="fg-l">Contact Name</label><input id="new-parent-contact" placeholder="Main contact"></div>
+    <div class="fg"><label class="fg-l">Phone</label><input id="new-parent-phone" placeholder="Phone"></div>
+    <div class="fg"><label class="fg-l">Email</label><input id="new-parent-email" placeholder="Email"></div>
+    <button class="btn-p" onclick="createAndAssignParent('${locId}')">Create & Assign</button>
+  </div></div>`
+  push(h)
+}
+
+async function doAssignParent(locId,baId){
+  await SB.from('locations').update({billing_account_id:baId}).eq('id',locId)
+  await load();toast('Assigned to parent company')
+  pop();pop();openCust(locId)
+}
+
+async function createAndAssignParent(locId){
+  const name=$('new-parent-name')?.value?.trim()
+  if(!name){toast('Enter company name',false);return}
+  const{data:ba,error}=await SB.from('billing_accounts').insert({
+    name,contact_name:$('new-parent-contact')?.value?.trim()||null,
+    phone:$('new-parent-phone')?.value?.trim()||null,
+    email:$('new-parent-email')?.value?.trim()||null
+  }).select().single()
+  if(error){toast('Error: '+error.message,false);return}
+  await SB.from('locations').update({billing_account_id:ba.id}).eq('id',locId)
+  await load();toast('Parent company created & assigned')
+  pop();pop();openCust(locId)
+}
+
+function addSiblingLocation(locId,baId){
+  const l=D.locs.find(x=>x.id===locId)
+  const parentName=baId?D.bas.find(b=>b.id===baId)?.name:l?.name
+  push(`<div class="ov-hdr"><button class="ov-back" onclick="pop()">‹</button><div class="ov-title">Add Location</div>
+    <button class="ov-act" id="saveSibBtn" onclick="saveSiblingLocation('${locId}','${baId}')">Save</button>
+  </div><div class="ov-body">
+    <div style="font-size:13px;color:var(--w2);margin-bottom:16px">Add another location${parentName?' under <strong>'+esc(parentName)+'</strong>':''}.</div>
+    <div class="fg"><label class="fg-l">Location Name *</label><input id="sib-name" placeholder="e.g. Downtown Location"></div>
+    <div class="fg"><label class="fg-l">Address</label><input id="sib-addr" placeholder="Street address"></div>
+    <div class="fg"><label class="fg-l">City</label><input id="sib-city" placeholder="City"></div>
+    <div class="fg"><label class="fg-l">State</label><input id="sib-state" value="TX"></div>
+    <div class="fg"><label class="fg-l">Zip</label><input id="sib-zip" placeholder="Zip"></div>
+    <div class="fg"><label class="fg-l">Contact Name</label><input id="sib-contact" placeholder="On-site contact"></div>
+    <div class="fg"><label class="fg-l">Phone</label><input id="sib-phone" placeholder="Phone"></div>
+    <div class="fg"><label class="fg-l">Email</label><input id="sib-email" placeholder="Email"></div>
+  </div>`)
+}
+
+async function saveSiblingLocation(origLocId,baId){
+  const name=$('sib-name')?.value?.trim()
+  if(!name){toast('Enter location name',false);return}
+  const city=$('sib-city')?.value?.trim()||''
+  // if no billing account yet, create one from the original location
+  let finalBaId=baId
+  if(!finalBaId){
+    const origLoc=D.locs.find(x=>x.id===origLocId)
+    const{data:ba}=await SB.from('billing_accounts').insert({
+      name:origLoc?.name||name,contact_name:origLoc?.contact_name||null,
+      phone:origLoc?.contact_phone||null,email:origLoc?.contact_email||null
+    }).select().single()
+    if(ba){
+      finalBaId=ba.id
+      await SB.from('locations').update({billing_account_id:ba.id}).eq('id',origLocId)
+    }
+  }
+  const{data:newLoc,error}=await SB.from('locations').insert({
+    name,address:$('sib-addr')?.value?.trim()||null,city:city,
+    state:$('sib-state')?.value?.trim()||'TX',zip:$('sib-zip')?.value?.trim()||null,
+    contact_name:$('sib-contact')?.value?.trim()||null,
+    contact_phone:$('sib-phone')?.value?.trim()||null,
+    contact_email:$('sib-email')?.value?.trim()||null,
+    billing_account_id:finalBaId||null,
+    is_brycer_jurisdiction:_isBrycerCity(city),
+    brycer_ahj_name:_isBrycerCity(city)?(city||'').trim()+' Fire Department':null
+  }).select().single()
+  if(error){toast('Error: '+error.message,false);return}
+  await load();toast('Location added')
+  pop();pop();if(newLoc)openCust(newLoc.id)
+}
+
 function editCust(id){
   const l=D.locs.find(x=>x.id===id);if(!l)return
   push(`<div class="ov-hdr">
