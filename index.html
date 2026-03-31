@@ -306,8 +306,19 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;color:#222;backgroun
       </div>
     </div>
     <div style="text-align:center;margin-top:40px">
-      <a href="#request" class="btn-primary">Partner With Us</a>
+      <a href="#partner" class="btn-primary">Partner With Us</a>
     </div>
+  </div>
+</section>
+
+<!-- PARTNER WITH US -->
+<section style="padding:80px 24px;background:var(--darker);text-align:center" id="partner">
+  <div class="section-inner">
+    <div class="section-label">Trade Partners</div>
+    <div class="section-title-w">Let's Talk</div>
+    <p style="font-size:16px;color:rgba(255,255,255,.6);max-width:500px;margin:0 auto 32px;line-height:1.6">For contractor partnerships, subcontract work, system design, and trade inquiries — call Jon directly. The plan builder for multi-system bids is coming soon.</p>
+    <a href="tel:2149944799" style="font-size:clamp(28px,4vw,44px);font-weight:900;color:#fff;text-decoration:none;display:block;margin-bottom:16px">(214) 994-4799</a>
+    <p style="font-size:14px;color:rgba(255,255,255,.4)">Jon Stephens — Owner / Licensed Technician</p>
   </div>
 </section>
 
@@ -317,6 +328,23 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;color:#222;backgroun
     <div class="section-label">Get Started</div>
     <div class="section-title">Request Service</div>
     <div class="section-sub" style="max-width:520px;margin-left:auto;margin-right:auto">Fill out the form below and we'll get back to you to confirm scheduling.</div>
+
+    <!-- LOCATION TYPE SELECTOR -->
+    <div id="loc-type-picker" style="display:flex;gap:16px;justify-content:center;margin-bottom:32px">
+      <button onclick="showSingleForm()" style="flex:1;max-width:260px;padding:20px;border:2px solid #eee;border-radius:var(--radius);background:#fff;cursor:pointer;transition:all .2s" id="pick-single">
+        <div style="font-size:28px;margin-bottom:8px">&#127970;</div>
+        <div style="font-size:15px;font-weight:800;color:var(--dark)">I Have One Location</div>
+        <div style="font-size:12px;color:#888;margin-top:4px">Single restaurant, business, or facility</div>
+      </button>
+      <button onclick="showMultiForm()" style="flex:1;max-width:260px;padding:20px;border:2px solid #eee;border-radius:var(--radius);background:#fff;cursor:pointer;transition:all .2s" id="pick-multi">
+        <div style="font-size:28px;margin-bottom:8px">&#127959;</div>
+        <div style="font-size:15px;font-weight:800;color:var(--dark)">I Manage Multiple Locations</div>
+        <div style="font-size:12px;color:#888;margin-top:4px">Franchise group, management company, or multi-site</div>
+      </button>
+    </div>
+
+    <!-- SINGLE LOCATION FORM (existing) -->
+    <div id="single-form" style="display:none">
     <form class="request-form" id="serviceForm" onsubmit="submitServiceRequest(event)">
       <div class="fg">
         <label>Request Type</label>
@@ -415,6 +443,90 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;color:#222;backgroun
       <button type="submit" class="submit-btn" id="req-submit">Submit Service Request</button>
       <div class="form-status" id="req-status"></div>
     </form>
+    </div><!-- end single-form -->
+
+    <!-- MULTI LOCATION FORM -->
+    <div id="multi-form" style="display:none">
+      <form class="request-form" id="multiForm" onsubmit="submitMultiRequest(event)">
+        <div style="text-align:left;background:#f0f4f8;border:2px solid #ddd;border-radius:12px;padding:20px;margin-bottom:24px">
+          <div style="font-size:14px;font-weight:800;color:var(--dark);margin-bottom:4px">Step 1: Company Information</div>
+          <div style="font-size:12px;color:#888">This is the billing entity — the company that pays the invoices.</div>
+        </div>
+        <div class="fg">
+          <label>Company / Management Group Name *</label>
+          <input type="text" id="multi-company" placeholder="e.g. ABC Restaurant Group" required>
+        </div>
+        <div class="fg">
+          <label>Contact Name *</label>
+          <input type="text" id="multi-contact" placeholder="Your name" required>
+        </div>
+        <div class="fg">
+          <label>Phone *</label>
+          <input type="tel" id="multi-phone" placeholder="(xxx) xxx-xxxx" required>
+        </div>
+        <div class="fg">
+          <label>Email</label>
+          <input type="email" id="multi-email" placeholder="For invoices and reports">
+        </div>
+        <div class="fg">
+          <label>Billing Address</label>
+          <input type="text" id="multi-bill-addr" placeholder="Company billing address">
+        </div>
+
+        <div style="text-align:left;background:#f0f4f8;border:2px solid #ddd;border-radius:12px;padding:20px;margin:24px 0">
+          <div style="font-size:14px;font-weight:800;color:var(--dark);margin-bottom:4px">Step 2: Your Locations</div>
+          <div style="font-size:12px;color:#888">Add each location that needs service. We'll set up a job for each one.</div>
+        </div>
+
+        <div id="multi-locations">
+          <div class="multi-loc" data-idx="0">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+              <div style="font-size:14px;font-weight:800;color:var(--fire)">Location 1</div>
+            </div>
+            <div class="fg"><label>Location Name *</label><input type="text" class="ml-name" placeholder="e.g. Primo Brothers — Main St" required></div>
+            <div class="fg"><label>Street Address *</label><input type="text" class="ml-addr" placeholder="123 Main St" required></div>
+            <div style="display:flex;gap:12px">
+              <div class="fg" style="flex:2"><label>City *</label><input type="text" class="ml-city" placeholder="Fort Worth" required></div>
+              <div class="fg" style="flex:1"><label>Zip</label><input type="text" class="ml-zip" placeholder="76040"></div>
+            </div>
+            <div class="fg"><label>On-Site Contact Name</label><input type="text" class="ml-site-contact" placeholder="Kitchen manager, etc."></div>
+            <div class="fg"><label>On-Site Contact Phone</label><input type="tel" class="ml-site-phone" placeholder="(xxx) xxx-xxxx"></div>
+            <div style="text-align:left;margin:12px 0">
+              <label style="display:block;margin-bottom:8px;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#999">Equipment at this location</label>
+              <div style="display:flex;flex-wrap:wrap;gap:6px">
+                <label style="display:flex;align-items:center;gap:4px;padding:8px 12px;border:2px solid #eee;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;color:#444;text-transform:none;letter-spacing:0"><input type="checkbox" class="ml-scope" value="suppression"> Kitchen Hood</label>
+                <label style="display:flex;align-items:center;gap:4px;padding:8px 12px;border:2px solid #eee;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;color:#444;text-transform:none;letter-spacing:0"><input type="checkbox" class="ml-scope" value="extinguishers"> Extinguishers</label>
+                <label style="display:flex;align-items:center;gap:4px;padding:8px 12px;border:2px solid #eee;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;color:#444;text-transform:none;letter-spacing:0"><input type="checkbox" class="ml-scope" value="elights"> E-Lights</label>
+                <label style="display:flex;align-items:center;gap:4px;padding:8px 12px;border:2px solid #eee;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;color:#444;text-transform:none;letter-spacing:0"><input type="checkbox" class="ml-scope" value="paint_booth"> Paint Booth</label>
+              </div>
+            </div>
+            <div style="display:flex;gap:12px">
+              <div class="fg" style="flex:1"><label>Suppression Systems</label><input type="number" class="ml-sys" value="1" min="0"></div>
+              <div class="fg" style="flex:1"><label>Extinguishers</label><input type="number" class="ml-ext" value="0" min="0"></div>
+            </div>
+            <hr style="border:none;border-top:1px solid #eee;margin:16px 0">
+          </div>
+        </div>
+
+        <button type="button" onclick="addMultiLocation()" style="width:100%;padding:14px;border:2px dashed #ddd;border-radius:var(--radius);background:transparent;color:var(--fire);font-size:14px;font-weight:800;cursor:pointer;margin-bottom:24px">+ Add Another Location</button>
+
+        <div class="fg">
+          <label>Notes / Special Instructions</label>
+          <textarea id="multi-notes" placeholder="Anything else we should know"></textarea>
+        </div>
+
+        <div style="text-align:left;margin:16px 0">
+          <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;font-size:13px;font-weight:500;color:#666;text-transform:none;letter-spacing:0;line-height:1.5">
+            <input type="checkbox" id="multi-agree" required style="margin-top:3px;width:18px;height:18px;flex-shrink:0">
+            I understand that service minimums start at $250 per suppression system and $20 per extinguisher. Final pricing will be confirmed before work begins.
+          </label>
+        </div>
+
+        <button type="submit" class="submit-btn" id="multi-submit">Submit All Locations</button>
+        <div class="form-status" id="multi-status"></div>
+      </form>
+    </div><!-- end multi-form -->
+
   </div>
 </section>
 
@@ -633,6 +745,156 @@ async function submitServiceRequest(e){
 
 // init pricing on load
 document.addEventListener('DOMContentLoaded',updatePricing)
+
+// Form type switching
+function showSingleForm(){
+  document.getElementById('single-form').style.display='block'
+  document.getElementById('multi-form').style.display='none'
+  document.getElementById('pick-single').style.borderColor='var(--fire)'
+  document.getElementById('pick-single').style.background='rgba(240,90,40,.04)'
+  document.getElementById('pick-multi').style.borderColor='#eee'
+  document.getElementById('pick-multi').style.background='#fff'
+}
+function showMultiForm(){
+  document.getElementById('single-form').style.display='none'
+  document.getElementById('multi-form').style.display='block'
+  document.getElementById('pick-multi').style.borderColor='var(--fire)'
+  document.getElementById('pick-multi').style.background='rgba(240,90,40,.04)'
+  document.getElementById('pick-single').style.borderColor='#eee'
+  document.getElementById('pick-single').style.background='#fff'
+}
+
+// Multi-location: add location
+let _multiLocCount=1
+function addMultiLocation(){
+  _multiLocCount++
+  const wrap=document.getElementById('multi-locations')
+  const div=document.createElement('div')
+  div.className='multi-loc'
+  div.dataset.idx=_multiLocCount-1
+  div.innerHTML=`
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div style="font-size:14px;font-weight:800;color:var(--fire)">Location ${_multiLocCount}</div>
+      <button type="button" onclick="this.closest('.multi-loc').remove()" style="background:#ef4444;color:#fff;border:none;border-radius:6px;padding:4px 12px;font-size:12px;font-weight:700;cursor:pointer">Remove</button>
+    </div>
+    <div class="fg"><label>Location Name *</label><input type="text" class="ml-name" placeholder="Location name" required></div>
+    <div class="fg"><label>Street Address *</label><input type="text" class="ml-addr" placeholder="123 Main St" required></div>
+    <div style="display:flex;gap:12px">
+      <div class="fg" style="flex:2"><label>City *</label><input type="text" class="ml-city" placeholder="City" required></div>
+      <div class="fg" style="flex:1"><label>Zip</label><input type="text" class="ml-zip" placeholder="Zip"></div>
+    </div>
+    <div class="fg"><label>On-Site Contact</label><input type="text" class="ml-site-contact" placeholder="Name"></div>
+    <div class="fg"><label>On-Site Phone</label><input type="tel" class="ml-site-phone" placeholder="Phone"></div>
+    <div style="text-align:left;margin:12px 0">
+      <label style="display:block;margin-bottom:8px;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#999">Equipment</label>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        <label style="display:flex;align-items:center;gap:4px;padding:8px 12px;border:2px solid #eee;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;color:#444;text-transform:none;letter-spacing:0"><input type="checkbox" class="ml-scope" value="suppression"> Kitchen Hood</label>
+        <label style="display:flex;align-items:center;gap:4px;padding:8px 12px;border:2px solid #eee;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;color:#444;text-transform:none;letter-spacing:0"><input type="checkbox" class="ml-scope" value="extinguishers"> Extinguishers</label>
+        <label style="display:flex;align-items:center;gap:4px;padding:8px 12px;border:2px solid #eee;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;color:#444;text-transform:none;letter-spacing:0"><input type="checkbox" class="ml-scope" value="elights"> E-Lights</label>
+        <label style="display:flex;align-items:center;gap:4px;padding:8px 12px;border:2px solid #eee;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;color:#444;text-transform:none;letter-spacing:0"><input type="checkbox" class="ml-scope" value="paint_booth"> Paint Booth</label>
+      </div>
+    </div>
+    <div style="display:flex;gap:12px">
+      <div class="fg" style="flex:1"><label>Systems</label><input type="number" class="ml-sys" value="1" min="0"></div>
+      <div class="fg" style="flex:1"><label>Extinguishers</label><input type="number" class="ml-ext" value="0" min="0"></div>
+    </div>
+    <hr style="border:none;border-top:1px solid #eee;margin:16px 0">
+  `
+  wrap.appendChild(div)
+}
+
+// Multi-location submit
+async function submitMultiRequest(e){
+  e.preventDefault()
+  const btn=document.getElementById('multi-submit')
+  const st=document.getElementById('multi-status')
+  btn.disabled=true;btn.textContent='Submitting...'
+  st.textContent=''
+
+  const company=document.getElementById('multi-company').value.trim()
+  const contact=document.getElementById('multi-contact').value.trim()
+  const phone=document.getElementById('multi-phone').value.trim()
+  const email=document.getElementById('multi-email').value.trim()
+  const billAddr=document.getElementById('multi-bill-addr').value.trim()
+  const notes=document.getElementById('multi-notes').value.trim()
+
+  try{
+    // Create billing account
+    const{data:ba,error:baErr}=await SB.from('billing_accounts').insert({
+      name:company,contact_name:contact,phone:phone,email:email||null,address:billAddr||null
+    }).select().single()
+    if(baErr)throw new Error('Could not create company: '+baErr.message)
+
+    // Create each location + job
+    const locs=document.querySelectorAll('.multi-loc')
+    let locCount=0
+    for(const locEl of locs){
+      const name=locEl.querySelector('.ml-name')?.value?.trim()
+      const addr=locEl.querySelector('.ml-addr')?.value?.trim()
+      const city=locEl.querySelector('.ml-city')?.value?.trim()
+      const zip=locEl.querySelector('.ml-zip')?.value?.trim()
+      const siteContact=locEl.querySelector('.ml-site-contact')?.value?.trim()
+      const sitePhone=locEl.querySelector('.ml-site-phone')?.value?.trim()
+      const scopes=Array.from(locEl.querySelectorAll('.ml-scope:checked')).map(c=>c.value)
+      const sysCt=parseInt(locEl.querySelector('.ml-sys')?.value)||0
+      const extCt=parseInt(locEl.querySelector('.ml-ext')?.value)||0
+      if(!name||!addr)continue
+
+      const scope=[]
+      if(scopes.includes('suppression')||scopes.includes('paint_booth'))scope.push('suppression')
+      if(scopes.includes('extinguishers'))scope.push('extinguishers')
+      if(scopes.includes('elights'))scope.push('elights')
+      if(!scope.length)scope.push('suppression','extinguishers')
+
+      const{data:loc}=await SB.from('locations').insert({
+        name:name,address:addr,city:city||'',state:'TX',zip:zip||'',
+        billing_account_id:ba.id,contact_name:siteContact||contact,
+        contact_phone:sitePhone||phone,contact_email:email||null
+      }).select().single()
+
+      if(loc){
+        await SB.from('jobs').insert({
+          location_id:loc.id,billing_account_id:ba.id,
+          type:'inspection',scope:[...new Set(scope)],status:'scheduled',
+          scheduled_date:new Date().toISOString().split('T')[0],
+          notes:'WEB SERVICE REQUEST — MULTI-LOCATION\nCompany: '+company+'\nContact: '+contact+' / '+phone+
+            '\nSystems: '+sysCt+' | Ext: '+extCt+'\nScopes: '+scopes.join(', ')+
+            (notes?'\n\n'+notes:'')
+        })
+        locCount++
+      }
+    }
+
+    // Email notification
+    try{
+      await fetch('/api/send-email',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          to:'jonathan@stephensadvanced.com',
+          subject:'MULTI-LOCATION REQUEST — '+company+' — '+locCount+' locations',
+          html:`<div style="font-family:Arial;font-size:14px;color:#333;max-width:560px">
+            <div style="background:#f05a28;color:#fff;padding:16px 20px;border-radius:8px 8px 0 0;font-size:18px;font-weight:900">Multi-Location Service Request</div>
+            <div style="padding:20px;border:1px solid #eee;border-top:none;border-radius:0 0 8px 8px">
+              <p><b>Company:</b> ${company}</p>
+              <p><b>Contact:</b> ${contact} / ${phone}${email?' / '+email:''}</p>
+              <p><b>Locations:</b> ${locCount}</p>
+              ${notes?'<p><b>Notes:</b> '+notes+'</p>':''}
+              <div style="margin-top:16px;text-align:center"><a href="https://stephensadvanced.com/app" style="display:inline-block;padding:12px 28px;background:#f05a28;color:#fff;text-decoration:none;border-radius:8px;font-weight:800">Open App</a></div>
+            </div></div>`
+        })
+      })
+    }catch(emailErr){}
+
+    st.textContent=locCount+' location'+(locCount!==1?'s':'')+' submitted! We\'ll contact you to confirm scheduling.'
+    st.style.color='#10b981'
+    btn.textContent='Submitted!'
+    setTimeout(()=>{btn.disabled=false;btn.textContent='Submit All Locations'},5000)
+  }catch(err){
+    console.error('multi submit:',err)
+    st.textContent='Error: '+err.message+'. Call (214) 994-4799.'
+    st.style.color='#ef4444'
+    btn.disabled=false;btn.textContent='Submit All Locations'
+  }
+}
 </script>
 </body>
 </html>
