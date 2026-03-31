@@ -2441,7 +2441,7 @@ async function openCust(id){
     locJobs.slice(0,15).forEach(j=>{
       const statC={scheduled:'var(--info)',active:'var(--ok)',completed:'var(--g1)'}[j.status]||'var(--g1)'
       const jInv=D.invs.find(i=>i.job_id===j.id)
-      h+=`<div class="ic" onclick="openJob('${j.id}')"><div class="ic-r1"><div class="ic-nm">${j.scheduled_date||'No date'}</div><span style="font-size:10px;font-weight:800;text-transform:uppercase;color:${statC}">${j.status}</span></div><div class="ic-sub">${(j.scope||[]).join(' · ')}${jInv?' · '+fmt(+jInv.total):''}</div>${jInv?`<div style="margin-top:6px" onclick="event.stopPropagation()"><button style="font-size:11px;font-weight:700;padding:6px 14px;border-radius:var(--rs);background:var(--info);color:#fff;border:none;cursor:pointer" onclick="resendJobInvoice('${jInv.id}','${esc(l.name||'')}','${esc(jInv.invoice_number||'')}')">✉️ Resend Invoice + Reports</button></div>`:''}</div>`
+      h+=`<div class="ic" onclick="openJob('${j.id}')"><div class="ic-r1"><div class="ic-nm">${j.scheduled_date||'No date'}</div><span style="font-size:10px;font-weight:800;text-transform:uppercase;color:${statC}">${j.status}</span></div><div class="ic-sub">${(j.scope||[]).join(' · ')}${jInv?' · '+fmt(+jInv.total):''}</div>${jInv?`<div style="margin-top:6px" onclick="event.stopPropagation()"><button style="font-size:11px;font-weight:700;padding:6px 14px;border-radius:var(--rs);background:var(--info);color:#fff;border:none;cursor:pointer" onclick="sendInvEmail('${jInv.id}')">✉️ Resend Invoice + Reports</button></div>`:''}</div>`
     })
     h+=`</div>`
   }
@@ -2778,7 +2778,7 @@ async function openInvDetail(id){
       </div>
       <div style="display:flex;gap:8px;align-items:center">
         <input id="det-email-to" type="email" placeholder="${esc(locEmail||'Customer email')}" value="${esc(locEmail||'')}" style="flex:1;min-height:44px;font-size:13px;background:var(--c1);color:var(--w);border:1.5px solid var(--b1);border-radius:var(--rs);padding:0 12px">
-        <button id="det-send-btn" style="background:var(--info);color:#fff;padding:0 16px;border-radius:var(--rs);font-size:13px;font-weight:800;min-height:44px;white-space:nowrap;flex-shrink:0" onclick="sendInvoiceEmailFromDetail('${id}','${esc(loc.name||'')}','${esc(inv.invoice_number||'')}')">✉️ Send</button>
+        <button id="det-send-btn" style="background:var(--info);color:#fff;padding:0 16px;border-radius:var(--rs);font-size:13px;font-weight:800;min-height:44px;white-space:nowrap;flex-shrink:0" onclick="sendInvEmail('${id}')">✉️ Send</button>
       </div>
       <div id="det-email-status" style="font-size:12px;color:var(--g1);text-align:center;min-height:16px"></div>
       <button class="btn-dim" style="margin-top:4px" onclick="pop()">← Back</button>
@@ -2799,7 +2799,7 @@ async function openInvDetail(id){
     }
     h+=`<div style="display:flex;gap:8px;align-items:center">
         <input id="det-email-to" type="email" placeholder="${esc(locEmail||'Customer email')}" value="${esc(locEmail||'')}" style="flex:1;min-height:44px;font-size:13px;background:var(--c1);color:var(--w);border:1.5px solid var(--b1);border-radius:var(--rs);padding:0 12px">
-        <button id="det-send-btn" style="background:var(--info);color:#fff;padding:0 16px;border-radius:var(--rs);font-size:13px;font-weight:800;min-height:44px;white-space:nowrap;flex-shrink:0" onclick="sendInvoiceEmailFromDetail('${id}','${esc(loc.name||'')}','${esc(inv.invoice_number||'')}')">✉️ Send</button>
+        <button id="det-send-btn" style="background:var(--info);color:#fff;padding:0 16px;border-radius:var(--rs);font-size:13px;font-weight:800;min-height:44px;white-space:nowrap;flex-shrink:0" onclick="sendInvEmail('${id}')">✉️ Send</button>
       </div>
       <div id="det-email-status" style="font-size:12px;color:var(--g1);text-align:center;min-height:16px"></div>
       <button class="btn-dim" style="margin-top:4px" onclick="pop()">← Back</button>
@@ -4320,7 +4320,7 @@ function showInv(d){
 
   h+=`<div class="inv-acts">
     <button class="inv-close" onclick="$('invOv').classList.remove('open');rJobs()">Done</button>
-    ${!d.ro&&d.iid?`<button class="inv-fwd" id="invSendBtn" onclick="sendInvoiceEmail('${d.iid}','${esc(toEmail||'')}','${esc(d.nm)}','${esc(d.num)}',this)">✉️ Send Email</button>`:''}
+    ${!d.ro&&d.iid?`<button class="inv-fwd" id="invSendBtn" onclick="sendInvEmail('${d.iid}')">✉️ Send Email</button>`:''}
   </div>
   <div id="inv-email-row" style="margin-top:12px;display:${!d.ro&&d.iid?'block':'none'}">
     <input id="inv-email-to" type="email" placeholder="Customer email" value="${esc(toEmail||'')}" style="background:#f5f5f5;color:#111;border:1.5px solid #ddd;border-radius:8px;padding:10px 12px;font-size:13px;width:100%">
@@ -4328,6 +4328,15 @@ function showInv(d){
   </div>
   </div>`
   $('invOv').innerHTML=h;$('invOv').classList.add('open')
+}
+
+async function sendInvEmail(invId){
+  const inv=D.invs.find(x=>x.id===invId)||{}
+  const loc=D.locs.find(x=>x.id===inv.location_id)||{}
+  const ba=loc.billing_account_id?D.bas.find(b=>b.id===loc.billing_account_id):null
+  const to=$('det-email-to')?.value?.trim()||$('inv-email-to')?.value?.trim()||loc.contact_email||ba?.email||''
+  if(!to){toast('No email — enter one in the email field',false);return}
+  await _showEmailPreview(invId,to,loc.name||'',inv.invoice_number||'')
 }
 
 async function sendInvoiceEmail(invId,toEmail,custName,invNum,btn){
