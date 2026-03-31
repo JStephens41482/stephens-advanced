@@ -737,7 +737,10 @@ function initSwipe(el,onDelete){
   let sx=0,sy=0,swiping=false,moved=false
   const inner=el.querySelector('.swipe-inner')
   if(!inner)return
-  el.addEventListener('touchstart',e=>{sx=e.touches[0].clientX;sy=e.touches[0].clientY;swiping=true;moved=false},{passive:true})
+  el.addEventListener('touchstart',e=>{
+    if(e.target.closest('.swipe-del,.swipe-resched'))return
+    sx=e.touches[0].clientX;sy=e.touches[0].clientY;swiping=true;moved=false
+  },{passive:true})
   el.addEventListener('touchmove',e=>{
     if(!swiping)return
     const dx=e.touches[0].clientX-sx,dy=Math.abs(e.touches[0].clientY-sy)
@@ -745,12 +748,12 @@ function initSwipe(el,onDelete){
     if(dx<-10){moved=true;inner.style.transition='none';inner.style.transform=`translateX(${Math.max(dx,-90)}px)`}
   },{passive:true})
   el.addEventListener('touchend',e=>{
+    if(e.target.closest('.swipe-del,.swipe-resched'))return
     swiping=false;inner.style.transition='transform .2s ease'
     if(!moved){inner.style.transform='';return}
     const dx=e.changedTouches[0].clientX-sx
     if(dx<-60){
       inner.style.transform='translateX(-90px)'
-      // show delete zone — tap to confirm
     }else{inner.style.transform=''}
     moved=false
   },{passive:true})
@@ -760,6 +763,12 @@ function initSwipe(el,onDelete){
     el.style.transition='all .2s';el.style.maxHeight=el.offsetHeight+'px'
     requestAnimationFrame(()=>{el.style.maxHeight='0';el.style.opacity='0';el.style.marginBottom='0';el.style.padding='0'})
     setTimeout(()=>{el.remove();onDelete()},250)
+  })
+  // reschedule button click
+  const reschedBtn=el.querySelector('.swipe-resched')
+  if(reschedBtn)reschedBtn.addEventListener('click',()=>{
+    inner.style.transition='transform .2s ease';inner.style.transform=''
+    const jid=el.dataset.swipeJob;if(jid)reschedJob(jid)
   })
 }
 
