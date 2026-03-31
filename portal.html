@@ -291,21 +291,31 @@ function renderTab(){
   }
 
   if(_activeTab==='history'){
-    if(!completed.length){h+=`<div class="card"><div class="empty">No service history yet</div></div>`}
+    // show invoices grouped by location — tap to expand
+    if(!invs.length){h+=`<div class="card"><div class="empty">No service history yet</div></div>`}
     else{
-      h+=`<div class="card"><div class="card-t">Service History</div>`
-      completed.slice(0,30).forEach(j=>{
-        const loc=locs.find(l=>l.id===j.location_id)
-        const dt=j.scheduled_date?new Date(j.scheduled_date+'T12:00:00').toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):''
-        const jobReports=reports.filter(r=>r.job_id===j.id)
-        h+=`<div class="job-row">
-          <div class="job-date">${dt}</div>
-          <div class="job-scope">${esc(loc?.name||'')} · ${(j.scope||[]).join(', ')}</div>
-          ${jobReports.length?`<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">${jobReports.map(r=>`<span class="eq-tag" style="background:#e0e7ff;color:#4f46e5">${r.report_type==='extinguisher'?'🧯 Ext Report':r.report_type==='clean_agent'?'🔵 Clean Agent':'📋 Suppression Report'}</span>`).join('')}</div>`:''}
-          ${j.notes?`<div style="font-size:11px;color:#888;margin-top:4px">${esc(j.notes)}</div>`:''}
-        </div>`
+      locs.forEach(l=>{
+        const li=invs.filter(i=>i.location_id===l.id)
+        if(!li.length)return
+        h+=`<div class="card"><div class="card-t">${esc(l.name)}</div>`
+        li.forEach(i=>{
+          const dt=i.date?new Date(i.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):''
+          const bc=i.status==='paid'?'b-paid':i.status==='sent'?'b-sent':'b-draft'
+          h+=`<div style="border-bottom:1px solid #f0f0f0">
+            <div class="inv-row" style="cursor:pointer" onclick="toggleInvDetail('inv-detail-${i.id}')">
+              <div><div class="inv-num">${esc(i.invoice_number||'—')}</div><div class="inv-date">${dt}</div></div>
+              <div style="text-align:right;display:flex;align-items:center;gap:8px">
+                <div><div class="inv-amt">${fmt(+i.total)}</div><span class="badge ${bc}">${i.status}</span></div>
+                <span style="color:#ccc">›</span>
+              </div>
+            </div>
+            <div id="inv-detail-${i.id}" style="display:none;padding:0 0 12px">
+              <div id="inv-lines-${i.id}" style="padding:0 4px;font-size:12px;color:#888">Loading...</div>
+            </div>
+          </div>`
+        })
+        h+=`</div>`
       })
-      h+=`</div>`
     }
   }
 
@@ -384,69 +394,98 @@ function openLocation(locId){
   }
   h+=`</div>`
 
-  // Unpaid invoices
-  if(unpaid.length){
-    h+=`<div class="card" style="border-color:#fed7aa;border-width:2px"><div class="card-t" style="color:var(--warn)">Unpaid Invoices</div>`
-    unpaid.forEach(i=>{
+  // ALL invoices — tappable to expand and show reports
+  if(locInvs.length){
+    h+=`<div class="card"><div class="card-t">Invoices · ${locInvs.length}</div>`
+    locInvs.forEach(i=>{
       const dt=i.date?new Date(i.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):''
-      h+=`<div class="inv-row">
-        <div><div class="inv-num">${esc(i.invoice_number||'—')}</div><div class="inv-date">${dt}</div></div>
-        <div style="text-align:right"><div class="inv-amt" style="color:var(--fire)">${fmt(+i.total)}</div><span class="badge b-sent">${i.status}</span></div>
+      const bc=i.status==='paid'?'b-paid':i.status==='sent'?'b-sent':i.status==='overdue'?'b-over':'b-draft'
+      const paidInfo=i.status==='paid'?(i.payment_method?' · Paid by '+i.payment_method:''):''
+      h+=`<div style="border-bottom:1px solid #f0f0f0">
+        <div class="inv-row" style="cursor:pointer" onclick="toggleInvDetail('inv-detail-${i.id}')">
+          <div>
+            <div class="inv-num">${esc(i.invoice_number||'—')}</div>
+            <div class="inv-date">${dt}${paidInfo}</div>
+          </div>
+          <div style="text-align:right;display:flex;align-items:center;gap:8px">
+            <div><div class="inv-amt" style="color:${i.status==='paid'?'var(--ok)':'var(--fire)'}">${fmt(+i.total)}</div><span class="badge ${bc}">${i.status}</span></div>
+            <span style="font-size:16px;color:#ccc">›</span>
+          </div>
+        </div>
+        <div id="inv-detail-${i.id}" style="display:none;padding:0 0 12px">
+          <div id="inv-lines-${i.id}" style="padding:0 4px;font-size:12px;color:#888">Loading...</div>
+        </div>
       </div>`
     })
     h+=`</div>`
+  }else{
+    h+=`<div class="card"><div class="empty">No invoices yet</div></div>`
   }
 
-  // Paid invoices / payment history
-  if(paid.length){
-    h+=`<div class="card"><div class="card-t">Payment History</div>`
-    paid.forEach(i=>{
-      const dt=i.paid_at?new Date(i.paid_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):(i.date?new Date(i.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'')
-      h+=`<div class="inv-row">
-        <div><div class="inv-num">${esc(i.invoice_number||'—')}</div><div class="inv-date">${dt}${i.payment_method?' · '+i.payment_method:''}</div></div>
-        <div style="text-align:right"><div class="inv-amt" style="color:var(--ok)">${fmt(+i.total)}</div><span class="badge b-paid">Paid</span></div>
-      </div>`
-    })
-    h+=`</div>`
-  }
-
-  // Reports — deduplicate: keep latest per job + report_type
-  const dedupReports=[]
-  const seenRptKeys=new Set()
-  locReports.forEach(r=>{
-    const key=r.job_id+'_'+r.report_type
-    if(!seenRptKeys.has(key)){seenRptKeys.add(key);dedupReports.push(r)}
-  })
-  if(dedupReports.length){
-    h+=`<div class="card"><div class="card-t">Inspection Reports</div>`
-    dedupReports.forEach(r=>{
-      const icon=r.report_type==='extinguisher'?'🧯':r.report_type==='dry_chemical'?'🏭':r.report_type==='clean_agent'?'💨':'🔥'
-      const name=r.report_type==='extinguisher'?'Extinguisher Report':r.report_type==='dry_chemical'?'Dry Chemical Report':r.report_type==='clean_agent'?'Clean Agent Report':'Kitchen Hood Report'
-      const dt=r.created_at?new Date(r.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):''
-      const sysLoc=r.report_data?.sysLocation||''
-      h+=`<div class="job-row">
-        <div class="job-date">${icon} ${name}</div>
-        <div class="job-scope">${dt}${sysLoc?' · '+esc(sysLoc):''}</div>
-      </div>`
-    })
-    h+=`</div>`
-  }
-
-  // Service history
-  const completedHere=locJobs.filter(j=>j.status==='completed')
-  if(completedHere.length){
-    h+=`<div class="card"><div class="card-t">Service History</div>`
-    completedHere.slice(0,15).forEach(j=>{
-      const dt=j.scheduled_date?new Date(j.scheduled_date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):''
+  // Upcoming services at this location
+  const upcomingHere=locJobs.filter(j=>j.status==='scheduled'&&j.scheduled_date>=new Date().toISOString().split('T')[0])
+  if(upcomingHere.length){
+    h+=`<div class="card"><div class="card-t">Upcoming Services</div>`
+    upcomingHere.forEach(j=>{
+      const dt=j.scheduled_date?new Date(j.scheduled_date+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'}):''
       h+=`<div class="job-row">
         <div class="job-date">${dt}</div>
-        <div class="job-scope">${(j.scope||[]).join(', ')}</div>
+        <div class="job-scope">${(j.scope||[]).join(', ')}${j.scheduled_time?' · '+j.scheduled_time.slice(0,5):''}</div>
       </div>`
     })
     h+=`</div>`
   }
 
   document.getElementById('portalTab').innerHTML=h
+}
+
+async function toggleInvDetail(elId){
+  const el=document.getElementById(elId);if(!el)return
+  if(el.style.display==='block'){el.style.display='none';return}
+  el.style.display='block'
+
+  const invId=elId.replace('inv-detail-','')
+  const linesWrap=document.getElementById('inv-lines-'+invId)
+  if(!linesWrap)return
+
+  // fetch line items
+  const{data:lines}=await SB.from('invoice_lines').select('*').eq('invoice_id',invId).order('sort_order')
+  const inv=_portalData.invs.find(i=>i.id===invId)||{}
+
+  let ih=''
+  if(lines?.length){
+    ih+=`<table style="width:100%;font-size:13px;border-collapse:collapse;margin-bottom:12px">`
+    ih+=`<tr style="border-bottom:1px solid #eee"><th style="text-align:left;padding:6px 0;font-size:10px;color:#999;font-weight:700">DESCRIPTION</th><th style="text-align:center;padding:6px 0;font-size:10px;color:#999;font-weight:700;width:40px">QTY</th><th style="text-align:right;padding:6px 0;font-size:10px;color:#999;font-weight:700;width:70px">PRICE</th><th style="text-align:right;padding:6px 0;font-size:10px;color:#999;font-weight:700;width:70px">TOTAL</th></tr>`
+    lines.forEach(l=>{
+      ih+=`<tr style="border-bottom:1px solid #f5f5f5"><td style="padding:6px 0;color:#444">${esc(l.description)}</td><td style="text-align:center;color:#888">${l.quantity}</td><td style="text-align:right;color:#888">$${(+l.unit_price).toFixed(2)}</td><td style="text-align:right;font-weight:700;color:#333">$${(+l.total).toFixed(2)}</td></tr>`
+    })
+    const total=lines.reduce((s,l)=>s+(+l.total||0),0)
+    ih+=`<tr><td colspan="3" style="padding:8px 0;font-weight:800;color:#1a1a2e">Total</td><td style="text-align:right;padding:8px 0;font-weight:900;font-size:16px;color:var(--fire)">$${total.toFixed(2)}</td></tr></table>`
+  }
+
+  // fetch reports for this invoice's job
+  if(inv.job_id){
+    const{data:rpts}=await SB.from('reports').select('id,report_type,report_data,created_at').eq('job_id',inv.job_id).order('created_at')
+    // deduplicate
+    const seen=new Set()
+    const unique=(rpts||[]).filter(r=>{const k=r.report_type;if(seen.has(k))return false;seen.add(k);return true})
+    if(unique.length){
+      ih+=`<div style="font-size:10px;font-weight:800;color:#999;text-transform:uppercase;letter-spacing:1px;margin:8px 0">Reports</div>`
+      unique.forEach(r=>{
+        const icon=r.report_type==='extinguisher'?'🧯':r.report_type==='dry_chemical'?'🏭':r.report_type==='clean_agent'?'💨':'🔥'
+        const name=r.report_type==='extinguisher'?'Extinguisher Report':r.report_type==='dry_chemical'?'Dry Chemical Report':r.report_type==='clean_agent'?'Clean Agent Report':'Kitchen Hood Report'
+        const dt=r.created_at?new Date(r.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric'}):''
+        ih+=`<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #f5f5f5">
+          <span>${icon}</span>
+          <span style="font-size:13px;font-weight:600;color:#444;flex:1">${name}</span>
+          <span style="font-size:11px;color:#999">${dt}</span>
+        </div>`
+      })
+    }
+  }
+
+  if(!ih)ih=`<div style="font-size:12px;color:#ccc;padding:8px 0">No details available</div>`
+  linesWrap.innerHTML=ih
 }
 
 async function submitRequest(){
