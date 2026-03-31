@@ -273,6 +273,8 @@ select{-webkit-appearance:none;appearance:none}
 .swipe-wrap{position:relative;overflow:hidden;border-radius:var(--r);margin-bottom:8px}
 .swipe-inner{transition:transform .2s ease;position:relative;z-index:1}
 .swipe-del{position:absolute;right:0;top:0;bottom:0;width:90px;background:var(--bad);display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:800;z-index:0}
+.swipe-resched+.swipe-del{width:45px;font-size:10px}
+.swipe-resched{position:absolute;right:45px;top:0;bottom:0;width:45px;background:var(--info);display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:700;z-index:0;flex-direction:column;gap:1px;text-align:center;line-height:1.1}
 .chat-fab{position:fixed;bottom:140px;right:16px;width:48px;height:48px;border-radius:50%;background:var(--info);color:#fff;font-size:22px;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 20px rgba(99,102,241,.4);z-index:90;cursor:pointer;border:none;transition:transform .1s}
 .chat-fab:active{transform:scale(.9)}
 .chat-ov{display:none;position:fixed;inset:0;z-index:300;background:var(--bg);flex-direction:column}
@@ -1588,10 +1590,11 @@ function jCard(j,isOv=false){
   const isSvcReq=(j.notes||'').includes('WEB SERVICE REQUEST')
   const cls=isSvcReq?'jrd':isOv?'jrd':j.status==='active'?'jgn':j.status==='completed'?'jgy':'jbl'
   return`<div class="swipe-wrap" data-swipe-job="${j.id}">
+    <div class="swipe-resched" onclick="event.stopPropagation();reschedJob('${j.id}')">${ds||'Date'}</div>
     <div class="swipe-del">Delete</div>
     <div class="swipe-inner jc ${cls}" onclick="openJob('${j.id}')" style="margin-bottom:0${isSvcReq?';border-left:4px solid #f59e0b;background:rgba(245,158,11,.06)':''}">
     ${isSvcReq?'<div style="background:#f59e0b;color:#000;font-size:10px;font-weight:900;padding:3px 10px;border-radius:4px;margin-bottom:6px;display:inline-block;letter-spacing:1px">SERVICE REQUEST</div>':''}
-    <div class="jc-r1"><div class="jc-nm"><span style="color:var(--fire);text-decoration:underline;text-decoration-color:rgba(240,90,40,.3);text-underline-offset:2px;cursor:pointer" onclick="event.stopPropagation();openCust('${j.location_id||l.id}')">${esc(l.name||'Unknown')} ›</span></div><div class="jc-tm">${ds}${j.scheduled_time?' '+j.scheduled_time.slice(0,5):''}</div></div>
+    <div class="jc-r1"><div class="jc-nm"><span style="color:var(--fire);text-decoration:underline;text-decoration-color:rgba(240,90,40,.3);text-underline-offset:2px;cursor:pointer" onclick="event.stopPropagation();openCust('${j.location_id||l.id}')">${esc(l.name||'Unknown')} ›</span></div><div class="jc-tm"><span style="cursor:pointer;text-decoration:underline;text-decoration-color:rgba(255,255,255,.2);text-underline-offset:2px" onclick="event.stopPropagation();reschedJob('${j.id}')">${ds}${j.scheduled_time?' '+j.scheduled_time.slice(0,5):''}</span></div></div>
     <div class="jc-addr">${esc(a)||'No address'}</div>
     <div class="jc-tags">${sc.includes('suppression')?'<span class="tg ts">Suppression</span>':''}${sc.includes('extinguishers')?'<span class="tg te">Ext</span>':''}${sc.includes('elights')?'<span class="tg tl">E-Lights</span>':''}${sc.includes('hydro')?'<span class="tg th">Hydro</span>':''}${isOv?'<span class="tg to2">Overdue</span>':''}${l.is_brycer_jurisdiction?'<span class="tg tb">Brycer</span>':''}${j.assigned_to?(()=>{const tk2=D.techs?.find(x=>x.id===j.assigned_to);return tk2?'<span class="tg" style="background:'+tk2.color+'22;color:'+tk2.color+'">'+esc(tk2.name.split(' ')[0])+'</span>':''})():''}</div>
     <div class="jc-val">${v?fmt(v):'<span style="color:var(--g2);font-size:12px">Add equipment to estimate</span>'}</div>
@@ -1930,6 +1933,73 @@ function buildJobLines(j){
   }
   // fallback — nothing auto-populated, start with blank
   return lines.length?lines:[{desc:'',qty:1,price:0}]
+}
+
+function reschedJob(id){
+  const j=D.jobs.find(x=>x.id===id);if(!j)return
+  const l=D.locs?.find(x=>x.id===(j.location_id||j.location?.id))||j.location||{}
+  const oldDate=j.scheduled_date||''
+  const oldDateFmt=oldDate?new Date(oldDate+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}):''
+  let h=`<div class="ov-hdr"><button class="ov-back" onclick="pop()">‹</button><div class="ov-title">Reschedule Job</div></div><div class="ov-body">
+    <div style="background:var(--c1);border:1px solid var(--b1);border-radius:var(--r);padding:14px;margin-bottom:16px">
+      <div style="font-size:15px;font-weight:700">${esc(l.name||'Unknown')}</div>
+      <div style="font-size:12px;color:var(--g1);margin-top:4px">${esc([l.address,l.city].filter(Boolean).join(', '))}</div>
+      <div style="font-size:12px;color:var(--g2);margin-top:4px">Currently: ${oldDateFmt||'No date'}${j.scheduled_time?' at '+j.scheduled_time.slice(0,5):''}</div>
+    </div>
+    <label style="font-size:12px;font-weight:700;color:var(--g1);display:block;margin-bottom:6px">New Date</label>
+    <input type="date" id="reschedDate" value="${oldDate}" style="width:100%;padding:12px;border-radius:var(--rs);border:1px solid var(--b1);background:var(--c1);color:var(--w);font-size:15px;margin-bottom:12px">
+    <label style="font-size:12px;font-weight:700;color:var(--g1);display:block;margin-bottom:6px">New Time (optional)</label>
+    <input type="time" id="reschedTime" value="${j.scheduled_time||''}" style="width:100%;padding:12px;border-radius:var(--rs);border:1px solid var(--b1);background:var(--c1);color:var(--w);font-size:15px;margin-bottom:20px">
+    <button class="btn-p" id="reschedBtn" onclick="confirmResched('${j.id}')">Reschedule</button>
+  </div>`
+  push(h)
+}
+
+async function confirmResched(id){
+  const nd=$('reschedDate')?.value
+  if(!nd){toast('Pick a new date',false);return}
+  const nt=$('reschedTime')?.value||null
+  const j=D.jobs.find(x=>x.id===id);if(!j)return
+  const l=D.locs?.find(x=>x.id===(j.location_id||j.location?.id))||j.location||{}
+  const oldDate=j.scheduled_date||''
+  const newDateFmt=new Date(nd+'T12:00:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'})
+  const email=l.contact_email
+  if(email){
+    if(!confirm('Reschedule to '+newDateFmt+(nt?' at '+nt:'')+'?\n\nAn email will be sent to '+email+' notifying them of the new date.'))return
+  }else{
+    if(!confirm('Reschedule to '+newDateFmt+(nt?' at '+nt:'')+'?'))return
+  }
+  setLoad('reschedBtn',true)
+  const updates={scheduled_date:nd}
+  if(nt)updates.scheduled_time=nt
+  await SB.from('jobs').update(updates).eq('id',id)
+  if(email){
+    try{
+      const oldFmt=oldDate?new Date(oldDate+'T12:00:00').toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'}):'(unscheduled)'
+      await fetch('/api/send-email',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+        to:email,
+        subject:'Service Rescheduled — Stephens Advanced',
+        html:`<div style="font-family:Arial;font-size:14px;color:#333;max-width:560px">
+          <div style="background:#f05a28;color:#fff;padding:16px 20px;border-radius:8px 8px 0 0;font-weight:800;font-size:16px">Stephens Advanced Fire Protection</div>
+          <div style="padding:20px;border:1px solid #eee;border-top:none;border-radius:0 0 8px 8px">
+            <p>Hi${l.contact_name?' '+l.contact_name:''},</p>
+            <p>Your service appointment for <strong>${esc(l.name)}</strong> has been rescheduled:</p>
+            <div style="background:#f8f8f8;border-radius:6px;padding:14px;margin:16px 0">
+              <div style="color:#999;font-size:12px;text-decoration:line-through;margin-bottom:6px">Previously: ${oldFmt}</div>
+              <div style="font-size:16px;font-weight:700;color:#f05a28">New Date: ${newDateFmt}${nt?' at '+nt:''}</div>
+            </div>
+            <p style="font-size:13px;color:#666">If this doesn't work for you, please call us at <a href="tel:2149944799" style="color:#f05a28">(214) 994-4799</a>.</p>
+            <p style="font-size:13px;color:#666">— Stephens Advanced Fire Protection</p>
+          </div>
+        </div>`
+      })})
+    }catch(e){console.error('resched email:',e)}
+  }
+  await load()
+  setLoad('reschedBtn',false)
+  pop()
+  toast('Rescheduled to '+newDateFmt)
+  rCal();rJobs()
 }
 
 async function openJob(id){
