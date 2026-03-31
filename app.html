@@ -4793,18 +4793,38 @@ async function delJob(id){
 }
 
 async function delCust(id){
-  // cascade: extinguisher_results, suppression_results, invoice_lines, invoices, jobs, extinguishers, suppression_systems, emergency_lights, then location
-  const jobIds=D.jobs.filter(j=>j.location_id===id||j.location?.id===id).map(j=>j.id)
-  const invIds=D.invs.filter(i=>i.location_id===id).map(i=>i.id)
-  if(invIds.length)await SB.from('invoice_lines').delete().in('invoice_id',invIds)
-  if(invIds.length)await SB.from('invoices').delete().in('id',invIds)
-  if(jobIds.length){try{await SB.from('extinguisher_results').delete().in('job_id',jobIds)}catch(e){}}
-  if(jobIds.length)await SB.from('jobs').delete().in('id',jobIds)
-  try{await SB.from('extinguishers').delete().eq('location_id',id)}catch(e){}
-  try{await SB.from('suppression_systems').delete().eq('location_id',id)}catch(e){}
-  try{await SB.from('emergency_lights').delete().eq('location_id',id)}catch(e){}
-  const{error}=await SB.from('locations').delete().eq('id',id)
-  if(error){toast('Error deleting client',false);return}
+  // cascade everything referencing this location
+  try{
+    const jobIds=D.jobs.filter(j=>j.location_id===id||j.location?.id===id).map(j=>j.id)
+    const invIds=D.invs.filter(i=>i.location_id===id).map(i=>i.id)
+    // reports → reference job_id
+    if(jobIds.length)try{await SB.from('reports').delete().in('job_id',jobIds)}catch(e){}
+    // also reports by location_id
+    try{await SB.from('reports').delete().eq('location_id',id)}catch(e){}
+    // invoice lines → invoices
+    if(invIds.length)try{await SB.from('invoice_lines').delete().in('invoice_id',invIds)}catch(e){}
+    if(invIds.length)try{await SB.from('invoices').delete().in('id',invIds)}catch(e){}
+    // extinguisher_results, suppression_results
+    if(jobIds.length)try{await SB.from('extinguisher_results').delete().in('job_id',jobIds)}catch(e){}
+    if(jobIds.length)try{await SB.from('suppression_results').delete().in('job_id',jobIds)}catch(e){}
+    // brycer queue
+    try{await SB.from('brycer_queue').delete().eq('location_id',id)}catch(e){}
+    // portal tokens
+    try{await SB.from('portal_tokens').delete().eq('location_id',id)}catch(e){}
+    // service requests
+    try{await SB.from('service_requests').delete().eq('location_id',id)}catch(e){}
+    // jobs
+    if(jobIds.length)try{await SB.from('jobs').delete().in('id',jobIds)}catch(e){}
+    // equipment
+    try{await SB.from('extinguishers').delete().eq('location_id',id)}catch(e){}
+    try{await SB.from('suppression_systems').delete().eq('location_id',id)}catch(e){}
+    try{await SB.from('emergency_lights').delete().eq('location_id',id)}catch(e){}
+    // contracts
+    try{await SB.from('contracts').delete().eq('location_id',id)}catch(e){}
+    // finally the location
+    const{error}=await SB.from('locations').delete().eq('id',id)
+    if(error){toast('Error: '+error.message,false);return}
+  }catch(e){toast('Delete failed: '+e.message,false);return}
   await load();toast('Client deleted')
   popAll();rCust()
 }
