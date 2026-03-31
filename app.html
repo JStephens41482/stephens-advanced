@@ -3343,11 +3343,91 @@ IMPORTANT: Set has_suppression=true if ANY line item mentions suppression, hood,
     const txt=data.content?.[0]?.text||''
     let p;try{p=JSON.parse(txt.replace(/```json|```/g,'').trim())}catch{throw new Error('parse')}
     const st=$('aiStatus');if(st)st.style.display='none'
+
+    // duplicate check — look for existing invoice with same customer + date + total
+    const dupFound=await _checkDuplicate(p)
+    if(dupFound){
+      const ar=$('aiResult')||$('recResult')
+      if(ar){
+        ar.innerHTML=`<div style="background:var(--warns);border:2px solid var(--warn);border-radius:var(--r);padding:20px;text-align:center;margin-top:16px">
+          <div style="font-size:28px;margin-bottom:8px">&#9888;</div>
+          <div style="font-size:16px;font-weight:800;color:var(--warn);margin-bottom:8px">Already Logged</div>
+          <div style="font-size:13px;color:var(--w2);line-height:1.5">This work order appears to already be in the system.</div>
+          <div style="margin-top:12px;padding:12px;background:var(--c1);border-radius:var(--rs);font-size:12px;color:var(--w2);text-align:left">
+            <div><b>Customer:</b> ${esc(dupFound.locName||p.customer_name||'')}</div>
+            <div><b>Invoice:</b> ${esc(dupFound.invNum||'')}</div>
+            <div><b>Date:</b> ${dupFound.date||''}</div>
+            <div><b>Total:</b> ${dupFound.total||''}</div>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:16px">
+            <button class="btn-dim" style="flex:1" onclick="pop()">OK, Go Back</button>
+            <button class="btn-p" style="flex:1;background:var(--warn);font-size:12px" onclick="this.closest('div[style]').style.display='none';${_recordMode?'renderRecordResult':'renderAIResult'}(_lastAIParse)">Log It Anyway</button>
+          </div>
+        </div>`
+      }
+      window._lastAIParse=p
+      return
+    }
+
     if(_recordMode)renderRecordResult(p);else renderAIResult(p)
   }catch(err){
     const tx=$('aiTxt');if(tx)tx.textContent='Could not read photo — try again or build manually.'
     console.error(err)
   }
+}
+
+async function _checkDuplicate(p){
+  try{
+    const custName=(p.customer_name||'').toLowerCase().trim()
+    const woNum=(p.work_order_number||'').trim()
+    const svcDate=p.service_date||''
+    const totalStr=(p.total_as_written||'').replace(/[^0-9.]/g,'')
+    const total=parseFloat(totalStr)||0
+
+    // check by work order number first (most reliable)
+    if(woNum){
+      const match=D.invs.find(i=>{
+        const notes=(i.notes||'').toLowerCase()
+        return notes.includes(woNum.toLowerCase())
+      })
+      if(match){
+        const loc=D.locs.find(l=>l.id===match.location_id)
+        return{locName:loc?.name||'',invNum:match.invoice_number||'',date:match.date||'',total:fmt(+match.total)}
+      }
+    }
+
+    // check by customer name + date + approximate total
+    if(custName&&svcDate){
+      for(const inv of D.invs){
+        const loc=D.locs.find(l=>l.id===inv.location_id)
+        const locName=(loc?.name||'').toLowerCase()
+        if(!locName.includes(custName)&&!custName.includes(locName))continue
+        // check if date is close (same month)
+        const invDate=inv.date||''
+        if(invDate.slice(0,7)===svcDate.slice(0,7)){
+          // check if total is close (within 10%)
+          const invTotal=+(inv.total||0)
+          if(total>0&&invTotal>0&&Math.abs(invTotal-total)/total<0.1){
+            return{locName:loc?.name||'',invNum:inv.invoice_number||'',date:invDate,total:fmt(invTotal)}
+          }
+        }
+      }
+    }
+
+    // check by customer name + total (no date)
+    if(custName&&total>0){
+      for(const inv of D.invs){
+        const loc=D.locs.find(l=>l.id===inv.location_id)
+        const locName=(loc?.name||'').toLowerCase()
+        if(!locName.includes(custName)&&!custName.includes(locName))continue
+        const invTotal=+(inv.total||0)
+        if(Math.abs(invTotal-total)<1){
+          return{locName:loc?.name||'',invNum:inv.invoice_number||'',date:inv.date||'',total:fmt(invTotal)}
+        }
+      }
+    }
+  }catch(e){console.error('dup check:',e)}
+  return null
 }
 
 function renderAIResult(p){
