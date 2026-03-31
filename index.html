@@ -3318,7 +3318,7 @@ RULES:
 - SUB TOTAL and TOTAL at the bottom are most important — copy exactly.
 - Note payment method if visible (check, cash, card, PAID).
 - Include work order number and date if visible.
-- SERVICE DATE IS CRITICAL: Look for ANY date on the document — handwritten dates, printed dates, invoice dates, "Date:" fields, date stamps. If multiple dates exist, use the SERVICE DATE or DATE OF SERVICE. If only one date exists, use that. The date MUST be extracted accurately in YYYY-MM-DD format. This date determines when the next service is due.
+- SERVICE DATE IS CRITICAL: Look for ANY date on the document — handwritten dates, printed dates, invoice dates, "Date:" fields, date stamps. If multiple dates exist, use the SERVICE DATE or DATE OF SERVICE. If only one date exists, use that. The date MUST be extracted accurately in YYYY-MM-DD format. This date determines when the next service is due. IMPORTANT: Dates may be in military/Julian format like "30MAR26", "30 MAR 2026", "15JAN25", "01DEC2025", or DD-MMM-YY. Convert these correctly — "30MAR26" means 2026-03-30, "15JAN25" means 2025-01-15. Also handle DD/MM/YYYY (European) vs MM/DD/YYYY (US) — assume US format unless clearly European.
 
 Known customers: ${JSON.stringify(locList)}
 
@@ -5048,7 +5048,7 @@ async function handleExtPhoto(ev){
           body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:500,
             messages:[{role:'user',content:[
               {type:'image',source:{type:'base64',media_type:'image/jpeg',data:small.split(',')[1]}},
-              {type:'text',text:`Identify this fire extinguisher. Return ONLY valid JSON: {"type":"ABC Dry Chemical|CO2|Class K|Water|Halon|Halotron|Class D|Purple K|Clean Agent","size":"e.g. 5lb or 6 Liter","color":"red/silver/yellow/etc","brand":"if visible","mfgDate":"YYYY-MM if visible on label","condition":"pass or fail","notes":"any visible damage, expired tags, missing pin, dented, corroded, or other notable features"}`}
+              {type:'text',text:`Identify this fire extinguisher. Return ONLY valid JSON: {"type":"ABC Dry Chemical|CO2|Class K|Water|Halon|Halotron|Class D|Purple K|Clean Agent","size":"e.g. 5lb or 6 Liter","color":"red/silver/yellow/etc","brand":"if visible","mfgDate":"YYYY-MM if visible on label — dates may be in military format like 30MAR26 meaning 2026-03, JAN25 meaning 2025-01, or stamped as MM-YYYY, convert to YYYY-MM","condition":"pass or fail","notes":"any visible damage, expired tags, missing pin, dented, corroded, or other notable features"}`}
             ]}]
           })
         })
