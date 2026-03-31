@@ -192,6 +192,15 @@ function renderTab(){
   let h=''
 
   if(_activeTab==='overview'){
+    // outstanding balance
+    if(totalOwed>0){
+      h+=`<div class="card" style="border-color:#fed7aa;border-width:2px">
+        <div class="card-t" style="color:var(--warn)">Outstanding Balance</div>
+        <div style="font-size:28px;font-weight:900;color:var(--fire)">${fmt(totalOwed)}</div>
+        <div style="font-size:12px;color:#888;margin-top:4px">Click an invoice below to pay online</div>
+      </div>`
+    }
+
     // upcoming services
     if(upcoming.length){
       h+=`<div class="card"><div class="card-t">Upcoming Services</div>`
@@ -204,36 +213,32 @@ function renderTab(){
         </div>`
       })
       h+=`</div>`
-    }else{
-      h+=`<div class="note">No upcoming services currently scheduled. Need an inspection? Use the Request tab to let us know.</div>`
     }
 
-    // locations summary
+    // locations — tappable cards
     h+=`<div class="card"><div class="card-t">Your Locations</div>`
     locs.forEach(l=>{
       const extCount=l.extinguishers?.length||0
       const sysCount=l.suppression_systems?.length||0
       const lightCount=l.emergency_lights?.[0]?.fixture_count||0
-      h+=`<div class="loc">
-        <div class="loc-nm">${esc(l.name)}</div>
+      const locInvs=invs.filter(i=>i.location_id===l.id)
+      const locUnpaid=locInvs.filter(i=>!['paid','void','record'].includes(i.status)).reduce((s,i)=>s+(+i.total||0),0)
+      h+=`<div class="loc" style="cursor:pointer;padding:14px;margin:0 -20px;border-radius:8px;transition:background .15s" onclick="openLocation('${l.id}')" onmouseenter="this.style.background='#f5f6f8'" onmouseleave="this.style.background=''">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div class="loc-nm">${esc(l.name)}</div>
+          <span style="font-size:18px;color:#ccc">›</span>
+        </div>
         <div class="loc-addr">${esc([l.address,l.city,l.state,l.zip].filter(Boolean).join(', '))}</div>
         <div class="loc-eq">
-          ${extCount?`<span class="eq-tag">${extCount} Extinguisher${extCount!==1?'s':''}</span>`:''}
-          ${sysCount?`<span class="eq-tag">${sysCount} Suppression System${sysCount!==1?'s':''}</span>`:''}
-          ${lightCount?`<span class="eq-tag">${lightCount} E-Light Fixture${lightCount!==1?'s':''}</span>`:''}
+          ${extCount?`<span class="eq-tag">${extCount} Ext</span>`:''}
+          ${sysCount?`<span class="eq-tag">${sysCount} System${sysCount!==1?'s':''}</span>`:''}
+          ${lightCount?`<span class="eq-tag">${lightCount} Lights</span>`:''}
+          ${locInvs.length?`<span class="eq-tag">${locInvs.length} Invoice${locInvs.length!==1?'s':''}</span>`:''}
+          ${locUnpaid>0?`<span class="eq-tag" style="background:#fee2e2;color:#dc2626">${fmt(locUnpaid)} owed</span>`:''}
         </div>
       </div>`
     })
     h+=`</div>`
-
-    // outstanding balance
-    if(totalOwed>0){
-      h+=`<div class="card" style="border-color:#fed7aa">
-        <div class="card-t" style="color:var(--warn)">Outstanding Balance</div>
-        <div style="font-size:28px;font-weight:900;color:var(--fire)">${fmt(totalOwed)}</div>
-        <div style="font-size:12px;color:#888;margin-top:4px">Please remit payment to Stephens Advanced LLC</div>
-      </div>`
-    }
   }
 
   if(_activeTab==='equipment'){
@@ -336,6 +341,103 @@ function renderTab(){
   }
 
   wrap.innerHTML=h
+}
+
+function openLocation(locId){
+  const{locs,jobs,invs,reports}=_portalData
+  const l=locs.find(x=>x.id===locId);if(!l)return
+  const locJobs=jobs.filter(j=>j.location_id===locId)
+  const locInvs=invs.filter(i=>i.location_id===locId)
+  const locReports=reports.filter(r=>{const j=jobs.find(j2=>j2.id===r.job_id);return j&&j.location_id===locId})
+  const unpaid=locInvs.filter(i=>!['paid','void','record'].includes(i.status))
+  const paid=locInvs.filter(i=>i.status==='paid')
+
+  let h=`<button onclick="switchTab('overview')" style="background:none;border:none;color:var(--fire);font-size:14px;font-weight:700;cursor:pointer;padding:0 0 16px;display:flex;align-items:center;gap:4px">‹ Back to Locations</button>`
+
+  // Location header
+  h+=`<div class="card" style="border-left:4px solid var(--fire)">
+    <div style="font-size:18px;font-weight:900;color:#1a1a2e">${esc(l.name)}</div>
+    <div style="font-size:13px;color:#888;margin-top:4px">${esc([l.address,l.city,l.state,l.zip].filter(Boolean).join(', '))}</div>
+    ${l.contact_name?`<div style="font-size:12px;color:#888;margin-top:8px">${esc(l.contact_name)}${l.contact_phone?' · <a href="tel:'+l.contact_phone+'" style="color:var(--fire);text-decoration:none">'+l.contact_phone+'</a>':''}</div>`:''}
+  </div>`
+
+  // Equipment
+  h+=`<div class="card"><div class="card-t">Equipment on File</div>`
+  if(l.suppression_systems?.length){
+    l.suppression_systems.forEach(s=>{
+      h+=`<div class="eq-item"><div><div class="eq-name">🔥 ${esc(s.system_type)}</div><div class="eq-detail">${s.tank_count} tank${s.tank_count!==1?'s':''} · ${s.nozzle_count} nozzles · ${s.fusible_link_count} links</div></div></div>`
+    })
+  }
+  if(l.extinguishers?.length){
+    l.extinguishers.forEach(e=>{
+      h+=`<div class="eq-item"><div><div class="eq-name">🧯 ${esc(e.type)} ${esc(e.size||'')}</div><div class="eq-detail">${esc(e.location_in_building||'')}</div></div></div>`
+    })
+  }
+  if(l.emergency_lights?.[0]?.fixture_count){
+    h+=`<div class="eq-item"><div class="eq-name">💡 ${l.emergency_lights[0].fixture_count} Emergency Light Fixtures</div></div>`
+  }
+  if(!l.suppression_systems?.length&&!l.extinguishers?.length){
+    h+=`<div class="empty">No equipment on file yet</div>`
+  }
+  h+=`</div>`
+
+  // Unpaid invoices
+  if(unpaid.length){
+    h+=`<div class="card" style="border-color:#fed7aa;border-width:2px"><div class="card-t" style="color:var(--warn)">Unpaid Invoices</div>`
+    unpaid.forEach(i=>{
+      const dt=i.date?new Date(i.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):''
+      h+=`<div class="inv-row">
+        <div><div class="inv-num">${esc(i.invoice_number||'—')}</div><div class="inv-date">${dt}</div></div>
+        <div style="text-align:right"><div class="inv-amt" style="color:var(--fire)">${fmt(+i.total)}</div><span class="badge b-sent">${i.status}</span></div>
+      </div>`
+    })
+    h+=`</div>`
+  }
+
+  // Paid invoices / payment history
+  if(paid.length){
+    h+=`<div class="card"><div class="card-t">Payment History</div>`
+    paid.forEach(i=>{
+      const dt=i.paid_at?new Date(i.paid_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):(i.date?new Date(i.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'')
+      h+=`<div class="inv-row">
+        <div><div class="inv-num">${esc(i.invoice_number||'—')}</div><div class="inv-date">${dt}${i.payment_method?' · '+i.payment_method:''}</div></div>
+        <div style="text-align:right"><div class="inv-amt" style="color:var(--ok)">${fmt(+i.total)}</div><span class="badge b-paid">Paid</span></div>
+      </div>`
+    })
+    h+=`</div>`
+  }
+
+  // Reports
+  if(locReports.length){
+    h+=`<div class="card"><div class="card-t">Inspection Reports</div>`
+    locReports.forEach(r=>{
+      const icon=r.report_type==='extinguisher'?'🧯':r.report_type==='dry_chemical'?'🏭':r.report_type==='clean_agent'?'💨':'🔥'
+      const name=r.report_type==='extinguisher'?'Extinguisher Report':r.report_type==='dry_chemical'?'Dry Chemical Report':r.report_type==='clean_agent'?'Clean Agent Report':'Kitchen Hood Report'
+      const dt=r.created_at?new Date(r.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):''
+      const sysLoc=r.report_data?.sysLocation||''
+      h+=`<div class="job-row">
+        <div class="job-date">${icon} ${name}</div>
+        <div class="job-scope">${dt}${sysLoc?' · '+esc(sysLoc):''}</div>
+      </div>`
+    })
+    h+=`</div>`
+  }
+
+  // Service history
+  const completedHere=locJobs.filter(j=>j.status==='completed')
+  if(completedHere.length){
+    h+=`<div class="card"><div class="card-t">Service History</div>`
+    completedHere.slice(0,15).forEach(j=>{
+      const dt=j.scheduled_date?new Date(j.scheduled_date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):''
+      h+=`<div class="job-row">
+        <div class="job-date">${dt}</div>
+        <div class="job-scope">${(j.scope||[]).join(', ')}</div>
+      </div>`
+    })
+    h+=`</div>`
+  }
+
+  document.getElementById('portalTab').innerHTML=h
 }
 
 async function submitRequest(){
