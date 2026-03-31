@@ -4317,7 +4317,7 @@ async function _confirmSendEmail(){
     try{
       // render full HTML doc in hidden iframe — force white background
       const iframe=document.createElement('iframe')
-      iframe.style.cssText='position:absolute;left:-9999px;top:0;width:580px;height:1056px;border:none;background:#fff'
+      iframe.style.cssText='position:absolute;left:-9999px;top:0;width:720px;height:1056px;border:none;background:#fff'
       document.body.appendChild(iframe)
       const idoc=iframe.contentDocument||iframe.contentWindow.document
       // strip scripts, force white bg and black text on all elements
@@ -4326,7 +4326,7 @@ async function _confirmSendEmail(){
       idoc.open();idoc.write(cleanHtml);idoc.close()
       // wait for content + fonts to render
       await new Promise(r=>setTimeout(r,500))
-      const pdfBlob=await html2pdf().set({margin:[0.5,0.5,0.5,0.5],filename:'report.pdf',image:{type:'jpeg',quality:0.98},html2canvas:{scale:2,useCORS:true,windowWidth:580,backgroundColor:'#ffffff'},jsPDF:{unit:'in',format:'letter',orientation:'portrait'}}).from(idoc.body).outputPdf('blob')
+      const pdfBlob=await html2pdf().set({margin:[0.4,0.4,0.4,0.4],filename:'report.pdf',image:{type:'jpeg',quality:0.98},html2canvas:{scale:2,useCORS:true,windowWidth:720,backgroundColor:'#ffffff'},jsPDF:{unit:'in',format:'letter',orientation:'portrait'}}).from(idoc.body).outputPdf('blob')
       document.body.removeChild(iframe)
       const buf=await pdfBlob.arrayBuffer()
       const b64=btoa(new Uint8Array(buf).reduce((s,b)=>s+String.fromCharCode(b),''))
@@ -5189,7 +5189,7 @@ const RPT_LOGO=`<svg width="44" height="50" viewBox="0 0 32 38" fill="none" xmln
 
 function rptShell(title,subtitle,content){
   return`<!DOCTYPE html><html style="background:#ffffff;color-scheme:light"><head><meta charset="UTF-8"><meta name="color-scheme" content="light"></head>
-<body style="margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#222;background:#ffffff;line-height:1.4;width:100%;overflow:hidden">
+<body style="margin:0;padding:16px 20px;font-family:Arial,Helvetica,sans-serif;font-size:9pt;color:#222;background:#ffffff;line-height:1.4;width:100%;overflow:hidden">
 
 <table style="width:100%;table-layout:fixed;border-collapse:collapse;border-bottom:3px solid #f05a28;padding-bottom:10px;margin-bottom:16px">
 <tr><td style="vertical-align:middle;width:50px;padding-bottom:10px">${RPT_LOGO}</td>
