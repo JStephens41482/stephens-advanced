@@ -86,10 +86,6 @@ body{font-family:'Inter',system-ui,sans-serif;background:#f8f9fb;color:#1a1a2e;f
   </div>
 </div>
 
-<div style="max-width:640px;margin:0 auto;padding:0 16px 24px;display:flex;gap:10px">
-  <a href="/w9.pdf" target="_blank" style="flex:1;padding:14px;border-radius:12px;background:#fff;border:1px solid #e8eaed;text-align:center;text-decoration:none;font-size:13px;font-weight:700;color:#1a1a2e;box-shadow:0 1px 3px rgba(0,0,0,.04)">📄 Download W-9</a>
-  <a href="/coi.pdf" target="_blank" style="flex:1;padding:14px;border-radius:12px;background:#fff;border:1px solid #e8eaed;text-align:center;text-decoration:none;font-size:13px;font-weight:700;color:#1a1a2e;box-shadow:0 1px 3px rgba(0,0,0,.04)">📋 Download COI</a>
-</div>
 <div class="footer">
   Stephens Advanced LLC · Fire Suppression & Safety<br>
   <a href="tel:2149944799">(214) 994-4799</a>
@@ -157,9 +153,10 @@ function renderPortal(){
   const{locs,jobs,invs,reports,upcoming,completed,totalOwed}=_portalData
   const content=document.getElementById('portalContent')
 
+  const custName=locs[0]?.name||(locs.length+' locations')
   let h=`<div class="welcome">
-    <h1>Welcome</h1>
-    <p>View your fire protection service history, equipment, invoices, and upcoming inspections. We appreciate your business.</p>
+    <h1>Welcome, ${esc(custName)}</h1>
+    <p>View your equipment, invoices, inspection reports, and upcoming service. Everything in one place.</p>
   </div>
 
   <div class="stat-row">
@@ -271,18 +268,23 @@ function renderTab(){
   if(_activeTab==='invoices'){
     if(!invs.length){h+=`<div class="card"><div class="empty">No invoices on file</div></div>`}
     else{
-      h+=`<div class="card"><div class="card-t">Invoices</div>`
+      h+=`<div class="card"><div class="card-t">All Invoices</div>`
       invs.forEach(i=>{
         const loc=locs.find(l=>l.id===i.location_id)
         const bc=i.status==='paid'?'b-paid':i.status==='sent'?'b-sent':i.status==='overdue'?'b-over':'b-draft'
-        h+=`<div class="inv-row">
-          <div>
-            <div class="inv-num">${esc(i.invoice_number||'—')}${loc?' · '+esc(loc.name):''}</div>
-            <div class="inv-date">${i.date?new Date(i.date+'T12:00:00').toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):''}</div>
+        h+=`<div style="border-bottom:1px solid #f0f0f0">
+          <div class="inv-row" style="cursor:pointer" onclick="toggleInvDetail('inv-detail-${i.id}')">
+            <div>
+              <div class="inv-num">${esc(i.invoice_number||'—')}${loc?' · '+esc(loc.name):''}</div>
+              <div class="inv-date">${i.date?new Date(i.date+'T12:00:00').toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):''}</div>
+            </div>
+            <div style="text-align:right;display:flex;align-items:center;gap:8px">
+              <div><div class="inv-amt" style="color:${i.status==='paid'?'var(--ok)':'var(--fire)'}">${fmt(+i.total)}</div><span class="badge ${bc}">${i.status}</span></div>
+              <span style="color:#ccc">›</span>
+            </div>
           </div>
-          <div style="text-align:right">
-            <div class="inv-amt">${fmt(+i.total)}</div>
-            <span class="badge ${bc}">${i.status}</span>
+          <div id="inv-detail-${i.id}" style="display:none;padding:0 0 12px">
+            <div id="inv-lines-${i.id}" style="padding:0 4px;font-size:12px;color:#888">Loading...</div>
           </div>
         </div>`
       })
@@ -344,11 +346,17 @@ function renderTab(){
     </div>
 
     <div class="card">
-      <div class="card-t">Contact Us Directly</div>
+      <div class="card-t">Documents</div>
+      <div style="display:flex;gap:10px;margin-bottom:16px">
+        <a href="/w9.pdf" target="_blank" style="flex:1;padding:12px;border-radius:8px;background:#f8f9fb;border:1px solid #e8eaed;text-align:center;text-decoration:none;font-size:13px;font-weight:700;color:#1a1a2e">📄 W-9</a>
+        <a href="/coi.pdf" target="_blank" style="flex:1;padding:12px;border-radius:8px;background:#f8f9fb;border:1px solid #e8eaed;text-align:center;text-decoration:none;font-size:13px;font-weight:700;color:#1a1a2e">📋 COI</a>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-t">Contact Us</div>
       <div style="font-size:14px;line-height:2">
         <strong>Jon Stephens</strong><br>
-        📞 <a href="tel:2149944799" style="color:var(--fire);text-decoration:none">(214) 994-4799</a><br>
-        ✉️ <a href="mailto:jonathan@stephensadvanced.com" style="color:var(--fire);text-decoration:none">jonathan@stephensadvanced.com</a>
+        📞 <a href="tel:2149944799" style="color:var(--fire);text-decoration:none">(214) 994-4799</a>
       </div>
     </div>`
   }
