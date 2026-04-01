@@ -299,7 +299,10 @@ select{-webkit-appearance:none;appearance:none}
       <svg width="26" height="30" viewBox="0 0 32 38" fill="none" onclick="openReports()" style="cursor:pointer"><path d="M16 2C16 2 6 10 6 20C6 26 10 30 16 30C22 30 26 26 26 20C26 10 16 2 16 2Z" fill="#f05a28"/><path d="M16 8C16 8 10 14 10 20C10 23 12 25 14 26C13 23 14 20 16 18C18 20 19 23 18 26C20 25 22 23 22 20C22 14 16 8 16 8Z" fill="#ff7847"/><ellipse cx="16" cy="30" rx="5" ry="6" fill="#3498db"/><ellipse cx="16" cy="29" rx="3" ry="3.5" fill="#5dade2"/></svg>
       <span onclick="openReports()" style="cursor:pointer">Stephens <span>Advanced</span></span>
     </div>
-    <div class="hdr-date" id="hdrDate"></div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <div class="hdr-date" id="hdrDate"></div>
+      <button id="notifBell" onclick="openNotifPanel()" style="position:relative;background:none;border:none;font-size:18px;cursor:pointer;padding:4px;min-width:36px;min-height:36px;display:flex;align-items:center;justify-content:center">🔔<span id="notifBadge" style="display:none;position:absolute;top:0;right:0;background:var(--bad);color:#fff;font-size:9px;font-weight:900;width:16px;height:16px;border-radius:50%;display:flex;align-items:center;justify-content:center"></span></button>
+    </div>
   </div>
   <div class="vw on" id="vCal"><div class="vw-pad" id="calC"></div></div>
   <div class="vw" id="vJobs"><div class="vw-pad" id="jobsC"></div></div>
@@ -453,7 +456,7 @@ document.addEventListener('touchend',e=>{
 document.getElementById('invOv').addEventListener('click',function(e){if(e.target===this)this.classList.remove('open')})
 
 async function load(){
-  const[j,l,i,b,r,ci,td2,mz,bq,tk,sr,pt,ce,ct,cl2,rch,pr]=await Promise.all([
+  const[j,l,i,b,r,ci,td2,mz,bq,tk,sr,pt,ce,ct,cl2,rch,pr,nf]=await Promise.all([
     SB.from('jobs').select('*,location:locations(*)').order('updated_at',{ascending:false}),
     SB.from('locations').select('*,extinguishers(id,type,size,serial_number,location_in_building,manufacture_date,last_internal,last_hydro),suppression_systems(id,system_type,category,tank_count,nozzle_count,fusible_link_count),emergency_lights(id,fixture_count),billing_account:billing_accounts(*)').order('name'),
     SB.from('invoices').select('*').order('date',{ascending:false}).limit(100),
@@ -470,7 +473,8 @@ async function load(){
     SB.from('contacts').select('*').order('name'),
     SB.from('contact_links').select('*,contact:contacts(*)').order('created_at'),
     SB.from('rate_card_history').select('*').is('expired_date',null).order('key'),
-    SB.from('pricing_rules').select('*').eq('active',true)
+    SB.from('pricing_rules').select('*').eq('active',true),
+    SB.from('notifications').select('*').eq('is_read',false).eq('is_dismissed',false).order('created_at',{ascending:false}).limit(50)
   ])
   if(j.error)console.error('jobs error:',j.error)
   if(l.error)console.error('locations error:',l.error)
@@ -489,6 +493,7 @@ async function load(){
   if(cl2.error)console.error('contact_links error:',cl2.error)
   if(rch.error)console.error('rate_card_history error:',rch.error)
   if(pr.error)console.error('pricing_rules error:',pr.error)
+  if(nf.error)console.error('notifications error:',nf.error)
   console.log('loaded:',j.data?.length,'jobs,',l.data?.length,'locs,',i.data?.length,'invs,',td2.data?.length,'todos')
   D.jobs=j.data||[];D.locs=l.data||[];D.invs=i.data||[];D.bas=b.data||[]
   const rc={};(r.data||[]).forEach(x=>rc[x.key]=+x.price);D.rc=rc
@@ -504,6 +509,7 @@ async function load(){
   D.contactLinks=cl2.data||[]
   D.currentRates=rch.data||[]
   D.pricingRules=pr.data||[]
+  D.notifications=nf.data||[]
 }
 
 function contactsForEntity(entityType,entityId){
@@ -628,6 +634,127 @@ async function syncJobToCalendar(jobId,locationId,date,time){
     location_text:[loc.address,loc.city].filter(Boolean).join(', '),
     color:'#3b82f6'
   })
+}
+
+// ═══ NOTIFICATIONS ENGINE ═══
+function updateNotifBadge(){
+  const count=(D.notifications||[]).length
+  const badge=$('notifBadge')
+  if(!badge)return
+  if(count>0){badge.textContent=count>9?'9+':count;badge.style.display='flex'}
+  else{badge.style.display='none'}
+}
+
+function openNotifPanel(){
+  const notifs=D.notifications||[]
+  let h=`<div class="ov-hdr"><button class="ov-back" onclick="pop()">‹</button><div class="ov-title">Notifications</div>
+    ${notifs.length?`<button class="ov-act" onclick="dismissAllNotifs()">Dismiss All</button>`:''}
+  </div><div class="ov-body">`
+  if(!notifs.length){
+    h+=`<div style="text-align:center;padding:40px;color:var(--g2)">
+      <div style="font-size:32px;margin-bottom:8px;opacity:.3">🔔</div>
+      <div style="font-size:14px">All caught up!</div>
+    </div>`
+  }else{
+    notifs.forEach(n=>{
+      const dt=new Date(n.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})
+      const pc={urgent:'var(--bad)',high:'var(--warn)',normal:'var(--info)'}[n.priority]||'var(--info)'
+      h+=`<div style="background:var(--c1);border:1px solid var(--b1);border-radius:var(--rs);padding:12px;margin-bottom:8px;cursor:pointer;border-left:3px solid ${pc}" onclick="tapNotif('${n.id}','${n.entity_type||''}','${n.entity_id||''}')">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start">
+          <div style="font-size:13px;font-weight:700;color:var(--w)">${esc(n.title)}</div>
+          <span style="font-size:9px;font-weight:800;padding:2px 6px;border-radius:3px;background:${pc}20;color:${pc};text-transform:uppercase;flex-shrink:0">${n.priority}</span>
+        </div>
+        ${n.body?`<div style="font-size:11px;color:var(--g1);margin-top:4px">${esc(n.body)}</div>`:''}
+        <div style="font-size:10px;color:var(--g2);margin-top:4px">${dt}</div>
+      </div>`
+    })
+  }
+  h+=`</div>`
+  push(h)
+}
+
+async function tapNotif(nid,entityType,entityId){
+  await SB.from('notifications').update({is_read:true,read_at:new Date().toISOString()}).eq('id',nid)
+  D.notifications=(D.notifications||[]).filter(n=>n.id!==nid)
+  updateNotifBadge()
+  pop()
+  if(entityType==='job'&&entityId)openJob(entityId)
+  else if(entityType==='location'&&entityId)openCust(entityId)
+  else if(entityType==='invoice'&&entityId)openInvDetail(entityId)
+}
+
+async function dismissAllNotifs(){
+  const ids=(D.notifications||[]).map(n=>n.id)
+  if(ids.length)await SB.from('notifications').update({is_dismissed:true}).in('id',ids)
+  D.notifications=[]
+  updateNotifBadge()
+  pop()
+  toast('Notifications dismissed')
+}
+
+async function generateNotifications(){
+  const t=td(),now=new Date()
+  const existing=[]
+  try{
+    const{data}=await SB.from('notifications').select('notification_type,entity_type,entity_id,created_at').eq('is_dismissed',false).gte('created_at',new Date(now.getTime()-24*60*60*1000).toISOString())
+    existing.push(...(data||[]))
+  }catch(e){}
+  function isDupe(type,eType,eId){return existing.some(e=>e.notification_type===type&&e.entity_type===eType&&e.entity_id===eId)}
+  const batch=[]
+
+  // 1. Equipment due — extinguisher annual inspections overdue
+  for(const loc of D.locs){
+    const exts=loc.extinguishers||[]
+    let overdueCount=0
+    exts.forEach(e=>{
+      const nfpa=window.NFPA10?.[e.type]||{hydro:12,internal:6}
+      // check if annual inspection likely overdue (simplified: any ext without a completed job in last 13 months)
+      const locJobs=D.jobs.filter(j=>j.location_id===loc.id&&j.status==='completed'&&j.scope?.includes('extinguishers'))
+      const lastInsp=locJobs.sort((a,b)=>b.completed_at?.localeCompare(a.completed_at))[0]
+      if(!lastInsp||new Date(lastInsp.completed_at)<new Date(now.getTime()-13*30*24*60*60*1000))overdueCount++
+    })
+    if(overdueCount>0&&!isDupe('equipment_due','location',loc.id)){
+      const daysSince=overdueCount
+      const priority=daysSince>5?'urgent':daysSince>2?'high':'normal'
+      batch.push({notification_type:'equipment_due',priority,title:'Equipment inspection due',body:`${loc.name}: ${overdueCount} extinguisher${overdueCount>1?'s':''} may need annual inspection`,entity_type:'location',entity_id:loc.id})
+    }
+  }
+
+  // 2. Invoice aging — 30/60/90 day
+  const unpaid=D.invs.filter(i=>!['paid','void','record','factored'].includes(i.status))
+  for(const inv of unpaid){
+    const invDate=new Date(inv.date)
+    const days=Math.floor((now-invDate)/(1000*60*60*24))
+    const loc=D.locs.find(l=>l.id===inv.location_id)
+    if(days>=90&&!isDupe('invoice_90','invoice',inv.id)){
+      batch.push({notification_type:'invoice_90',priority:'urgent',title:'Collection risk — 90+ days',body:`${loc?.name||'?'} ${inv.invoice_number} $${(+inv.total).toFixed(2)} (${days} days)`,entity_type:'invoice',entity_id:inv.id})
+    }else if(days>=60&&!isDupe('invoice_60','invoice',inv.id)){
+      batch.push({notification_type:'invoice_60',priority:'high',title:'Invoice aging — 60+ days',body:`${loc?.name||'?'} ${inv.invoice_number} $${(+inv.total).toFixed(2)}`,entity_type:'invoice',entity_id:inv.id})
+    }else if(days>=30&&!isDupe('invoice_30','invoice',inv.id)){
+      batch.push({notification_type:'invoice_30',priority:'normal',title:'Invoice aging — 30+ days',body:`${loc?.name||'?'} ${inv.invoice_number} $${(+inv.total).toFixed(2)}`,entity_type:'invoice',entity_id:inv.id})
+    }
+  }
+
+  // 3. Brycer overdue — unsubmitted > 3 days
+  for(const bq of(D.brycerQueue||[])){
+    const created=new Date(bq.created_at)
+    const days=Math.floor((now-created)/(1000*60*60*24))
+    if(days>=3&&!isDupe('brycer_overdue','brycer',bq.id)){
+      batch.push({notification_type:'brycer_overdue',priority:'urgent',title:'Brycer submission overdue',body:`${bq.location_name||'Unknown'} — ${days} days in queue`,entity_type:'brycer',entity_id:bq.id})
+    }
+  }
+
+  // 4. Job reminders — today's scheduled jobs
+  const todayJobs=D.jobs.filter(j=>j.status==='scheduled'&&j.scheduled_date===t)
+  if(todayJobs.length&&!isDupe('daily_summary','system',null)){
+    batch.push({notification_type:'daily_summary',priority:'normal',title:`${todayJobs.length} job${todayJobs.length>1?'s':''} scheduled today`,body:todayJobs.map(j=>(j.location?.name||'?')+' @ '+(j.scheduled_time||'TBD')).join(', '),entity_type:'system',entity_id:null})
+  }
+
+  if(batch.length){
+    try{await SB.from('notifications').insert(batch)}catch(e){console.error('notif gen:',e)}
+    await load()
+    updateNotifBadge()
+  }
 }
 
 // ═══ AUDIT LOG ═══
@@ -1891,6 +2018,18 @@ function rCal(){
           <div style="font-size:11px;color:var(--w2);margin-top:2px">${svcReqs.length} pending request${svcReqs.length>1?'s':''}</div>
         </div>
         <span style="background:var(--info);color:#fff;font-size:13px;font-weight:900;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center">${svcReqs.length}</span>
+      </div>
+    </div>`
+  }
+  // Urgent notifications banner
+  const urgentNotifs=(D.notifications||[]).filter(n=>n.priority==='urgent')
+  if(urgentNotifs.length){
+    top+=`<div style="background:var(--bads);border:1.5px solid var(--bad);border-radius:var(--r);padding:12px 14px;margin-bottom:12px;cursor:pointer" onclick="openNotifPanel()">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div><span style="font-size:13px;font-weight:800;color:var(--bad)">⚠️ ${urgentNotifs.length} Urgent</span>
+          <div style="font-size:11px;color:var(--w2);margin-top:2px">${urgentNotifs[0].title}${urgentNotifs.length>1?' + '+(urgentNotifs.length-1)+' more':''}</div>
+        </div>
+        <span style="background:var(--bad);color:#fff;font-size:13px;font-weight:900;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center">${urgentNotifs.length}</span>
       </div>
     </div>`
   }
@@ -7927,6 +8066,10 @@ async function execChatAction(act){
 function startApp(){
   load().then(()=>{
     rCal()
+    updateNotifBadge()
+    generateNotifications()
+    // re-generate notifications every 30 minutes
+    setInterval(()=>{generateNotifications()},30*60*1000)
     if(!D.locs.length&&!D.jobs.length){
       setTimeout(()=>load().then(rCal),1200)
     }
