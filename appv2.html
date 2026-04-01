@@ -453,7 +453,7 @@ document.addEventListener('touchend',e=>{
 document.getElementById('invOv').addEventListener('click',function(e){if(e.target===this)this.classList.remove('open')})
 
 async function load(){
-  const[j,l,i,b,r,ci,td2,mz,bq,tk,sr,pt,ce,ct,cl2]=await Promise.all([
+  const[j,l,i,b,r,ci,td2,mz,bq,tk,sr,pt,ce,ct,cl2,rch,pr]=await Promise.all([
     SB.from('jobs').select('*,location:locations(*)').order('updated_at',{ascending:false}),
     SB.from('locations').select('*,extinguishers(id,type,size,serial_number,location_in_building,manufacture_date,last_internal,last_hydro),suppression_systems(id,system_type,category,tank_count,nozzle_count,fusible_link_count),emergency_lights(id,fixture_count),billing_account:billing_accounts(*)').order('name'),
     SB.from('invoices').select('*').order('date',{ascending:false}).limit(100),
@@ -468,7 +468,9 @@ async function load(){
     SB.from('portal_tokens').select('*').order('created_at',{ascending:false}),
     SB.from('calendar_events').select('*').order('start_time'),
     SB.from('contacts').select('*').order('name'),
-    SB.from('contact_links').select('*,contact:contacts(*)').order('created_at')
+    SB.from('contact_links').select('*,contact:contacts(*)').order('created_at'),
+    SB.from('rate_card_history').select('*').is('expired_date',null).order('key'),
+    SB.from('pricing_rules').select('*').eq('active',true)
   ])
   if(j.error)console.error('jobs error:',j.error)
   if(l.error)console.error('locations error:',l.error)
@@ -485,6 +487,8 @@ async function load(){
   if(ce.error)console.error('calendar_events error:',ce.error)
   if(ct.error)console.error('contacts error:',ct.error)
   if(cl2.error)console.error('contact_links error:',cl2.error)
+  if(rch.error)console.error('rate_card_history error:',rch.error)
+  if(pr.error)console.error('pricing_rules error:',pr.error)
   console.log('loaded:',j.data?.length,'jobs,',l.data?.length,'locs,',i.data?.length,'invs,',td2.data?.length,'todos')
   D.jobs=j.data||[];D.locs=l.data||[];D.invs=i.data||[];D.bas=b.data||[]
   const rc={};(r.data||[]).forEach(x=>rc[x.key]=+x.price);D.rc=rc
@@ -498,10 +502,21 @@ async function load(){
   D.calEvents=ce.data||[]
   D.contacts=ct.data||[]
   D.contactLinks=cl2.data||[]
+  D.currentRates=rch.data||[]
+  D.pricingRules=pr.data||[]
 }
 
 function contactsForEntity(entityType,entityId){
   return (D.contactLinks||[]).filter(cl=>cl.entity_type===entityType&&cl.entity_id===entityId).map(cl=>cl.contact||D.contacts?.find(c=>c.id===cl.contact_id)).filter(Boolean)
+}
+
+function getRate(key){
+  const r=(D.currentRates||[]).find(r=>r.key===key)
+  return r?+r.price:(D.rc[key]||0)
+}
+
+function getPricingRule(ruleType){
+  return(D.pricingRules||[]).find(r=>r.rule_type===ruleType&&r.active)
 }
 
 function primaryContactFor(entityType,entityId){
@@ -654,7 +669,7 @@ const unesc=s=>(s||'').replace(/&#39;/g,"'").replace(/&quot;/g,'"').replace(/&am
 function cart(s){const t=s.system_type||'';if(t.includes('R-102')||t.includes('Piranha'))return s.tank_count>1?'LT-30':'LT-10';if(t.includes('Pyro')||t.includes('Knight'))return '16g CO2';if(t.includes('Buck'))return 'Buckeye N2';if(t.includes('Kidde'))return 'Kidde XV N2';return 'Cart'}
 
 function est(j){
-  const l=D.locs?.find(x=>x.id===(j.location_id||j.location?.id))||j.location||{},rc=D.rc,sc=j.scope||[];let t=0
+  const l=D.locs?.find(x=>x.id===(j.location_id||j.location?.id))||j.location||{},rc=new Proxy({},{get:(_,key)=>getRate(key)}),sc=j.scope||[];let t=0
   if(sc.includes('extinguishers'))t+=(l.extinguishers?.length||0)*(rc.extinguisher_inspection||20)
   if(sc.includes('suppression'))for(const s of(l.suppression_systems||[])){
     let b=rc.suppression_standard||250
@@ -1290,6 +1305,36 @@ async function openReports(){
     <div class="ds-row"><div class="ds-lbl">Service Locations</div><div class="ds-val">${totalClients}</div></div>
     <div class="ds-row"><div class="ds-lbl">Compliance Jurisdictions</div><div class="ds-val">${brycerLocs} Brycer</div></div>
   </div>`
+
+  // RATE CARD & PRICING RULES
+  h+=`<div class="ds"><div class="ds-t">Rate Card</div>`
+  const currentRates=D.currentRates||[]
+  const oldRatesP=SB.from('rate_card_history').select('*').not('expired_date','is',null).order('key')
+  oldRatesP.then(({data:oldRates})=>{
+    const el=$('rate-comparison');if(!el)return
+    const old=(oldRates||[])
+    let rh=''
+    currentRates.forEach(r=>{
+      const prev=old.find(o=>o.key===r.key)
+      const diff=prev?((+r.price-(+prev.price))/(+prev.price)*100).toFixed(0):null
+      rh+=`<div class="ds-row">
+        <div class="ds-lbl" style="flex:1">${r.key.replace(/_/g,' ')}</div>
+        ${prev?`<div style="font-size:10px;color:var(--g2);text-decoration:line-through;margin-right:8px">$${(+prev.price).toFixed(2)}</div>`:''}
+        <div class="ds-val" style="color:var(--ok)">$${(+r.price).toFixed(2)}</div>
+        ${diff?`<div style="font-size:9px;font-weight:800;color:var(--fire);margin-left:4px">+${diff}%</div>`:''}
+      </div>`
+    })
+    el.innerHTML=rh||'<div style="color:var(--g2);padding:4px 0">No versioned rates</div>'
+  })
+  h+=`<div id="rate-comparison" style="font-size:12px;color:var(--g2);padding:4px 0">Loading...</div>`
+  const rules=D.pricingRules||[]
+  if(rules.length){
+    h+=`<div style="margin-top:8px;font-size:11px;font-weight:700;color:var(--g1)">Active Pricing Rules</div>`
+    rules.forEach(r=>{
+      h+=`<div class="ds-row"><div class="ds-lbl" style="flex:1">${esc(r.description||r.rule_type)}</div><div class="ds-val" style="color:var(--info)">${r.percentage}%</div></div>`
+    })
+  }
+  h+=`</div>`
 
   // PRINT BUTTONS
   h+=`<div class="ds"><div class="ds-t">Print / Export</div>
@@ -2074,7 +2119,9 @@ let jobNotes=''
 let invLines=[] // for editing existing invoices in openInvDetail
 
 function buildJobLines(j){
-  const l=D.locs.find(x=>x.id===(j.location_id||j.location?.id))||j.location||{},rc=D.rc,sc=j.scope||[]
+  const l=D.locs.find(x=>x.id===(j.location_id||j.location?.id))||j.location||{},sc=j.scope||[]
+  // Use versioned rates (getRate falls back to D.rc if no rate_card_history)
+  const rc=new Proxy({},{get:(_,key)=>getRate(key)})
   const lines=[]
   // suppression
   if(sc.includes('suppression'))for(const s of(l.suppression_systems||[])){
@@ -2535,6 +2582,17 @@ async function compJ(id){
     lines.push({description:travel.desc,quantity:1,unit_price:travel.charge,total:travel.charge})
   }
 
+  // Apply pricing rules
+  const subBeforeRules=lines.reduce((s,l2)=>s+l2.total,0)
+  const ppRule=getPricingRule('prompt_pay_discount')
+  const factRule=getPricingRule('factoring_surcharge')
+  // Prompt-pay discount: check if payment is being collected at time of service
+  const payingNow=$('pay-at-service')?.checked
+  if(ppRule&&payingNow){
+    const discAmt=Math.round(subBeforeRules*ppRule.percentage/100*100)/100
+    lines.push({description:`Prompt Pay Discount (${ppRule.percentage}%)`,quantity:1,unit_price:-discAmt,total:-discAmt})
+  }
+
   const sub=lines.reduce((s,l2)=>s+l2.total,0)
   const notes=($('job-notes')?.value||jobNotes||'').trim()
   const sig=$('sigC')?.toDataURL()||null
@@ -2542,7 +2600,7 @@ async function compJ(id){
   const invNum='INV-'+Date.now().toString().slice(-6)
   const{data:inv,error}=await SB.from('invoices').insert({
     job_id:id,location_id:l.id,billing_account_id:l.billing_account_id,
-    invoice_number:invNum,subtotal:sub,total:sub,status:'draft',date:td(),
+    invoice_number:invNum,subtotal:subBeforeRules,total:sub,status:'draft',date:td(),
     notes:notes||null
   }).select().single()
   if(error){toast('Error generating invoice',false);setLoad('compBtn',false,'✓ Complete Job — Generate Invoice');return}
@@ -3426,9 +3484,22 @@ async function submitMazon(invId,custName,total){
   const loc=D.locs.find(x=>x.id===inv.location_id)||{}
   const addr=[loc.address,loc.city,loc.state,loc.zip].filter(Boolean).join(', ')
 
+  // apply factoring surcharge if pricing rule exists
+  const factRule2=getPricingRule('factoring_surcharge')
+  let factoredTotal=+total||0
+  if(factRule2){
+    const surcharge=Math.round(factoredTotal*factRule2.percentage/100*100)/100
+    factoredTotal+=surcharge
+    // add surcharge line item to invoice
+    try{
+      await SB.from('invoice_lines').insert({invoice_id:invId,description:`Processing Fee (${factRule2.percentage}%)`,quantity:1,unit_price:surcharge,total:surcharge,sort_order:999})
+      await SB.from('invoices').update({total:factoredTotal}).eq('id',invId)
+    }catch(e){console.error('factoring surcharge:',e)}
+  }
+
   // save to mazon_queue
   const{error:qErr}=await SB.from('mazon_queue').insert({
-    invoice_id:invId,customer_name:name||custName,amount:+total||0,
+    invoice_id:invId,customer_name:name||custName,amount:factoredTotal,
     location_address:addr,date_of_service:inv.date||td(),
     signature_data:sig,status:'pending',invoice_number:inv.invoice_number||''
   })
@@ -7551,7 +7622,8 @@ COLLECTED THIS MONTH: $${collectedThisMonth.toFixed(2)}
 OUTSTANDING: $${totalOutstanding.toFixed(2)} (${unpaidInvs.length} invoices)
 UNPAID: ${unpaidInvs.slice(0,10).map(i=>{const loc2=D.locs.find(l=>l.id===i.location_id);return`${loc2?.name||'?'} ${i.invoice_number||''} $${(+i.total).toFixed(2)} [id:${i.id}]`}).join('; ')}
 TECHS: ${(D.techs||[]).map(t2=>`${t2.name} [id:${t2.id}]`).join(', ')||'None'}
-RATE CARD: ${Object.entries(D.rc||{}).map(([k,v])=>`${k}=$${v}`).join(', ')}
+RATE CARD (current versioned rates): ${(D.currentRates||[]).map(r=>r.key+'=$'+((+r.price).toFixed(2))).join(', ')||Object.entries(D.rc||{}).map(([k,v])=>`${k}=$${v}`).join(', ')}
+PRICING RULES: ${(D.pricingRules||[]).map(r=>r.rule_type+': '+r.description+' ('+r.percentage+'%)').join('; ')||'None'}
 
 CONTACTS: ${(D.contactLinks||[]).slice(0,30).map(cl=>{const c=cl.contact;if(!c)return null;const eName=cl.entity_type==='location'?(D.locs.find(l=>l.id===cl.entity_id)?.name||'?'):(D.bas.find(b=>b.id===cl.entity_id)?.name||'?');return c.name+(c.role?' ('+c.role+')':'')+' at '+eName+(c.email?' <'+c.email+'>':'')}).filter(Boolean).join('; ')||'None'}
 
