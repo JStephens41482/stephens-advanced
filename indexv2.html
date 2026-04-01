@@ -999,6 +999,57 @@ async function sendSchMsg(){
   }
   renderSchChat()
 }
+
+// ═══ ADDRESS AUTOCOMPLETE (light theme) ═══
+function initAddressAutocomplete(inputId,onSelect){
+  const input=document.getElementById(inputId);if(!input)return
+  let debounce=null
+  const dropdown=document.createElement('div')
+  dropdown.style.cssText='position:absolute;left:0;right:0;top:100%;background:#fff;border:1px solid #ddd;border-radius:0 0 8px 8px;z-index:999;display:none;max-height:200px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.1)'
+  input.parentElement.style.position='relative'
+  input.parentElement.appendChild(dropdown)
+  input.addEventListener('input',()=>{
+    clearTimeout(debounce);const val=input.value.trim()
+    if(val.length<3){dropdown.style.display='none';return}
+    debounce=setTimeout(async()=>{
+      try{
+        const res=await fetch('/api/maps',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'autocomplete',params:{input:val}})})
+        const data=await res.json()
+        if(data.predictions?.length){
+          dropdown.innerHTML=data.predictions.map(p=>`<div style="padding:10px 12px;font-size:13px;color:#333;cursor:pointer;border-bottom:1px solid #eee" onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background=''" data-pid="${p.place_id}" onclick="selectAddr('${inputId}','${p.place_id}')">${p.description}</div>`).join('')
+          dropdown.style.display='block'
+        }else dropdown.style.display='none'
+      }catch(e){dropdown.style.display='none'}
+    },300)
+  })
+  document.addEventListener('click',e=>{if(e.target!==input&&!dropdown.contains(e.target))dropdown.style.display='none'})
+  window._addrCallbacks=window._addrCallbacks||{}
+  window._addrCallbacks[inputId]=onSelect
+}
+
+async function selectAddr(inputId,placeId){
+  try{
+    const res=await fetch('/api/maps',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'place_details',params:{place_id:placeId}})})
+    const data=await res.json()
+    if(data.result){
+      const c=data.result.address_components||[]
+      const get=t=>c.find(x=>x.types.includes(t))
+      const parsed={address:[get('street_number')?.long_name,get('route')?.long_name].filter(Boolean).join(' '),city:get('locality')?.long_name||get('sublocality')?.long_name||'',state:get('administrative_area_level_1')?.short_name||'TX',zip:get('postal_code')?.long_name||''}
+      const cb=window._addrCallbacks?.[inputId];if(cb)cb(parsed)
+      document.getElementById(inputId).value=parsed.address
+    }
+  }catch(e){}
+  document.querySelectorAll('div[style*="z-index: 999"],div[style*="z-index:999"]').forEach(d=>d.style.display='none')
+}
+
+// Attach autocomplete to service request form
+document.addEventListener('DOMContentLoaded',()=>{
+  initAddressAutocomplete('req-address',p=>{
+    const c=document.getElementById('req-city');if(c)c.value=p.city
+    const s=document.getElementById('req-state');if(s)s.value=p.state
+    const z=document.getElementById('req-zip');if(z)z.value=p.zip
+  })
+})
 </script>
 
 <!-- Chat Button -->

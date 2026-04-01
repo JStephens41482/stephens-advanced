@@ -291,7 +291,22 @@ module.exports = async function handler(req, res) {
             is_brycer_jurisdiction: isBrycer,
             brycer_ahj_name: isBrycer ? (action.city || '') + ' Fire Department' : null
           }).select().single()
-          if (loc) { lastLocationId = loc.id; actionsTaken.push({ type: 'create_customer', id: loc.id }) }
+          if (loc) {
+            lastLocationId = loc.id
+            actionsTaken.push({ type: 'create_customer', id: loc.id })
+            // geocode address to store lat/lng
+            if (action.address) {
+              try {
+                const geoUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent([action.address, action.city, action.state, action.zip].filter(Boolean).join(', '))}&key=${process.env.GOOGLE_MAPS_API_KEY}`
+                const geoRes = await fetch(geoUrl)
+                const geoData = await geoRes.json()
+                if (geoData.results?.[0]?.geometry?.location) {
+                  const { lat, lng } = geoData.results[0].geometry.location
+                  await sb.from('locations').update({ lat, lng }).eq('id', loc.id)
+                }
+              } catch (e) { console.error('geocode:', e) }
+            }
+          }
         }
 
         else if (action.type === 'schedule_job') {

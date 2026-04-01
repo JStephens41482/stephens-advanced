@@ -1055,7 +1055,7 @@ function setLoad(id,on,orig){
 }
 
 // ═══ ROUTING ENGINE ═══
-// City proximity order from Euless base (lat/lng approximations for DFW)
+// Fallback city coords for when Google Maps API is unavailable
 const CITY_COORDS={
   'euless':{lat:32.837,lng:-97.082},'bedford':{lat:32.844,lng:-97.143},
   'hurst':{lat:32.823,lng:-97.188},'colleyville':{lat:32.900,lng:-97.150},
@@ -1072,110 +1072,191 @@ const CITY_COORDS={
   'weatherford':{lat:32.760,lng:-97.797},'glen rose':{lat:32.233,lng:-97.757},
   'cleburne':{lat:32.350,lng:-97.386},'burleson':{lat:32.542,lng:-97.321}
 }
-const BASE={lat:32.837,lng:-97.082} // Euless
+const BASE={lat:32.837,lng:-97.082}
+const BASE_ADDR='3801 Alder Trail, Euless, TX 76040'
 
 function cityCoords(city){
   if(!city)return BASE
-  const k=city.toLowerCase().trim()
-  return CITY_COORDS[k]||BASE
+  return CITY_COORDS[city.toLowerCase().trim()]||BASE
 }
-
 function distBetween(a,b){
   const R=3959,dLat=(b.lat-a.lat)*Math.PI/180,dLng=(b.lng-a.lng)*Math.PI/180
   const x=Math.sin(dLat/2)**2+Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*Math.sin(dLng/2)**2
   return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x))
 }
+function locAddr(l){return[l.address,l.city,l.state||'TX',l.zip].filter(Boolean).join(', ')}
 
-// travel charge calculation origin (do not expose in UI)
-const TRAVEL_ORIGIN={lat:32.837,lng:-97.082}
-function calcTravelCharge(loc){
-  if(!loc)return{charge:0,desc:''}
-  const dest=cityCoords(loc.city)
-  const straightMi=distBetween(TRAVEL_ORIGIN,dest)
-  const driveMi=Math.round(straightMi*1.25)
-  if(driveMi<=50)return{charge:0,desc:''}
-  const excessMi=driveMi-50
-  const rtMi=excessMi*2
-  const rtHrs=rtMi/55
-  const timeCharge=rtHrs*250
-  const mileageCharge=rtMi*0.67
-  const total=Math.round(timeCharge+mileageCharge)
-  const desc=`Travel — ${excessMi} mi over 50-mile radius, ${rtHrs.toFixed(1)} hrs round trip`
-  return{charge:total,desc}
+// ─── Google Maps API with session cache ───
+async function cachedMapsCall(action,params){
+  const cacheKey='maps_'+JSON.stringify({action,params})
+  try{const c=sessionStorage.getItem(cacheKey);if(c){const{data,ts}=JSON.parse(c);if(Date.now()-ts<15*60*1000)return data}}catch(e){}
+  const res=await fetch('/api/maps',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,params})})
+  const data=await res.json()
+  try{sessionStorage.setItem(cacheKey,JSON.stringify({data,ts:Date.now()}))}catch(e){}
+  return data
 }
 
-function routeJobs(jobs){
-  // nearest-neighbor from base
+// ─── Navigation ───
+function openNav(loc){
+  const addr=locAddr(loc)
+  if(addr.length<5){toast('No address on file',false);return}
+  const encoded=encodeURIComponent(addr)
+  const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent)
+  window.open(isIOS?'https://maps.apple.com/?daddr='+encoded:'https://www.google.com/maps/dir/?api=1&destination='+encoded)
+}
+
+// ─── Fallback routing (Haversine) ───
+function _fallbackRouteJobs(jobs){
   let remaining=[...jobs],route=[],cur=BASE
   while(remaining.length){
     let best=null,bestD=Infinity,bestI=0
-    remaining.forEach((j,i)=>{
-      const c=cityCoords(j.location?.city)
-      const d=distBetween(cur,c)
-      if(d<bestD){bestD=d;best=j;bestI=i}
-    })
-    route.push({job:best,dist:bestD})
+    remaining.forEach((j,i)=>{const c=cityCoords(j.location?.city);const d=distBetween(cur,c);if(d<bestD){bestD=d;best=j;bestI=i}})
+    route.push({job:best,dist:Math.round(bestD),duration:Math.round(bestD*2.2),durationText:Math.round(bestD*2.2)+' min'})
     cur=cityCoords(best.location?.city)
     remaining.splice(bestI,1)
   }
   return route
 }
+function _fallbackTravelCharge(loc){
+  if(!loc)return{charge:0,desc:'',miles:0}
+  const dest=cityCoords(loc.city)
+  const driveMi=Math.round(distBetween(BASE,dest)*1.25)
+  if(driveMi<=50)return{charge:0,desc:'',miles:driveMi}
+  const excessMi=driveMi-50,rtMi=excessMi*2,rtHrs=rtMi/55
+  return{charge:Math.round(rtHrs*250+rtMi*0.67),desc:`Travel — ${excessMi} mi over 50-mi radius, ${rtHrs.toFixed(1)} hrs RT`,miles:driveMi}
+}
 
+// ─── Google Maps routing ───
+async function routeJobs(jobs){
+  const stops=jobs.map(j=>{const l=j.location||{};return{job:j,address:locAddr(l)}}).filter(s=>s.address.length>5)
+  if(!stops.length)return _fallbackRouteJobs(jobs)
+  if(stops.length===1){
+    try{
+      const data=await cachedMapsCall('distance_matrix',{origins:[BASE_ADDR],destinations:[stops[0].address]})
+      const el=data.rows?.[0]?.elements?.[0]
+      if(el?.status==='OK')return[{job:stops[0].job,address:stops[0].address,dist:Math.round(el.distance.value/1609.34),duration:Math.round(el.duration.value/60),durationText:el.duration.text}]
+    }catch(e){}
+    return _fallbackRouteJobs(jobs)
+  }
+  try{
+    const allAddr=stops.map(s=>s.address)
+    const data=await cachedMapsCall('directions',{origin:BASE_ADDR,destination:allAddr[allAddr.length-1],waypoints:allAddr.slice(0,-1)})
+    if(data.status==='OK'&&data.routes?.[0]){
+      const route=data.routes[0],order=route.waypoint_order||[],legs=route.legs||[]
+      const optimized=[]
+      if(order.length){
+        order.forEach((idx,i)=>optimized.push({job:stops[idx].job,address:stops[idx].address,dist:Math.round((legs[i]?.distance?.value||0)/1609.34),duration:Math.round((legs[i]?.duration?.value||0)/60),durationText:legs[i]?.duration?.text||''}))
+        optimized.push({job:stops[stops.length-1].job,address:stops[stops.length-1].address,dist:Math.round((legs[legs.length-1]?.distance?.value||0)/1609.34),duration:Math.round((legs[legs.length-1]?.duration?.value||0)/60),durationText:legs[legs.length-1]?.duration?.text||''})
+      }else{
+        stops.forEach((s,i)=>optimized.push({job:s.job,address:s.address,dist:Math.round((legs[i]?.distance?.value||0)/1609.34),duration:Math.round((legs[i]?.duration?.value||0)/60),durationText:legs[i]?.duration?.text||''}))
+      }
+      return optimized
+    }
+  }catch(e){console.error('Google route error:',e)}
+  return _fallbackRouteJobs(jobs)
+}
+
+async function calcTravelCharge(loc){
+  if(!loc)return{charge:0,desc:'',miles:0}
+  const addr=locAddr(loc)
+  if(addr.length<5)return _fallbackTravelCharge(loc)
+  try{
+    const data=await cachedMapsCall('distance_matrix',{origins:[BASE_ADDR],destinations:[addr]})
+    if(data.status==='OK'&&data.rows?.[0]?.elements?.[0]?.status==='OK'){
+      const el=data.rows[0].elements[0],driveMi=Math.round(el.distance.value/1609.34)
+      if(driveMi<=50)return{charge:0,desc:'',miles:driveMi}
+      const excessMi=driveMi-50,rtMi=excessMi*2,rtHrs=rtMi/55
+      return{charge:Math.round(rtHrs*250+rtMi*0.67),desc:`Travel — ${driveMi} mi drive, ${excessMi} mi over 50-mi radius, ${rtHrs.toFixed(1)} hrs RT`,miles:driveMi,duration:Math.round(el.duration.value/60)}
+    }
+  }catch(e){console.error('Distance calc error:',e)}
+  return _fallbackTravelCharge(loc)
+}
+
+// ─── Geocode + store ───
+async function geocodeLocation(locId,address){
+  if(!address||address.length<5)return
+  try{const data=await cachedMapsCall('geocode',{address});if(data.results?.[0]?.geometry?.location){const{lat,lng}=data.results[0].geometry.location;await SB.from('locations').update({lat,lng}).eq('id',locId)}}catch(e){}
+}
+
+// ─── Address Autocomplete ───
+function initAddressAutocomplete(inputId,onSelect){
+  const input=document.getElementById(inputId);if(!input)return
+  let debounce=null
+  const dropdown=document.createElement('div')
+  dropdown.style.cssText='position:absolute;left:0;right:0;top:100%;background:var(--c1);border:1px solid var(--b1);border-radius:0 0 var(--rs) var(--rs);z-index:999;display:none;max-height:200px;overflow-y:auto'
+  input.parentElement.style.position='relative'
+  input.parentElement.appendChild(dropdown)
+  input.addEventListener('input',()=>{
+    clearTimeout(debounce);const val=input.value.trim()
+    if(val.length<3){dropdown.style.display='none';return}
+    debounce=setTimeout(async()=>{
+      try{
+        const res=await fetch('/api/maps',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'autocomplete',params:{input:val}})})
+        const data=await res.json()
+        if(data.predictions?.length){
+          dropdown.innerHTML=data.predictions.map(p=>`<div style="padding:10px 12px;font-size:13px;color:var(--w);cursor:pointer;border-bottom:1px solid var(--b1)" onmouseover="this.style.background='var(--c2)'" onmouseout="this.style.background=''" data-pid="${p.place_id}" onclick="selectAutocomplete('${inputId}','${p.place_id}')">${p.description}</div>`).join('')
+          dropdown.style.display='block'
+        }else dropdown.style.display='none'
+      }catch(e){dropdown.style.display='none'}
+    },300)
+  })
+  document.addEventListener('click',e=>{if(e.target!==input&&!dropdown.contains(e.target))dropdown.style.display='none'})
+  window._autocompleteCallbacks=window._autocompleteCallbacks||{}
+  window._autocompleteCallbacks[inputId]=onSelect
+}
+
+async function selectAutocomplete(inputId,placeId){
+  try{
+    const res=await fetch('/api/maps',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'place_details',params:{place_id:placeId}})})
+    const data=await res.json()
+    if(data.result){
+      const components=data.result.address_components||[]
+      const get=type=>components.find(c=>c.types.includes(type))
+      const parsed={address:[get('street_number')?.long_name,get('route')?.long_name].filter(Boolean).join(' '),city:get('locality')?.long_name||get('sublocality')?.long_name||'',state:get('administrative_area_level_1')?.short_name||'TX',zip:get('postal_code')?.long_name||'',formatted:data.result.formatted_address||'',lat:data.result.geometry?.location?.lat,lng:data.result.geometry?.location?.lng}
+      const cb=window._autocompleteCallbacks?.[inputId];if(cb)cb(parsed)
+      document.getElementById(inputId).value=parsed.address
+    }
+  }catch(e){console.error('Place details error:',e)}
+  document.querySelectorAll('div[style*="z-index:999"]').forEach(d=>d.style.display='none')
+}
+
+// ─── Nav overlay ───
 function startNav(jobId){
   const j=D.jobs.find(x=>x.id===jobId);if(!j)return
   const l=D.locs.find(x=>x.id===(j.location_id||j.location?.id))||j.location||{}
-  const a=[l.address,l.city].filter(Boolean).join(', ')
-  if(!a){window.open('https://maps.apple.com/');return}
-
-  // estimate ETA from city coords
-  const city=(l.city||'').toLowerCase().trim()
-  const dest=CITY_COORDS[city]
-  let etaMin=20 // default
-  if(dest){
-    const d=Math.sqrt(Math.pow((dest.lat-BASE.lat)*69,2)+Math.pow((dest.lng-BASE.lng)*60,2))
-    etaMin=Math.max(10,Math.round(d*2.2)) // ~2.2 min per mile in DFW
-  }
-  const lo=etaMin,hi=etaMin+5
+  const a=locAddr(l)
+  if(!a||a.length<5){toast('No address on file',false);return}
   const phone=l.contact_phone||''
   const contactName=l.contact_name||'there'
-  const msg=`Hi${contactName!=='there'?' '+contactName.split(' ')[0]:''}, this is Jon from Stephens Advanced. I'm heading to your location now and should arrive in about ${lo}-${hi} minutes.`
-
-  push(`<div class="ov-hdr">
-    <button class="ov-back" onclick="pop()">‹</button>
-    <div class="ov-title">Navigate to ${esc(l.name||'Job')}</div>
-  </div><div class="ov-body">
+  const msg=`Hi${contactName!=='there'?' '+contactName.split(' ')[0]:''}, this is Jon from Stephens Advanced. I'm heading to your location now.`
+  push(`<div class="ov-hdr"><button class="ov-back" onclick="pop()">‹</button><div class="ov-title">Navigate to ${esc(l.name||'Job')}</div></div><div class="ov-body">
     <div style="background:var(--c1);border:1px solid var(--b1);border-radius:var(--r);padding:14px;margin-bottom:16px">
       <div style="font-size:14px;font-weight:700">${esc(l.name||'')}</div>
       <div style="font-size:12px;color:var(--g1);margin-top:4px">${esc(a)}</div>
-      <div style="font-size:13px;font-weight:800;color:var(--info);margin-top:8px">ETA: ~${lo}-${hi} minutes</div>
     </div>
     ${phone?`<div class="fg"><label class="fg-l">Send arrival text to ${esc(phone)}</label>
       <textarea id="nav-msg" style="min-height:80px;font-size:14px">${esc(msg)}</textarea>
-      <button class="btn-p" style="margin-top:8px" id="navSmsBtn" onclick="sendNavSms('${esc(phone)}','${esc(a)}')">📱 Send Text & Navigate</button>
-    </div>`:`<div style="font-size:12px;color:var(--g2);margin-bottom:12px">No phone number on file — can't send text</div>`}
-    <button class="btn-dim" onclick="pop();window.open('https://maps.apple.com/?daddr='+encodeURIComponent('${esc(a)}'))">🗺 Just Navigate — No Text</button>
+      <button class="btn-p" style="margin-top:8px" id="navSmsBtn" onclick="sendNavSms('${esc(phone)}')">📱 Send Text & Navigate</button>
+    </div>`:`<div style="font-size:12px;color:var(--g2);margin-bottom:12px">No phone number on file</div>`}
+    <button class="btn-dim" onclick="pop();openNav(${JSON.stringify({address:l.address,city:l.city,state:l.state,zip:l.zip})})">🗺 Just Navigate — No Text</button>
   </div>`)
 }
 
-async function sendNavSms(phone,addr){
+async function sendNavSms(phone){
   const btn=$('navSmsBtn');if(btn){btn.innerHTML='<span class="spin"></span> Sending...';btn.disabled=true}
   const msg=$('nav-msg')?.value||''
   try{
-    const res=await fetch('/api/send-sms',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({to:phone,body:msg})
-    })
-    const data=await res.json()
-    if(!res.ok)throw new Error(data.error||'SMS failed')
+    await fetch('/api/send-sms',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to:phone,body:msg})})
     toast('Text sent ✓')
-  }catch(e){
-    console.error('sms:',e)
-    toast('Text failed — navigating anyway',false)
-  }
-  pop()
-  window.open('https://maps.apple.com/?daddr='+encodeURIComponent(addr))
+  }catch(e){toast('Text failed — navigating anyway',false)}
+  // get the location from the nav overlay context
+  const navTitle=document.querySelector('.ov-title')?.textContent||''
+  const locName=navTitle.replace('Navigate to ','')
+  const loc=D.locs.find(l=>l.name===locName)||{}
+  pop();openNav(loc)
 }
 
-function openRouteView(){
+async function openRouteView(){
   const t=td()
   const tom=new Date(Date.now()+86400000).toISOString().split('T')[0]
   const dat2=new Date(Date.now()+172800000).toISOString().split('T')[0]
@@ -1185,20 +1266,24 @@ function openRouteView(){
   const d2=D.jobs.filter(j=>j.status==='scheduled'&&j.scheduled_date===dat2)
   const pool=[...ov,...tod,...tmr,...d2]
   if(!pool.length){toast('No jobs in the next 2 days');return}
-  const routed=routeJobs(pool)
-  let totalDist=routed.reduce((s,r)=>s+r.dist,0)
+  const routed=await routeJobs(pool)
+  window._lastRoute=routed
+  const totalDist=routed.reduce((s,r)=>s+r.dist,0)
+  const totalMin=routed.reduce((s,r)=>s+(r.duration||0),0)
+  const hrs=Math.floor(totalMin/60),mins=totalMin%60
+  const timeStr=hrs>0?hrs+'h '+mins+'min':mins+' min'
   let h=`<div class="ov-hdr">
     <button class="ov-back" onclick="pop()">‹</button>
     <div class="ov-title">Route Plan</div>
     <button style="font-size:18px;background:none;border:none;cursor:pointer;padding:4px 8px;min-width:44px;min-height:44px" onclick="pop();openChat();setTimeout(()=>{const i=$('chatInput');if(i){i.value='Adjust my route — any suggestions based on schedule constraints?';sendChat()}},300)">💬</button>
-    <div class="ov-act" style="font-size:11px;color:var(--g1)">${Math.round(totalDist)} mi est.</div>
+    <div class="ov-act" style="font-size:11px;color:var(--g1)">${Math.round(totalDist)} mi · ${timeStr}</div>
   </div><div class="ov-body">
   <div style="background:var(--c2);border:1.5px solid var(--info);border-radius:var(--r);padding:12px 14px;margin-bottom:16px">
     <div style="font-size:10px;font-weight:800;color:var(--info);text-transform:uppercase;letter-spacing:1.2px;margin-bottom:4px">Optimized Route · ${routed.length} stops</div>
-    <div style="font-size:12px;color:var(--g1)">Starting from Euless. Nearest-neighbor routing from overdue + today + next 2 days.</div>
+    <div style="font-size:12px;color:var(--g1)">Starting from Euless. Google Maps optimized routing.</div>
   </div>`
   routed.forEach((r,i)=>{
-    const j=r.job,l=j.location||{},a=[l.address,l.city].filter(Boolean).join(', ')
+    const j=r.job,l=j.location||{},a=locAddr(l)
     const isOv=j.scheduled_date<t
     const dateLabel=j.scheduled_date===t?'Today':j.scheduled_date===tom?'Tomorrow':isOv?`Overdue (${j.scheduled_date})`:j.scheduled_date
     h+=`<div style="background:var(--c1);border:1px solid var(--b1);border-radius:var(--r);padding:14px;margin-bottom:8px;display:flex;gap:12px;align-items:flex-start">
@@ -1209,28 +1294,27 @@ function openRouteView(){
         <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
           <span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:4px;background:${isOv?'var(--bads)':'var(--infos)'};color:${isOv?'var(--bad)':'var(--info)'};cursor:pointer;text-decoration:underline;text-decoration-color:rgba(255,255,255,.2)" onclick="event.stopPropagation();pop();reschedJob('${j.id}')">${dateLabel}${j.scheduled_time?' · '+j.scheduled_time.slice(0,5):''}</span>
           ${(j.scope||[]).map(s=>`<span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:4px;background:var(--c2);color:var(--g1)">${s}</span>`).join('')}
-          <span style="font-size:10px;color:var(--g1)">${i===0?Math.round(r.dist)+' mi from base':Math.round(r.dist)+' mi from prev'}</span>
+          <span style="font-size:10px;color:var(--g1)">${r.dist} mi · ${r.durationText||r.duration+' min'}</span>
         </div>
         <div style="display:flex;gap:6px;margin-top:8px">
-          ${a?`<button class="qa-btn" style="font-size:11px;padding:8px 10px" onclick="window.open('https://maps.apple.com/?daddr='+encodeURIComponent('${esc(a)}'))">🗺 Nav</button>`:''}
+          ${a?`<button class="qa-btn" style="font-size:11px;padding:8px 10px" onclick="openNav(${JSON.stringify({address:l.address,city:l.city,state:l.state,zip:l.zip})})">🗺 Nav</button>`:''}
           <button class="qa-btn pri" style="font-size:11px;padding:8px 10px" onclick="pop();openJob('${j.id}')">Open Job →</button>
           <button class="qa-btn" style="font-size:11px;padding:8px 10px;background:var(--infos);color:var(--info);border-color:var(--info)" onclick="pop();openChat();$('chatInput').value='Remove ${esc(l.name)} from my route and suggest a replacement';$('chatInput').focus()">💬 AI</button>
         </div>
       </div>
     </div>`
   })
-  h+=`<button class="btn-dim" onclick="openFullMap(${JSON.stringify(routed.map(r=>r.job.location?.city||''))})">🗺 Open Full Route in Maps</button>`
+  h+=`<button class="btn-dim" onclick="openFullMap()">🗺 Open Full Route in Google Maps</button>`
   h+=`</div>`
   push(h)
 }
 
-function openFullMap(cities){
-  const valid=cities.filter(Boolean)
-  if(!valid.length)return
-  const base='Euless,TX'
-  const dest=valid[valid.length-1]+',TX'
-  const waypoints=valid.slice(0,-1).map(c=>encodeURIComponent(c+',TX')).join('/')
-  const url=`https://maps.apple.com/?saddr=${encodeURIComponent(base)}&daddr=${encodeURIComponent(dest)}${waypoints?'&dirflg=d':''}`
+function openFullMap(){
+  const routed=window._lastRoute
+  if(!routed?.length)return
+  const stops=routed.map(r=>{const l=r.job?.location||{};return locAddr(l)}).filter(s=>s.length>5)
+  if(!stops.length)return
+  const url='https://www.google.com/maps/dir/'+encodeURIComponent(BASE_ADDR)+'/'+stops.map(s=>encodeURIComponent(s)).join('/')
   window.open(url)
 }
 
@@ -2776,7 +2860,7 @@ async function compJ(id){
   if(!lines.length){toast('Add at least one line item',false);setLoad('compBtn',false,'✓ Complete Job — Generate Invoice');return}
 
   // auto-add travel charge if over 50 miles
-  const travel=calcTravelCharge(l)
+  const travel=await calcTravelCharge(l)
   if(travel.charge>0){
     lines.push({description:travel.desc,quantity:1,unit_price:travel.charge,total:travel.charge})
   }
@@ -2905,7 +2989,7 @@ async function openCust(id){
   if(l.notes)h+=`<div class="ds-row"><div class="ds-lbl">Notes</div><div class="ds-val">${esc(l.notes)}</div></div>`
   h+=`</div>
   <div class="qa">
-    ${a?`<button class="qa-btn" onclick="window.open('https://maps.apple.com/?daddr='+encodeURIComponent('${esc(a)}'))">🗺 Navigate</button>`:''}
+    ${a?`<button class="qa-btn" onclick="openNav(${JSON.stringify({address:l.address,city:l.city,state:l.state,zip:l.zip})})">🗺 Navigate</button>`:''}
     ${l.contact_phone?`<button class="qa-btn" onclick="window.open('tel:${l.contact_phone}')">📞 Call</button>`:''}
     <button class="qa-btn pri" onclick="newJobForLoc('${l.id}')">+ New Job</button>
   </div>`
@@ -8031,7 +8115,7 @@ async function execChatAction(act){
       const date=act.date||td()
       const pool = act.job_ids?.length ? D.jobs.filter(j=>act.job_ids.includes(j.id)) : D.jobs.filter(j=>j.status==='scheduled'&&j.scheduled_date<=date)
       if(!pool.length){_chatMsgs.push({role:'assistant',content:'No jobs available to route.'});return}
-      const routed=routeJobs(pool)
+      const routed=await routeJobs(pool)
       window._activeRoute=routed
       const totalDist=routed.reduce((s,r)=>s+r.dist,0)
       let summary='**Route built: '+routed.length+' stops · ~'+Math.round(totalDist)+' miles**\n'
@@ -8047,7 +8131,7 @@ async function execChatAction(act){
       const newIds=[...current.filter(id=>!removes.includes(id)),...adds]
       const pool=D.jobs.filter(j=>newIds.includes(j.id))
       if(!pool.length){_chatMsgs.push({role:'assistant',content:'No jobs left in route.'});return}
-      const routed=routeJobs(pool)
+      const routed=await routeJobs(pool)
       window._activeRoute=routed
       _chatMsgs.push({role:'assistant',content:'Route updated: '+routed.length+' stops'})
       closeChat();openRouteView()
