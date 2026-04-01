@@ -160,12 +160,12 @@ SCHEDULING:
 - Default durations: 1 kitchen system = 1hr, 2 systems = 1.5hr, 3-4 = 2.5hr, extinguishers 1-10 = 30min, 11-30 = 1hr, 31-100 = 2-3hr, 100+ = full day, paint booth = 1hr, clean agent = 1.5hr
 
 PRICING (only if asked):
-- Extinguisher inspection: $23 each
-- Kitchen suppression: $287.50/system (standard), $517.50 (Captive-Aire TANK), $747.50 (Captive-Aire CORE), add $57.50/additional tank
-- Emergency lighting: $23/fixture
-- Labor: $230/hour
-- Emergency: $575 (business hrs), $862.50 (after hrs), $1,150 (holiday/weekend)
-- 15% discount for payment at time of service or within 72 hours
+- Extinguisher inspection: $22.80 each
+- Kitchen suppression: $285/system (standard), $513 (Captive-Aire TANK), $741 (Captive-Aire CORE), add $57/additional tank
+- Emergency lighting: $22.80/fixture
+- Labor: $228/hour
+- Emergency: $570 (business hrs), $855 (after hrs), $1,140 (holiday/weekend)
+- 10% discount for payment within 24 hours of service
 - For large/unusual jobs, say "let me have Jon put together a quote for you"
 
 BRYCER COMPLIANCE:
