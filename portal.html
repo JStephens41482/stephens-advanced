@@ -645,11 +645,12 @@ async function portalPayNow(invId,invNum,custName,amount,btn){
     if(data.success&&data.paymentLink){
       window.location.href=data.paymentLink
     }else{
-      btn.textContent='Error — call (214) 994-4799';btn.style.background='var(--bad)'
+      console.error('Square error:',data)
+      btn.textContent='Error: '+(data.error||'unknown')+' — call (214) 994-4799';btn.style.background='var(--bad)';btn.style.fontSize='11px'
     }
   }catch(e){
     console.error('pay error:',e)
-    btn.textContent='Error — call (214) 994-4799';btn.style.background='var(--bad)'
+    btn.textContent='Network error — call (214) 994-4799';btn.style.background='var(--bad)'
   }
 }
 
