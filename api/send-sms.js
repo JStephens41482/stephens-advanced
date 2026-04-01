@@ -4,8 +4,11 @@
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end()
 
-  const { to, body } = req.body
+  let { to, body } = req.body
   if (!to || !body) return res.status(400).json({ error: 'Missing to or body' })
+  // normalize US phone to E.164
+  to = to.replace(/[\s\-\(\)\.]/g, '')
+  if (!to.startsWith('+')) to = '+1' + to.replace(/^1/, '')
 
   const sid = process.env.TWILIO_ACCOUNT_SID
   const token = process.env.TWILIO_AUTH_TOKEN
