@@ -272,9 +272,7 @@ select{-webkit-appearance:none;appearance:none}
 .del-eq{padding:6px 10px;border-radius:var(--rs);background:var(--bads);color:var(--bad);font-size:11px;font-weight:800;border:1px solid var(--bad);min-height:36px;display:flex;align-items:center}
 .swipe-wrap{position:relative;overflow:hidden;border-radius:var(--r);margin-bottom:8px}
 .swipe-inner{transition:transform .2s ease;position:relative;z-index:1}
-.swipe-del{position:absolute;right:0;top:0;bottom:0;width:90px;background:var(--bad);display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:800;z-index:0}
-.swipe-resched+.swipe-del{width:45px;font-size:10px}
-.swipe-resched{position:absolute;right:45px;top:0;bottom:0;width:45px;background:var(--info);display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px;font-weight:700;z-index:0}
+.swipe-del{position:absolute;right:0;top:0;bottom:0;width:70px;background:var(--bad);display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:800;z-index:0}
 .chat-fab{position:fixed;bottom:140px;right:16px;width:48px;height:48px;border-radius:50%;background:var(--info);color:#fff;font-size:22px;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 20px rgba(99,102,241,.4);z-index:90;cursor:pointer;border:none;transition:transform .1s}
 .chat-fab:active{transform:scale(.9)}
 .chat-ov{display:none;position:fixed;inset:0;z-index:300;background:var(--bg);flex-direction:column}
@@ -738,22 +736,22 @@ function initSwipe(el,onDelete){
   const inner=el.querySelector('.swipe-inner')
   if(!inner)return
   el.addEventListener('touchstart',e=>{
-    if(e.target.closest('.swipe-del,.swipe-resched'))return
+    if(e.target.closest('.swipe-del'))return
     sx=e.touches[0].clientX;sy=e.touches[0].clientY;swiping=true;moved=false
   },{passive:true})
   el.addEventListener('touchmove',e=>{
     if(!swiping)return
     const dx=e.touches[0].clientX-sx,dy=Math.abs(e.touches[0].clientY-sy)
     if(dy>30){swiping=false;inner.style.transform='';return}
-    if(dx<-10){moved=true;inner.style.transition='none';inner.style.transform=`translateX(${Math.max(dx,-90)}px)`}
+    if(dx<-10){moved=true;inner.style.transition='none';inner.style.transform=`translateX(${Math.max(dx,-70)}px)`}
   },{passive:true})
   el.addEventListener('touchend',e=>{
-    if(e.target.closest('.swipe-del,.swipe-resched'))return
+    if(e.target.closest('.swipe-del'))return
     swiping=false;inner.style.transition='transform .2s ease'
     if(!moved){inner.style.transform='';return}
     const dx=e.changedTouches[0].clientX-sx
-    if(dx<-60){
-      inner.style.transform='translateX(-90px)'
+    if(dx<-45){
+      inner.style.transform='translateX(-70px)'
     }else{inner.style.transform=''}
     moved=false
   },{passive:true})
@@ -763,12 +761,6 @@ function initSwipe(el,onDelete){
     el.style.transition='all .2s';el.style.maxHeight=el.offsetHeight+'px'
     requestAnimationFrame(()=>{el.style.maxHeight='0';el.style.opacity='0';el.style.marginBottom='0';el.style.padding='0'})
     setTimeout(()=>{el.remove();onDelete()},250)
-  })
-  // reschedule button click
-  const reschedBtn=el.querySelector('.swipe-resched')
-  if(reschedBtn)reschedBtn.addEventListener('click',()=>{
-    inner.style.transition='transform .2s ease';inner.style.transform=''
-    const jid=el.dataset.swipeJob;if(jid)reschedJob(jid)
   })
 }
 
@@ -1599,7 +1591,6 @@ function jCard(j,isOv=false){
   const isSvcReq=(j.notes||'').includes('WEB SERVICE REQUEST')
   const cls=isSvcReq?'jrd':isOv?'jrd':j.status==='active'?'jgn':j.status==='completed'?'jgy':'jbl'
   return`<div class="swipe-wrap" data-swipe-job="${j.id}">
-    <div class="swipe-resched" onclick="event.stopPropagation();reschedJob('${j.id}')">📅</div>
     <div class="swipe-del">Delete</div>
     <div class="swipe-inner jc ${cls}" onclick="openJob('${j.id}')" style="margin-bottom:0${isSvcReq?';border-left:4px solid #f59e0b;background:rgba(245,158,11,.06)':''}">
     ${isSvcReq?'<div style="background:#f59e0b;color:#000;font-size:10px;font-weight:900;padding:3px 10px;border-radius:4px;margin-bottom:6px;display:inline-block;letter-spacing:1px">SERVICE REQUEST</div>':''}
