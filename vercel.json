@@ -2,13 +2,11 @@
   "routes": [
     { "src": "/api/(.*)", "dest": "/api/$1" },
     { "src": "/apply", "dest": "/apply.html" },
-    { "src": "/appv2(.*)", "dest": "/appv2.html" },
-    { "src": "/v2(.*)", "dest": "/indexv2.html" },
-    { "src": "/app(.*)", "dest": "/app.html" },
+    { "src": "/app(.*)", "dest": "/appv2.html" },
     { "src": "/portal(.*)", "dest": "/portal.html" },
     { "src": "/w9.pdf", "dest": "/w9.pdf" },
     { "src": "/coi.pdf", "dest": "/coi.pdf" },
-    { "src": "^/$", "dest": "/index.html" },
-    { "src": "/(.*)", "dest": "/index.html" }
+    { "src": "^/$", "dest": "/indexv2.html" },
+    { "src": "/(.*)", "dest": "/indexv2.html" }
   ]
 }
