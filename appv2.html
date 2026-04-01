@@ -2775,7 +2775,11 @@ async function compJ(id){
   }))
   if(!lines.length){toast('Add at least one line item',false);setLoad('compBtn',false,'✓ Complete Job — Generate Invoice');return}
 
-  // travel charge is handled manually via line items — not auto-added
+  // auto-add travel charge if over 50 miles
+  const travel=calcTravelCharge(l)
+  if(travel.charge>0){
+    lines.push({description:travel.desc,quantity:1,unit_price:travel.charge,total:travel.charge})
+  }
 
   // Apply pricing rules
   const subBeforeRules=lines.reduce((s,l2)=>s+l2.total,0)
@@ -2804,7 +2808,7 @@ async function compJ(id){
   if(inv&&lines.length)await SB.from('invoice_lines').insert(lines.map((ln,i2)=>({invoice_id:inv.id,...ln,sort_order:i2})))
 
   // save any custom items for future reuse
-  for(const ln of lines)await saveCustomItem(ln.description,ln.unit_price)
+  for(const ln of lines){if(!(ln.description||'').startsWith('Travel —'))await saveCustomItem(ln.description,ln.unit_price)}
 
   const jobUpd={status:'completed',completed_at:new Date().toISOString(),notes:notes||null}
   if(sig)jobUpd.signature_data=sig // only overwrite if sig exists (suppression report may have already saved owner sig)
