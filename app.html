@@ -6168,8 +6168,7 @@ function buildDryChemReportHtml(jobId,sysId){
     rptRow(rptField('Business Name',l.name||'',2),rptField('Address',a,2),rptField('Date',serviceDate,1))
   )+rptSection('System Information',
     rptRow(rptField('System Type',$('dc-sys-type')?.value||''),rptField('Agent',$('dc-agent')?.value||''))+
-    rptRow(rptField('Cylinders',$('dc-cyls')?.value||''),rptField('Nozzles',$('dc-nozzles')?.value||''))+
-    rptRow(rptField('Protected Area',$('dc-area')?.value||''),rptField('Last Hydro',$('dc-hydro')?.value||''))
+    rptRow(rptField('Cylinders',$('dc-cyls')?.value||''),rptField('Nozzles',$('dc-nozzles')?.value||''),rptField('Protected Area',$('dc-area')?.value||''),rptField('Last Hydro',$('dc-hydro')?.value||''))
   )+`<table style="width:100%;border-collapse:collapse;margin-bottom:10px;background:#fff"><tr><th style="background:#f05a28;color:#fff;padding:4px 6px;font-size:6.5pt;text-align:left;font-weight:700">Inspection Item</th><th style="background:#f05a28;color:#fff;padding:4px;font-size:6.5pt;width:30px;text-align:center">Yes</th><th style="background:#f05a28;color:#fff;padding:4px;font-size:6.5pt;width:30px;text-align:center">No</th></tr>${dcCheckTable}</table>`
   +rptSection('Deficiencies / Comments',`<div style="border:1px solid #ddd;border-radius:4px;min-height:30px;padding:5px 8px;font-size:8pt;color:#333;background:#fafafa">${($('dc-deficiencies')?.value||'None noted').replace(/\n/g,'<br>')}</div>`)
   +`<div style="display:flex;gap:20px;margin-top:12px;padding-top:10px;border-top:2px solid #1a1a2e">
@@ -6721,13 +6720,11 @@ async function generateSuppReport(jobId,sysId,returnHtml=false){
   const content=rptSection('Customer Information',
     rptRow(rptField('Business Name',l.name||'',2),rptField('Phone',l.contact_phone||''))+
     rptRow(rptField('Address',a,2),rptField('Email',l.contact_email||''))+
-    rptRow(rptField('Owner/Manager',l.contact_name||''),rptField('Date',serviceDate))+
-    rptRow(rptField('Time In',timeIn),rptField('Time Out',timeOut))+
+    rptRow(rptField('Owner/Manager',l.contact_name||''),rptField('Date',serviceDate),rptField('Time In',timeIn),rptField('Time Out',timeOut))+
     `<div style="margin-top:4px">${svcChk('Annual')}${svcChk('Semi-Annual')}${svcChk('Installation')}</div>`
   )+rptSection('System Information',
     rptRow(rptField('Manufacturer',$('rpt-mfg')?.value||''),rptField('Model',$('rpt-model')?.value||''),rptField('Serial #',$('rpt-serial')?.value||''))+
-    rptRow(rptField('Cylinder',$('rpt-cyl')?.value||''),rptField('Last Hydro',$('rpt-hydro')?.value||''))+
-    rptRow(rptField('Last Recharge',$('rpt-recharge')?.value||''),rptField('Fusible Links',$('rpt-links')?.value||''))+
+    rptRow(rptField('Cylinder Size(s)',$('rpt-cyl')?.value||''),rptField('Last Hydro',$('rpt-hydro')?.value||''),rptField('Last Recharge',$('rpt-recharge')?.value||''),rptField('Fusible Links',$('rpt-links')?.value||''))+
     `<div style="margin-top:4px"><span style="font-size:7pt;color:#666;margin-right:4px">Fuel Shut-Off:</span>${fuelChk('Electric')}${fuelChk('Mechanical')}</div>`
   )+`<div style="display:flex;gap:8px;margin-bottom:10px">
   <div style="flex:1">
