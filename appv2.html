@@ -2267,8 +2267,9 @@ function schedFromCal(date,time){
 function rJobsList(q){
   const t=td(),now=new Date(),curMonth=now.getFullYear()+'-'+(now.getMonth()+1).toString().padStart(2,'0')
   const all=D.jobs.filter(j=>j.status!=='cancelled')
-  // only show jobs scheduled for current month or earlier (not future months)
-  const visible=all.filter(j=>j.status!=='completed'&&(!j.scheduled_date||j.scheduled_date.slice(0,7)<=curMonth))
+  // hide completed jobs AND jobs that already have an invoice (they're done)
+  const invoicedJobIds=new Set(D.invs.filter(i=>i.job_id).map(i=>i.job_id))
+  const visible=all.filter(j=>j.status!=='completed'&&!invoicedJobIds.has(j.id)&&(!j.scheduled_date||j.scheduled_date.slice(0,7)<=curMonth))
   let filtered=visible
   if(q){
     const ql=q.toLowerCase()
