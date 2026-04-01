@@ -180,9 +180,9 @@ function renderPortal(){
   </div>
 
   <div class="stat-row">
-    <div class="stat"><div class="stat-n">${locs.length}</div><div class="stat-l">Location${locs.length!==1?'s':''}</div></div>
-    <div class="stat"><div class="stat-n">${completed.length}</div><div class="stat-l">Services</div></div>
-    <div class="stat"><div class="stat-n">${upcoming.length}</div><div class="stat-l">Upcoming</div></div>
+    <div class="stat" style="cursor:pointer" onclick="switchTab('equipment')"><div class="stat-n">${locs.length}</div><div class="stat-l">Location${locs.length!==1?'s':''}</div></div>
+    <div class="stat" style="cursor:pointer" onclick="switchTab('history')"><div class="stat-n">${completed.length}</div><div class="stat-l">Services</div></div>
+    <div class="stat" style="cursor:pointer" onclick="switchTab('invoices')"><div class="stat-n" style="color:${upcoming.length?'var(--ok)':'var(--fire)'}">${upcoming.length}</div><div class="stat-l">Upcoming</div></div>
   </div>
 
   <div class="tab-bar">
@@ -241,7 +241,8 @@ function renderTab(){
       h+=`<div class="card" style="border-color:${overdueEquip.some(e=>e.urgent)?'var(--bad)':'var(--warn)'};border-width:2px">
         <div class="card-t" style="color:${overdueEquip.some(e=>e.urgent)?'var(--bad)':'var(--warn)'}">⚠️ Service Due</div>`
       overdueEquip.forEach(e=>{
-        h+=`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f5f5f5">
+        const eLocId=locs.find(l=>l.name===e.loc)?.id||''
+        h+=`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f5f5f5;cursor:pointer" onclick="openLocation('${eLocId}')">
           <div><div style="font-size:13px;font-weight:700">${esc(e.item)}</div><div style="font-size:11px;color:#888">${esc(e.loc)}</div></div>
           <span style="font-size:11px;font-weight:800;padding:4px 10px;border-radius:12px;background:${e.urgent?'#fee2e2':'#fef3c7'};color:${e.urgent?'#dc2626':'#92400e'}">${e.urgent?'Overdue':'Due '+e.due}</span>
         </div>`
@@ -249,12 +250,21 @@ function renderTab(){
       h+=`<button onclick="switchTab('request')" style="width:100%;padding:10px;border-radius:var(--rs);background:var(--fire);color:#fff;font-size:13px;font-weight:700;border:none;cursor:pointer;margin-top:12px">Request Service Now</button></div>`
     }
 
-    // outstanding balance
+    // outstanding balance with Pay Now
     if(totalOwed>0){
+      const unpaidInvs=invs.filter(i=>!['paid','void','record'].includes(i.status))
       h+=`<div class="card" style="border-color:#fed7aa;border-width:2px">
         <div class="card-t" style="color:var(--warn)">Outstanding Balance</div>
         <div style="font-size:28px;font-weight:900;color:var(--fire)">${fmt(totalOwed)}</div>
-        <div style="font-size:12px;color:#888;margin-top:4px">Click an invoice below to pay online</div>
+        <div style="margin-top:12px">`
+      if(unpaidInvs.length===1){
+        const ui=unpaidInvs[0],loc=locs.find(l=>l.id===ui.location_id)||{}
+        h+=`<button onclick="portalPayNow('${ui.id}','${esc(ui.invoice_number||'')}','${esc(loc.name||'')}',${+ui.total||0},this)" style="width:100%;padding:14px;border-radius:var(--r);background:var(--fire);color:#fff;font-size:15px;font-weight:800;border:none;cursor:pointer;min-height:50px">💳 Pay Now — ${fmt(+ui.total)}</button>`
+      }else{
+        h+=`<button onclick="switchTab('invoices')" style="width:100%;padding:14px;border-radius:var(--r);background:var(--fire);color:#fff;font-size:15px;font-weight:800;border:none;cursor:pointer;min-height:50px">💳 Pay Now — ${unpaidInvs.length} invoices</button>`
+      }
+      h+=`<div style="font-size:11px;color:#999;margin-top:6px;text-align:center">Secure payment via Square · Card, Apple Pay, or Google Pay</div>
+        </div>
       </div>`
     }
 
@@ -264,9 +274,14 @@ function renderTab(){
       upcoming.forEach(j=>{
         const loc=locs.find(l=>l.id===j.location_id)
         const dt=fmtDate(j.scheduled_date,{weekday:'long',month:'long',day:'numeric',year:'numeric'})
-        h+=`<div class="job-row">
-          <div class="job-date">${dt}</div>
-          <div class="job-scope">${esc(loc?.name||'')} · ${(j.scope||[]).join(', ')}${j.scheduled_time?' · '+j.scheduled_time.slice(0,5):''}</div>
+        h+=`<div class="job-row" style="cursor:pointer" onclick="openLocation('${j.location_id}')">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <div class="job-date">${dt}</div>
+              <div class="job-scope">${esc(loc?.name||'')} · ${(j.scope||[]).join(', ')}${j.scheduled_time?' · '+j.scheduled_time.slice(0,5):''}</div>
+            </div>
+            <span style="color:#ccc;font-size:16px">›</span>
+          </div>
         </div>`
       })
       h+=`</div>`
@@ -339,7 +354,7 @@ function renderTab(){
       totalExt+=extCount
       totalLights+=lightCount
 
-      h+=`<div class="card"><div class="card-t">${esc(l.name)}</div>
+      h+=`<div class="card" style="cursor:pointer" onclick="openLocation('${l.id}')"><div class="card-t" style="display:flex;justify-content:space-between;align-items:center">${esc(l.name)}<span style="color:#ccc;font-size:14px">›</span></div>
         <div class="loc-addr" style="margin-bottom:12px">${esc([l.address,l.city].filter(Boolean).join(', '))}</div>`
       if(l.suppression_systems?.length){
         h+=`<div style="font-size:10px;font-weight:800;color:#999;text-transform:uppercase;letter-spacing:1px;margin:4px 0 6px">Suppression Systems · ${l.suppression_systems.length}</div>`
@@ -419,7 +434,7 @@ function renderTab(){
       locs.forEach(l=>{
         const li=invs.filter(i=>i.location_id===l.id)
         if(!li.length)return
-        h+=`<div class="card"><div class="card-t">${esc(l.name)}</div>`
+        h+=`<div class="card"><div class="card-t" style="display:flex;justify-content:space-between;align-items:center">${esc(l.name)}<span style="cursor:pointer;font-size:11px;color:var(--fire);font-weight:700;text-transform:none;letter-spacing:0" onclick="openLocation('${l.id}')">View Location ›</span></div>`
         li.forEach(i=>{
           const dt=fmtDate(i.date)
           const bc=i.status==='paid'?'b-paid':i.status==='sent'?'b-sent':'b-draft'
