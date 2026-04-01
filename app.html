@@ -2365,11 +2365,7 @@ async function compJ(id){
   }))
   if(!lines.length){toast('Add at least one line item',false);setLoad('compBtn',false,'✓ Complete Job — Generate Invoice');return}
 
-  // auto-add travel charge if over 50 miles
-  const travel=calcTravelCharge(l)
-  if(travel.charge>0){
-    lines.push({description:travel.desc,quantity:1,unit_price:travel.charge,total:travel.charge})
-  }
+  // travel charge is handled manually via line items — not auto-added
 
   const sub=lines.reduce((s,l2)=>s+l2.total,0)
   const notes=($('job-notes')?.value||jobNotes||'').trim()
