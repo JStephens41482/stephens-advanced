@@ -2276,25 +2276,23 @@ function rJobsList(q){
   }
   const ov=filtered.filter(j=>j.status==='scheduled'&&j.scheduled_date<t)
   const up=filtered.filter(j=>j.status==='scheduled'&&j.scheduled_date>=t)
-  const done=filtered.filter(j=>j.status==='completed').slice(0,20)
+  const active=filtered.filter(j=>j.status!=='completed'&&j.status!=='cancelled')
   if($('jobs-list')){
     let h2=''
     if(ov.length){h2+=`<div class="sec"><div class="sec-t" style="color:var(--bad)">Overdue · ${ov.length}</div></div>`;ov.forEach(j=>h2+=jCard(j,true))}
     if(up.length){h2+=`<div class="sec"><div class="sec-t">Scheduled · ${up.length}</div></div>`;up.forEach(j=>h2+=jCard(j))}
-    if(done.length){h2+=`<div class="sec"><div class="sec-t">Completed</div></div>`;done.forEach(j=>h2+=jCard(j))}
-    if(!filtered.length&&q)h2+=`<div class="ey"><div class="ey-t">No jobs matching "${esc(q)}"</div></div>`
+    if(!active.length&&q)h2+=`<div class="ey"><div class="ey-t">No jobs matching "${esc(q)}"</div></div>`
     $('jobs-list').innerHTML=h2
     return
   }
   let h=`<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 12px">
-    <div class="sec-t">Jobs · ${all.length}</div>
+    <div class="sec-t">Jobs · ${active.length}</div>
   </div>
   <input class="srch" placeholder="Search by customer, city, or date..." oninput="rJobsList(this.value)">`
   h+=`<div id="jobs-list">`
   if(ov.length){h+=`<div class="sec"><div class="sec-t" style="color:var(--bad)">Overdue · ${ov.length}</div></div>`;ov.forEach(j=>h+=jCard(j,true))}
   if(up.length){h+=`<div class="sec"><div class="sec-t">Scheduled · ${up.length}</div></div>`;up.forEach(j=>h+=jCard(j))}
-  if(done.length){h+=`<div class="sec"><div class="sec-t">Completed</div></div>`;done.forEach(j=>h+=jCard(j))}
-  if(!all.length)h+=`<div class="ey"><div class="ey-i">📋</div><div class="ey-t">No jobs yet. Tap + to create one.</div></div>`
+  if(!active.length)h+=`<div class="ey"><div class="ey-i">📋</div><div class="ey-t">No jobs yet. Tap + to create one.</div></div>`
   h+=`</div>`
   const jc=$('jobsContent')||$('jobsC');jc.innerHTML=h;setTimeout(initSwipes,50)
 }
