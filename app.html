@@ -2244,7 +2244,7 @@ async function updateJobChecklist(){
   // scan line items AND location equipment to determine required reports
   const descs=jobLines.map(l2=>(l2.desc||'').toLowerCase()).join(' ')
   const hasExtLines=descs.match(/extinguisher/)
-  const hasSuppLines=descs.match(/semi.?annual|suppression|kitchen|ansul|pyro.?chem|buckeye|kidde|clean.?agent|fm.?200|novec|dry.?chem|paint|booth/)
+  const hasSuppLines=descs.match(/semi.?annual|suppression|kitchen|ansul|pyro.?chem|buckeye|kidde|clean.?agent|clean agent|fm.?200|novec|dry.?chem|dry chemical|paint|booth/)
   const hasAnyLines=jobLines.some(l2=>(l2.desc||'').trim())
 
   // fetch saved reports
@@ -2280,8 +2280,8 @@ async function updateJobChecklist(){
     })
     // if suppression line exists but no systems on file — infer from line item descriptions
     if(!allSyss.length){
-      const hasDCLine=descs.match(/dry.?chem|paint|booth/)
-      const hasCALine=descs.match(/clean.?agent|fm.?200|novec/)
+      const hasDCLine=descs.match(/dry.?chem|dry chemical|paint|booth/)
+      const hasCALine=descs.match(/clean.?agent|clean agent|fm.?200|novec/)
       if(hasDCLine){
         const done=rpts.some(r=>r.report_type==='dry_chemical')
         flags.push({label:'Dry Chem / Paint Booth Report',done,action:`openDryChemReport('${jid}','')`})
