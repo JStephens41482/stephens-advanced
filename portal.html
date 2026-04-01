@@ -65,7 +65,18 @@ body{font-family:'Inter',system-ui,sans-serif;background:#f8f9fb;color:#1a1a2e;f
 .tab.on{background:var(--fire);color:#fff}
 .note{background:#fffbf5;border:1px solid #fed7aa;border-radius:var(--rs);padding:14px;margin-bottom:16px;font-size:12px;color:#92400e;line-height:1.6}
 .loading{text-align:center;padding:80px;color:#999;font-size:14px}
-@media(max-width:480px){.stat-row{grid-template-columns:1fr 1fr 1fr}.stat-n{font-size:20px}}
+@media(max-width:480px){
+  .stat-row{grid-template-columns:1fr 1fr 1fr}.stat-n{font-size:20px}
+  .wrap{padding:0 10px 80px}
+  .card{padding:14px}
+  .welcome{padding:18px}
+  .welcome h1{font-size:18px}
+  .tab{font-size:10px;padding:8px 4px;letter-spacing:0}
+  .inv-row{flex-wrap:wrap;gap:4px}
+  .inv-amt{font-size:14px}
+  .eq-item{flex-direction:column;align-items:flex-start;gap:2px}
+  .info{flex-direction:column;gap:8px}
+}
 </style>
 </head>
 <body>
@@ -201,6 +212,43 @@ function renderTab(){
   let h=''
 
   if(_activeTab==='overview'){
+    // service due alerts
+    const now=new Date(),today=now.toISOString().split('T')[0]
+    const overdueEquip=[]
+    locs.forEach(l=>{
+      // check suppression systems — semi-annual (6 months)
+      if(l.suppression_systems?.length){
+        const lastSuppJob=jobs.filter(j=>j.location_id===l.id&&j.status==='completed'&&j.scope?.includes('suppression')).sort((a,b)=>(b.completed_at||'').localeCompare(a.completed_at||''))[0]
+        if(lastSuppJob?.completed_at){
+          const lastDt=new Date(lastSuppJob.completed_at)
+          const dueDate=new Date(lastDt);dueDate.setMonth(dueDate.getMonth()+6)
+          if(dueDate<=now)overdueEquip.push({loc:l.name,item:'Kitchen Hood / Suppression',due:dueDate.toLocaleDateString('en-US',{month:'short',year:'numeric'}),urgent:true})
+          else{const daysTil=Math.round((dueDate-now)/(1000*60*60*24));if(daysTil<=30)overdueEquip.push({loc:l.name,item:'Kitchen Hood / Suppression',due:dueDate.toLocaleDateString('en-US',{month:'short',year:'numeric'}),urgent:false})}
+        }
+      }
+      // check extinguishers — annual
+      if(l.extinguishers?.length){
+        const lastExtJob=jobs.filter(j=>j.location_id===l.id&&j.status==='completed'&&j.scope?.includes('extinguishers')).sort((a,b)=>(b.completed_at||'').localeCompare(a.completed_at||''))[0]
+        if(lastExtJob?.completed_at){
+          const lastDt=new Date(lastExtJob.completed_at)
+          const dueDate=new Date(lastDt);dueDate.setFullYear(dueDate.getFullYear()+1)
+          if(dueDate<=now)overdueEquip.push({loc:l.name,item:'Fire Extinguishers (Annual)',due:dueDate.toLocaleDateString('en-US',{month:'short',year:'numeric'}),urgent:true})
+          else{const daysTil=Math.round((dueDate-now)/(1000*60*60*24));if(daysTil<=30)overdueEquip.push({loc:l.name,item:'Fire Extinguishers (Annual)',due:dueDate.toLocaleDateString('en-US',{month:'short',year:'numeric'}),urgent:false})}
+        }
+      }
+    })
+    if(overdueEquip.length){
+      h+=`<div class="card" style="border-color:${overdueEquip.some(e=>e.urgent)?'var(--bad)':'var(--warn)'};border-width:2px">
+        <div class="card-t" style="color:${overdueEquip.some(e=>e.urgent)?'var(--bad)':'var(--warn)'}">⚠️ Service Due</div>`
+      overdueEquip.forEach(e=>{
+        h+=`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f5f5f5">
+          <div><div style="font-size:13px;font-weight:700">${esc(e.item)}</div><div style="font-size:11px;color:#888">${esc(e.loc)}</div></div>
+          <span style="font-size:11px;font-weight:800;padding:4px 10px;border-radius:12px;background:${e.urgent?'#fee2e2':'#fef3c7'};color:${e.urgent?'#dc2626':'#92400e'}">${e.urgent?'Overdue':'Due '+e.due}</span>
+        </div>`
+      })
+      h+=`<button onclick="switchTab('request')" style="width:100%;padding:10px;border-radius:var(--rs);background:var(--fire);color:#fff;font-size:13px;font-weight:700;border:none;cursor:pointer;margin-top:12px">Request Service Now</button></div>`
+    }
+
     // outstanding balance
     if(totalOwed>0){
       h+=`<div class="card" style="border-color:#fed7aa;border-width:2px">
@@ -293,13 +341,23 @@ function renderTab(){
 
       h+=`<div class="card"><div class="card-t">${esc(l.name)}</div>
         <div class="loc-addr" style="margin-bottom:12px">${esc([l.address,l.city].filter(Boolean).join(', '))}</div>`
-      if(uniqueSys.length){
+      if(l.suppression_systems?.length){
+        h+=`<div style="font-size:10px;font-weight:800;color:#999;text-transform:uppercase;letter-spacing:1px;margin:4px 0 6px">Suppression Systems · ${l.suppression_systems.length}</div>`
+        l.suppression_systems.forEach(s=>{
+          h+=`<div class="eq-item"><div><div class="eq-name">🔥 ${esc(s.system_type)}</div><div class="eq-detail">${s.tank_count} tank${s.tank_count!==1?'s':''} · ${s.nozzle_count} nozzle${s.nozzle_count!==1?'s':''} · ${s.fusible_link_count} link${s.fusible_link_count!==1?'s':''}</div></div></div>`
+        })
+      }else if(uniqueSys.length){
         h+=`<div style="font-size:10px;font-weight:800;color:#999;text-transform:uppercase;letter-spacing:1px;margin:4px 0 6px">Suppression Systems · ${uniqueSys.length}</div>`
         uniqueSys.forEach(s=>{
           h+=`<div class="eq-item"><div class="eq-name">🔥 ${esc(s)}</div></div>`
         })
       }
-      if(extCount){
+      if(l.extinguishers?.length){
+        h+=`<div style="font-size:10px;font-weight:800;color:#999;text-transform:uppercase;letter-spacing:1px;margin:12px 0 6px">Fire Extinguishers · ${l.extinguishers.length}</div>`
+        l.extinguishers.forEach(e=>{
+          h+=`<div class="eq-item"><div><div class="eq-name">🧯 ${esc(e.type||'Extinguisher')} ${esc(e.size||'')}</div><div class="eq-detail">${esc(e.location_in_building||'Location not specified')}</div></div></div>`
+        })
+      }else if(extCount){
         h+=`<div style="font-size:10px;font-weight:800;color:#999;text-transform:uppercase;letter-spacing:1px;margin:12px 0 6px">Fire Extinguishers</div>
           <div class="eq-item"><div class="eq-name">🧯 ${extCount} unit${extCount!==1?'s':''} on file</div></div>`
       }
@@ -492,6 +550,16 @@ function openLocation(locId){
     h+=`<div class="card"><div class="empty">No invoices yet</div></div>`
   }
 
+  // Last service summary
+  const lastCompleted=locJobs.filter(j=>j.status==='completed').sort((a,b)=>(b.completed_at||'').localeCompare(a.completed_at||''))[0]
+  if(lastCompleted){
+    const dt=fmtDate(lastCompleted.completed_at||lastCompleted.scheduled_date)
+    h+=`<div class="card"><div class="card-t">Last Service</div>
+      <div style="font-size:14px;font-weight:700">${dt}</div>
+      <div style="font-size:12px;color:#888;margin-top:2px">${(lastCompleted.scope||[]).join(', ')}</div>
+    </div>`
+  }
+
   // Upcoming services at this location
   const upcomingHere=locJobs.filter(j=>j.status==='scheduled'&&j.scheduled_date>=new Date().toISOString().split('T')[0])
   if(upcomingHere.length){
@@ -533,23 +601,28 @@ async function toggleInvDetail(elId){
     ih+=`<tr><td colspan="3" style="padding:8px 0;font-weight:800;color:#1a1a2e">Total</td><td style="text-align:right;padding:8px 0;font-weight:900;font-size:16px;color:var(--fire)">$${total.toFixed(2)}</td></tr></table>`
   }
 
+  // Print Invoice PDF button
+  if(lines?.length){
+    const loc=_portalData.locs.find(l=>l.id===inv.location_id)||{}
+    ih+=`<button onclick="printInvoice('${invId}')" style="width:100%;padding:10px;border-radius:var(--rs);background:#f3f4f6;color:#555;font-size:13px;font-weight:700;border:none;cursor:pointer;margin-bottom:12px">🖨 Print Invoice PDF</button>`
+  }
+
   // fetch reports for this invoice's job
   if(inv.job_id){
     const{data:rpts}=await SB.from('reports').select('id,report_type,report_data,created_at').eq('job_id',inv.job_id).order('created_at')
-    // deduplicate
-    const seen=new Set()
-    const unique=(rpts||[]).filter(r=>{const k=r.report_type;if(seen.has(k))return false;seen.add(k);return true})
+    // show ALL reports (no deduplication)
+    const unique=rpts||[]
     if(unique.length){
       ih+=`<div style="font-size:10px;font-weight:800;color:#999;text-transform:uppercase;letter-spacing:1px;margin:8px 0">Reports</div>`
       unique.forEach(r=>{
         const icon=r.report_type==='extinguisher'?'🧯':r.report_type==='dry_chemical'?'🏭':r.report_type==='clean_agent'?'💨':'🔥'
         const name=r.report_type==='extinguisher'?'Extinguisher Report':r.report_type==='dry_chemical'?'Dry Chemical Report':r.report_type==='clean_agent'?'Clean Agent Report':'Kitchen Hood Report'
         const dt=r.created_at?new Date(r.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric'}):''
-        ih+=`<div style="display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid #f5f5f5;cursor:pointer" onclick="viewReport('${r.id}')">
+        ih+=`<div style="display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid #f5f5f5">
           <span>${icon}</span>
-          <span style="font-size:13px;font-weight:600;color:var(--fire);flex:1;text-decoration:underline">${name}</span>
+          <span style="font-size:13px;font-weight:600;color:#333;flex:1">${name}</span>
           <span style="font-size:11px;color:#999">${dt}</span>
-          <span style="font-size:12px;color:#ccc">View ›</span>
+          <button onclick="viewReport('${r.id}')" style="font-size:11px;font-weight:700;color:var(--fire);background:none;border:1px solid var(--fire);border-radius:6px;padding:5px 10px;cursor:pointer">View / Print</button>
         </div>`
       })
     }
@@ -587,8 +660,12 @@ async function viewReport(rptId){
     .sig-row{display:flex;gap:20px;margin-top:16px;padding-top:12px;border-top:2px solid #222}
     .sig{flex:1}.sig-line{border-bottom:1px solid #333;height:30px;margin-bottom:2px}
     .sig-label{font-size:8px;color:#888;text-transform:uppercase}
-    @media print{body{padding:0}}
-  </style></head><body>`
+    .print-bar{display:flex;gap:8px;margin-bottom:16px;justify-content:flex-end}
+    .print-btn{padding:10px 20px;border-radius:8px;background:#f05a28;color:#fff;font-size:13px;font-weight:700;border:none;cursor:pointer}
+    .print-btn:hover{opacity:.9}
+    @media print{.print-bar{display:none!important}body{padding:0}}
+  </style></head><body>
+  <div class="print-bar"><button class="print-btn" onclick="window.print()">🖨 Print / Save PDF</button></div>`
 
   html+=`<h1>Stephens Advanced LLC</h1><h2>${rpt.report_type==='extinguisher'?'Extinguisher Inspection Report':rpt.report_type==='dry_chemical'?'Dry Chemical Report':rpt.report_type==='clean_agent'?'Clean Agent Report':'Kitchen Hood Suppression Report'}</h2>`
 
@@ -635,6 +712,49 @@ async function viewReport(rptId){
   if(w){w.document.write(html);w.document.close()}
 }
 
+async function printInvoice(invId){
+  const inv=_portalData.invs.find(i=>i.id===invId)||{}
+  const loc=_portalData.locs.find(l=>l.id===inv.location_id)||{}
+  const{data:lines}=await SB.from('invoice_lines').select('*').eq('invoice_id',invId).order('sort_order')
+  const ls=lines||[]
+  const total=ls.reduce((s,l)=>s+(+l.total||0),0)||+inv.total||0
+  const a=[loc.address,loc.city,loc.state,loc.zip].filter(Boolean).join(', ')
+  const dt=inv.date?new Date(inv.date+'T12:00:00').toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):''
+
+  let html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+    body{font-family:Arial,sans-serif;max-width:700px;margin:20px auto;padding:20px;color:#222;background:#fff}
+    h1{font-size:20px;color:#f05a28;margin-bottom:2px}h2{font-size:13px;color:#888;margin-bottom:20px}
+    .info{display:flex;justify-content:space-between;margin-bottom:20px}
+    .info div{font-size:12px;line-height:1.8}
+    table{width:100%;border-collapse:collapse;margin-bottom:16px}
+    th{background:#f05a28;color:#fff;padding:8px;text-align:left;font-size:11px;font-weight:700}
+    td{padding:8px;border-bottom:1px solid #eee;font-size:13px}
+    .total-row td{border-top:2px solid #222;font-weight:900;font-size:16px;padding-top:12px}
+    .badge{display:inline-block;font-size:10px;font-weight:800;padding:3px 10px;border-radius:12px;text-transform:uppercase}
+    .b-paid{background:#d1fae5;color:#059669}.b-sent{background:#e0e7ff;color:#4f46e5}.b-draft{background:#f3f4f6;color:#6b7280}
+    .print-bar{text-align:right;margin-bottom:12px}
+    .print-btn{padding:10px 20px;border-radius:8px;background:#f05a28;color:#fff;font-size:13px;font-weight:700;border:none;cursor:pointer}
+    @media print{.print-bar{display:none!important}}
+  </style></head><body>
+  <div class="print-bar"><button class="print-btn" onclick="window.print()">🖨 Print / Save PDF</button></div>
+  <h1>Stephens Advanced LLC</h1>
+  <h2>Invoice ${esc(inv.invoice_number||'')}</h2>
+  <div class="info">
+    <div><strong>${esc(loc.name||'')}</strong><br>${esc(a)}<br>${loc.contact_name?esc(loc.contact_name)+'<br>':''}${loc.contact_phone||''}</div>
+    <div style="text-align:right"><strong>Date:</strong> ${dt}<br><strong>Status:</strong> <span class="badge ${inv.status==='paid'?'b-paid':inv.status==='sent'?'b-sent':'b-draft'}">${inv.status}</span>${inv.payment_method?'<br><strong>Paid by:</strong> '+inv.payment_method:''}</div>
+  </div>
+  <table><tr><th>Description</th><th style="text-align:center;width:50px">Qty</th><th style="text-align:right;width:80px">Price</th><th style="text-align:right;width:80px">Total</th></tr>`
+  ls.forEach(l=>{
+    html+=`<tr><td>${esc(l.description)}</td><td style="text-align:center">${l.quantity}</td><td style="text-align:right">$${(+l.unit_price).toFixed(2)}</td><td style="text-align:right">$${(+l.total).toFixed(2)}</td></tr>`
+  })
+  html+=`<tr class="total-row"><td colspan="3">Total</td><td style="text-align:right;color:#f05a28">$${total.toFixed(2)}</td></tr></table>
+  <div style="text-align:center;margin-top:24px;font-size:10px;color:#bbb">Stephens Advanced LLC · Fire Suppression & Safety · (214) 994-4799</div>
+  </body></html>`
+
+  const w=window.open('','_blank')
+  if(w){w.document.write(html);w.document.close()}
+}
+
 async function portalPayNow(invId,invNum,custName,amount,btn){
   btn.textContent='Creating payment link...';btn.disabled=true
   try{
@@ -645,11 +765,12 @@ async function portalPayNow(invId,invNum,custName,amount,btn){
     if(data.success&&data.paymentLink){
       window.location.href=data.paymentLink
     }else{
-      btn.textContent='Error — call (214) 994-4799';btn.style.background='var(--bad)'
+      console.error('Square error:',data)
+      btn.textContent='Error: '+(data.error||'unknown')+' — call (214) 994-4799';btn.style.background='var(--bad)';btn.style.fontSize='11px'
     }
   }catch(e){
     console.error('pay error:',e)
-    btn.textContent='Error — call (214) 994-4799';btn.style.background='var(--bad)'
+    btn.textContent='Network error — call (214) 994-4799';btn.style.background='var(--bad)'
   }
 }
 
