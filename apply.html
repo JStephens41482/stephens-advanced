@@ -399,28 +399,11 @@ async function submitApp(e) {
   const systems = Array.from(document.querySelectorAll('#appForm input[type=checkbox]:checked')).map(c => c.value);
   
   try {
-    await fetch('/api/send-email', {
+    const smsBody = `TECH APPLICATION\n${name}\n${phone}\n${city}\n${license} ${licnum}\n${years?years+'yr exp ':'' }${vehicle||''}\nSystems: ${systems.join(', ')||'none listed'}\n${notes?'Notes: '+notes.slice(0,100):''}`
+    await fetch('/api/send-sms', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        to: 'jonathan@stephensadvanced.com',
-        subject: 'TECH APPLICATION — ' + name + ' — ' + license + ' — ' + city,
-        html: `<div style="font-family:Arial;font-size:14px;color:#333;max-width:560px">
-          <div style="background:#f05a28;color:#fff;padding:16px 20px;border-radius:8px 8px 0 0;font-size:18px;font-weight:900">New Technician Application</div>
-          <div style="padding:20px;border:1px solid #eee;border-top:none;border-radius:0 0 8px 8px">
-            <p style="margin:8px 0"><b>Name:</b> ${name}</p>
-            <p style="margin:8px 0"><b>Phone:</b> <a href="tel:${phone}">${phone}</a></p>
-            <p style="margin:8px 0"><b>Email:</b> ${email || 'Not provided'}</p>
-            <p style="margin:8px 0"><b>City:</b> ${city}</p>
-            <p style="margin:8px 0"><b>License:</b> ${license} — ${licnum}</p>
-            <p style="margin:8px 0"><b>Years Experience:</b> ${years || 'Not specified'}</p>
-            <p style="margin:8px 0"><b>Vehicle:</b> ${vehicle || 'Not specified'}</p>
-            <p style="margin:8px 0"><b>Systems:</b> ${systems.join(', ') || 'None selected'}</p>
-            <p style="margin:8px 0"><b>Notes:</b> ${notes || 'None'}</p>
-            <p style="margin:8px 0"><b>Test Score:</b> Passed screening (7+ / 10)</p>
-          </div>
-        </div>`
-      })
+      body: JSON.stringify({ to: '2149944799', body: smsBody })
     });
     
     st.style.color = '#10b981';
