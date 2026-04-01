@@ -11,8 +11,8 @@ module.exports = async function handler(req, res) {
   const locationId = process.env.SQUARE_LOCATION_ID
   if (!accessToken || !locationId) return res.status(500).json({ error: 'Square not configured' })
 
-  // Square API base — sandbox vs production
-  const baseUrl = accessToken.startsWith('EAAA')
+  // Square API — always use production (sandbox tokens contain 'sandbox' in the application ID)
+  const baseUrl = process.env.SQUARE_SANDBOX === 'true'
     ? 'https://connect.squareupsandbox.com'
     : 'https://connect.squareup.com'
 
@@ -23,7 +23,7 @@ module.exports = async function handler(req, res) {
     const response = await fetch(`${baseUrl}/v2/online-checkout/payment-links`, {
       method: 'POST',
       headers: {
-        'Square-Version': '2024-01-18',
+        'Square-Version': '2025-01-23',
         'Authorization': `Bearer ${accessToken}`,
         'Content-Type': 'application/json'
       },
