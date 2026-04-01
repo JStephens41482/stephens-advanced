@@ -1100,9 +1100,7 @@ async function cachedMapsCall(action,params){
 function openNav(loc){
   const addr=locAddr(loc)
   if(addr.length<5){toast('No address on file',false);return}
-  const encoded=encodeURIComponent(addr)
-  const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent)
-  window.open(isIOS?'https://maps.apple.com/?daddr='+encoded:'https://www.google.com/maps/dir/?api=1&destination='+encoded)
+  window.open('https://www.google.com/maps/dir/?api=1&destination='+encodeURIComponent(addr))
 }
 
 // ─── Fallback routing (Haversine) ───
