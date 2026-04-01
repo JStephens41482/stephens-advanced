@@ -7406,8 +7406,13 @@ async function execChatAction(act){
       _chatMsgs.push({role:'assistant',content:`✓ Added ${act.system_type} to location`})
     }
     else if(t==='send_sms'){
-      // AUTO-SEND DISABLED — AI chat cannot send SMS automatically
-      _chatMsgs.push({role:'assistant',content:`⚠️ SMS sending is disabled. Use the Send Text button on the job card instead.`})
+      try{
+        await fetch('/api/send-sms',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to:act.to,body:act.body})})
+        _chatMsgs.push({role:'assistant',content:`✓ Text sent to ${act.to}`})
+      }catch(e){
+        console.error('sms error:',e)
+        _chatMsgs.push({role:'assistant',content:`⚠️ SMS failed: ${e.message}`})
+      }
     }
     else if(t==='build_route'){
       const date=act.date||td()
