@@ -630,6 +630,11 @@ async function syncJobToCalendar(jobId,locationId,date,time){
   })
 }
 
+// ═══ AUDIT LOG ═══
+async function audit(action,entityType,entityId,actor,changes,summary){
+  try{await SB.from('audit_log').insert({action,entity_type:entityType,entity_id:entityId,actor,changes,summary})}catch(e){console.error('audit:',e)}
+}
+
 // ═══ DOCUMENT STORAGE ═══
 async function uploadDocument(blob, filename, docType, entityType, entityId, metadata={}){
   const path=`${docType}/${entityId}/${Date.now()}-${filename}`
@@ -1336,6 +1341,26 @@ async function openReports(){
   }
   h+=`</div>`
 
+  // ACTIVITY LOG
+  h+=`<div class="ds"><div class="ds-t" style="display:flex;justify-content:space-between;align-items:center">
+    <span>Activity Log</span>
+    <select id="audit-filter" onchange="filterAuditLog()" style="font-size:11px;padding:4px 8px;border-radius:var(--rs);background:var(--c2);border:1px solid var(--b1);color:var(--w)">
+      <option value="">All</option>
+      <option value="job">Jobs</option>
+      <option value="invoice">Invoices</option>
+      <option value="location">Clients</option>
+      <option value="contact">Contacts</option>
+    </select>
+  </div><div id="audit-log-list" style="font-size:12px;color:var(--g2);padding:4px 0">Loading...</div></div>`
+  setTimeout(async()=>{
+    const el=$('audit-log-list');if(!el)return
+    try{
+      const{data}=await SB.from('audit_log').select('*').order('created_at',{ascending:false}).limit(50)
+      window._auditData=data||[]
+      renderAuditLog(data||[])
+    }catch(e){el.innerHTML='Could not load audit log'}
+  },100)
+
   // PRINT BUTTONS
   h+=`<div class="ds"><div class="ds-t">Print / Export</div>
     <button class="trk-btn trk-go" style="margin-bottom:8px;font-size:13px" onclick="printFullReport()">📄 Print Full Business Report</button>
@@ -1350,6 +1375,37 @@ async function openReports(){
 
   h+=`</div>`
   push(h)
+}
+
+function renderAuditLog(entries){
+  const el=$('audit-log-list');if(!el)return
+  if(!entries.length){el.innerHTML='<div style="color:var(--g2);padding:8px 0">No activity yet</div>';return}
+  const icons={jon:'👤',ai_chat:'🤖',customer_portal:'🌐',system:'⚙️'}
+  el.innerHTML=entries.map(e=>{
+    const dt=new Date(e.created_at)
+    const ts=dt.toLocaleDateString('en-US',{month:'short',day:'numeric'})+' '+dt.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})
+    const icon=icons[e.actor]||'📝'
+    return`<div style="display:flex;gap:8px;padding:8px 0;border-bottom:1px solid var(--b1);align-items:flex-start;cursor:pointer" onclick="navigateAudit('${e.entity_type}','${e.entity_id||''}')">
+      <span style="font-size:14px;flex-shrink:0">${icon}</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;font-weight:600;color:var(--w)">${esc(e.summary||e.action)}</div>
+        <div style="font-size:10px;color:var(--g2);margin-top:2px">${ts} · ${e.entity_type} · ${e.actor}</div>
+      </div>
+    </div>`
+  }).join('')
+}
+
+function filterAuditLog(){
+  const f=$('audit-filter')?.value||''
+  const all=window._auditData||[]
+  renderAuditLog(f?all.filter(e=>e.entity_type===f):all)
+}
+
+function navigateAudit(type,id){
+  if(!id)return
+  if(type==='job')openJob(id)
+  else if(type==='location')openCust(id)
+  else if(type==='invoice')openInvDetail(id)
 }
 
 function printFullReport(){
@@ -2228,6 +2284,7 @@ async function confirmResched(id){
     }catch(e){console.error('resched email:',e)}
   }
   await load()
+  audit('rescheduled','job',id,'jon',{old_date:oldDate,new_date:nd,new_time:nt},'Job rescheduled to '+newDateFmt)
   setLoad('reschedBtn',false)
   pop()
   toast('Rescheduled to '+newDateFmt)
@@ -2604,6 +2661,7 @@ async function compJ(id){
     notes:notes||null
   }).select().single()
   if(error){toast('Error generating invoice',false);setLoad('compBtn',false,'✓ Complete Job — Generate Invoice');return}
+  if(inv)audit('created','invoice',inv.id,'jon',{invoice_number:invNum,total:sub},'Invoice '+invNum+' created for '+(l.name||'?'))
 
   if(inv&&lines.length)await SB.from('invoice_lines').insert(lines.map((ln,i2)=>({invoice_id:inv.id,...ln,sort_order:i2})))
 
@@ -2613,6 +2671,7 @@ async function compJ(id){
   const jobUpd={status:'completed',completed_at:new Date().toISOString(),notes:notes||null}
   if(sig)jobUpd.signature_data=sig // only overwrite if sig exists (suppression report may have already saved owner sig)
   await SB.from('jobs').update(jobUpd).eq('id',id)
+  audit('completed','job',id,'jon',{status:'completed'},'Job completed for '+(l.name||'?'))
   // mark calendar event as completed (gray)
   try{await SB.from('calendar_events').update({color:'#9ca3af'}).eq('job_id',id)}catch(e){}
 
@@ -3056,6 +3115,7 @@ async function saveContact(locId){
   }
   await load()
   setLoad('saveCtBtn',false,'Save Contact')
+  audit('created','contact',contact.id,'jon',{name,role},'Contact added: '+name)
   pop()
   toast('Contact added')
   openCust(locId)
@@ -3422,6 +3482,7 @@ async function markPaid(id,method,note){
   if(note)upd.payment_note=note
   const{error}=await SB.from('invoices').update(upd).eq('id',id)
   if(error){toast('Error',false);return}
+  audit('paid','invoice',id,'jon',{method,note},'Invoice marked paid ('+method+')')
   await load();toast('Marked as paid ✓')
   pop();openInvDetail(id)
 }
@@ -3511,6 +3572,7 @@ async function submitMazon(invId,custName,total){
     notes:'Mazon Factoring — Client #1410. Customer: '+(name||custName)+'. In queue for submission.'
   }).eq('id',invId)
 
+  audit('factored','invoice',invId,'jon',{amount:factoredTotal},'Invoice factored to Mazon — '+(name||custName))
   await load()
   toast('Added to Mazon queue ✓')
   popAll()
@@ -3703,6 +3765,7 @@ async function saveNewCust(){
     brycer_ahj_name:bry?(city||'').trim()+' Fire Department':null
   }).select().single()
   if(error){if($('nc-err'))$('nc-err').textContent='Error: '+error.message;if(b){b.textContent='Save';b.style.opacity='';b.style.pointerEvents=''}return}
+  if(data)audit('created','location',data.id,'jon',{name},'Client added: '+name)
   await load();toast('Client added')
   pop();rCust();openCust(data.id)
 }
@@ -3762,6 +3825,7 @@ function initSwipes(){
       try{await SB.from('reports').delete().eq('job_id',id)}catch(e){}
       try{await SB.from('extinguisher_results').delete().eq('job_id',id)}catch(e){}
       await SB.from('jobs').delete().eq('id',id)
+      audit('deleted','job',id,'jon',null,'Job deleted (swipe)')
       await load();toast('Job deleted');rJobs();rJobs()
     })
   })
@@ -5043,6 +5107,7 @@ async function _confirmSendEmail(){
     const data=await res.json()
     if(data.success){
       await SB.from('invoices').update({status:'sent'}).eq('id',d.invId)
+      audit('sent','invoice',d.invId,'jon',{to:d.to},'Invoice '+d.invNum+' sent to '+d.to)
       await load()
       if(st){st.textContent='✓ Sent to '+d.to;st.style.color='var(--ok)'}
       if(btn){btn.innerHTML='✓ Sent';btn.style.background='var(--ok)'}
@@ -5273,6 +5338,7 @@ async function saveJob(){
   if(error){toast('Error creating job',false);setLoad('saveJobBtn',false,'Create Job');return}
   // sync to calendar_events
   if(newJob?.id)try{await syncJobToCalendar(newJob.id,lid,jobDate,jobTime)}catch(e){console.error('cal sync:',e)}
+  if(newJob?.id)audit('created','job',newJob.id,'jon',{scheduled_date:jobDate,scheduled_time:jobTime,scope:finalScope},'Job created for '+(D.locs.find(x=>x.id===lid)?.name||'?'))
   await load();toast('Job created ✓')
   nSt={loc:null,mk:false};window._preCalDate=null;window._preCalTime=null
   popAll()
@@ -5357,6 +5423,7 @@ async function delJob(id){
   }catch(e){console.error('delJob cascade:',e)}
   const{error}=await SB.from('jobs').delete().eq('id',id)
   if(error){toast('Error deleting job',false);return}
+  audit('deleted','job',id,'jon',null,'Job deleted')
   await load();toast('Job deleted')
   popAll()
   rJobs();rJobs()
@@ -5403,6 +5470,7 @@ async function delCust(id){
     const{error}=await SB.from('locations').delete().eq('id',id)
     if(error){toast('Error: '+error.message,false);return}
   }catch(e){toast('Delete failed: '+e.message,false);return}
+  audit('deleted','location',id,'jon',null,'Client deleted')
   await load();toast('Client deleted')
   popAll();rCust()
 }
@@ -7737,6 +7805,7 @@ async function execChatAction(act){
       }).select().single()
       if(error)throw error
       await load()
+      audit('created','location',null,'ai_chat',{name:act.name},'AI added client: '+act.name)
       _chatMsgs.push({role:'assistant',content:`✓ Added client: **${act.name}**`})
     }
     else if(t==='schedule_job'){
@@ -7749,6 +7818,7 @@ async function execChatAction(act){
       if(newJ2?.id)try{await syncJobToCalendar(newJ2.id,act.location_id,act.date,act.time||'09:00')}catch(e){}
       await load();rJobs();rJobs()
       const loc=D.locs.find(l=>l.id===act.location_id)
+      if(newJ2)audit('created','job',newJ2.id,'ai_chat',{date:act.date,time:act.time},'AI scheduled job: '+(loc?.name||'?')+' on '+act.date)
       _chatMsgs.push({role:'assistant',content:`✓ Job scheduled: **${loc?.name||''}** on ${act.date} at ${act.time||'09:00'}`})
     }
     else if(t==='add_todo'){
@@ -7759,6 +7829,7 @@ async function execChatAction(act){
     else if(t==='mark_paid'){
       await SB.from('invoices').update({status:'paid',payment_method:act.method||'cash',payment_note:act.note||null,paid_at:new Date().toISOString()}).eq('id',act.invoice_id)
       await load()
+      audit('paid','invoice',act.invoice_id,'ai_chat',{method:act.method},'AI marked invoice paid')
       _chatMsgs.push({role:'assistant',content:`✓ Invoice marked as paid (${act.method||'cash'})`})
     }
     else if(t==='lookup_client'){
@@ -7790,6 +7861,7 @@ async function execChatAction(act){
       if(confirm('Delete this job?')){
         await SB.from('jobs').delete().eq('id',act.job_id)
         await load();rJobs();rJobs()
+        audit('deleted','job',act.job_id,'ai_chat',null,'AI deleted job')
         _chatMsgs.push({role:'assistant',content:'✓ Job deleted'})
       }else{_chatMsgs.push({role:'assistant',content:'Cancelled.'})}
     }
@@ -7841,6 +7913,7 @@ async function execChatAction(act){
       const{data:newCt}=await SB.from('contacts').insert({name:act.name,role:act.role||null,phone:act.phone||null,email:act.email||null,is_primary:false}).select().single()
       if(newCt&&act.location_id)await SB.from('contact_links').insert({contact_id:newCt.id,entity_type:'location',entity_id:act.location_id,relationship:act.role||'contact'})
       await load()
+      if(newCt)audit('created','contact',newCt.id,'ai_chat',{name:act.name,role:act.role},'AI added contact: '+act.name)
       _chatMsgs.push({role:'assistant',content:`✓ Added contact: **${act.name}**${act.role?' ('+act.role+')':''}${act.location_id?' to '+(D.locs.find(l=>l.id===act.location_id)?.name||'location'):''}`})
     }
     else if(t==='toast'){toast(act.message)}
