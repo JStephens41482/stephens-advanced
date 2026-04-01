@@ -1,0 +1,1083 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="Stephens Advanced LLC — Fire suppression inspections, installations, and service in the Dallas-Fort Worth metroplex. Digital reports, customer portal, automated compliance.">
+<title>Stephens Advanced LLC — Fire Suppression & Safety | DFW Texas</title>
+<link rel="icon" href="/FaviconLogo - Copy (2).png">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--fire:#f05a28;--dark:#1a1a2e;--darker:#0d0f14;--white:#f0f1f4;--gray:#888;--radius:12px}
+body{font-family:'Inter',system-ui,-apple-system,sans-serif;color:#222;background:#fff;-webkit-font-smoothing:antialiased}
+
+/* NAV */
+.nav{position:fixed;top:0;left:0;right:0;z-index:100;background:rgba(13,15,20,.97);backdrop-filter:blur(12px);border-bottom:1px solid rgba(255,255,255,.06)}
+.nav-inner{max-width:1200px;margin:0 auto;padding:0 24px;height:72px;display:flex;align-items:center;justify-content:space-between}
+.nav-logo{display:flex;align-items:center;gap:10px;text-decoration:none}
+.nav-logo svg{width:32px;height:38px}
+.nav-brand{font-size:18px;font-weight:900;color:#fff;letter-spacing:-.5px}
+.nav-brand span{color:var(--fire)}
+.nav-links{display:flex;align-items:center;gap:32px}
+.nav-links a{color:rgba(255,255,255,.7);text-decoration:none;font-size:14px;font-weight:600;transition:color .2s}
+.nav-links a:hover{color:#fff}
+.nav-cta{display:inline-flex;align-items:center;gap:6px;padding:10px 24px;background:var(--fire);color:#fff;border-radius:9999px;font-size:13px;font-weight:800;text-decoration:none;transition:transform .15s,box-shadow .15s}
+.nav-cta:hover{transform:translateY(-1px);box-shadow:0 4px 16px rgba(240,90,40,.4)}
+.nav-menu-btn{display:none;background:none;border:none;color:#fff;font-size:28px;cursor:pointer}
+
+/* HERO */
+.hero{position:relative;min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,var(--darker) 0%,#1a1020 50%,#0d1a2e 100%);overflow:hidden;padding:120px 24px 80px}
+.hero::before{content:'';position:absolute;top:0;left:0;right:0;bottom:0;background:url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23f05a28' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")}
+.hero-content{max-width:800px;text-align:center;position:relative;z-index:1}
+.hero-badge{display:inline-block;padding:6px 16px;border-radius:9999px;background:rgba(240,90,40,.12);color:var(--fire);font-size:12px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:24px}
+.hero h1{font-size:clamp(36px,6vw,64px);font-weight:900;color:#fff;line-height:1.1;margin-bottom:20px;letter-spacing:-1.5px}
+.hero h1 span{color:var(--fire)}
+.hero p{font-size:clamp(16px,2vw,20px);color:rgba(255,255,255,.6);line-height:1.6;margin-bottom:36px;max-width:600px;margin-left:auto;margin-right:auto}
+.hero-btns{display:flex;gap:14px;justify-content:center;flex-wrap:wrap}
+.btn-primary{padding:16px 36px;background:var(--fire);color:#fff;border-radius:9999px;font-size:16px;font-weight:800;text-decoration:none;transition:all .2s;border:none;cursor:pointer}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(240,90,40,.4)}
+.btn-secondary{padding:16px 36px;background:transparent;color:#fff;border:2px solid rgba(255,255,255,.2);border-radius:9999px;font-size:16px;font-weight:700;text-decoration:none;transition:all .2s}
+.btn-secondary:hover{border-color:var(--fire);color:var(--fire)}
+.hero-stats{display:flex;gap:48px;justify-content:center;margin-top:56px;padding-top:40px;border-top:1px solid rgba(255,255,255,.08)}
+.hero-stat{text-align:center}
+.hero-stat-n{font-size:36px;font-weight:900;color:var(--fire)}
+.hero-stat-l{font-size:12px;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:1px;margin-top:4px}
+
+/* SERVICES */
+.services{padding:100px 24px;background:#fff}
+.section-inner{max-width:1200px;margin:0 auto}
+.section-label{display:inline-block;padding:6px 14px;border-radius:9999px;background:rgba(240,90,40,.08);color:var(--fire);font-size:11px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:16px}
+.section-title{font-size:clamp(28px,4vw,42px);font-weight:900;color:var(--dark);line-height:1.15;margin-bottom:16px;letter-spacing:-.5px}
+.section-title-w{font-size:clamp(28px,4vw,42px);font-weight:900;color:#fff;line-height:1.15;margin-bottom:16px;letter-spacing:-.5px}
+.section-sub{font-size:16px;color:#888;line-height:1.6;max-width:560px;margin-bottom:48px}
+.services-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+.service-card{background:#fff;border:1px solid #eee;border-radius:var(--radius);overflow:hidden;transition:transform .2s,box-shadow .2s}
+.service-card:hover{transform:translateY(-4px);box-shadow:0 12px 40px rgba(0,0,0,.1)}
+.service-icon{height:180px;background:var(--darker);display:flex;align-items:center;justify-content:center;font-size:56px}
+.service-body{padding:28px}
+.service-body h3{font-size:18px;font-weight:800;color:var(--dark);margin-bottom:8px}
+.service-body p{font-size:14px;color:#888;line-height:1.6;margin-bottom:16px}
+.service-link{color:var(--fire);font-size:13px;font-weight:800;text-decoration:none;display:inline-flex;align-items:center;gap:4px}
+
+/* DIFFERENTIATOR */
+.diff{padding:100px 24px;background:var(--darker)}
+.diff-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:20px;margin-top:48px}
+.diff-card{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:var(--radius);padding:28px}
+.diff-card-icon{font-size:28px;margin-bottom:12px}
+.diff-card h3{font-size:16px;font-weight:800;color:#fff;margin-bottom:8px}
+.diff-card p{font-size:14px;color:rgba(255,255,255,.5);line-height:1.6}
+
+/* ABOUT */
+.about{padding:100px 24px;background:#fff}
+.about-grid{display:grid;grid-template-columns:1fr 1fr;gap:64px;align-items:center}
+.about-img{background:var(--dark);border-radius:var(--radius);height:400px;display:flex;align-items:center;justify-content:center;font-size:100px;border:1px solid rgba(255,255,255,.06)}
+.about h2{font-size:clamp(28px,4vw,40px);font-weight:900;color:var(--dark);margin-bottom:20px;letter-spacing:-.5px}
+.about p{font-size:16px;color:#666;line-height:1.7;margin-bottom:16px}
+.about-list{list-style:none;margin-top:24px}
+.about-list li{display:flex;align-items:center;gap:12px;padding:10px 0;font-size:15px;color:#444;font-weight:600}
+.about-list li::before{content:'';width:8px;height:8px;border-radius:50%;background:var(--fire);flex-shrink:0}
+
+/* CONTRACTOR */
+.contractor{padding:100px 24px;background:var(--dark)}
+.contractor-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:20px;margin-top:48px}
+.con-card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:var(--radius);padding:28px;transition:border-color .2s}
+.con-card:hover{border-color:var(--fire)}
+.con-card h3{font-size:17px;font-weight:800;color:#fff;margin-bottom:8px}
+.con-card p{font-size:13px;color:rgba(255,255,255,.5);line-height:1.6;margin-bottom:4px}
+.con-card ul{list-style:none;margin-top:10px}
+.con-card ul li{font-size:13px;color:rgba(255,255,255,.6);padding:3px 0;display:flex;align-items:center;gap:8px}
+.con-card ul li::before{content:'';width:5px;height:5px;border-radius:50%;background:var(--fire);flex-shrink:0}
+
+/* REQUEST FORM */
+.request{padding:100px 24px;background:#fff}
+.request-form{max-width:600px;margin:0 auto}
+.request-form .fg{margin-bottom:16px}
+.request-form label{display:block;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#999;margin-bottom:6px}
+.request-form input,.request-form textarea,.request-form select{width:100%;padding:14px 16px;border:2px solid #eee;border-radius:var(--radius);font-size:15px;font-family:inherit;color:#222;transition:border-color .2s;background:#fff}
+.request-form input:focus,.request-form textarea:focus,.request-form select:focus{border-color:var(--fire);outline:none}
+.request-form textarea{min-height:100px;resize:vertical}
+.request-form .submit-btn{width:100%;padding:18px;background:var(--fire);color:#fff;border:none;border-radius:9999px;font-size:17px;font-weight:800;cursor:pointer;transition:all .2s;margin-top:8px}
+.request-form .submit-btn:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(240,90,40,.4)}
+.request-form .submit-btn:disabled{opacity:.5;transform:none;box-shadow:none}
+.form-status{text-align:center;font-size:14px;margin-top:12px;min-height:20px}
+
+/* CTA / CONTACT */
+.cta{padding:100px 24px;background:linear-gradient(135deg,var(--fire),#d44a1a);text-align:center}
+.cta h2{font-size:clamp(28px,4vw,42px);font-weight:900;color:#fff;margin-bottom:16px}
+.cta p{font-size:18px;color:rgba(255,255,255,.85);margin-bottom:36px}
+.cta-phone{font-size:clamp(32px,5vw,56px);font-weight:900;color:#fff;text-decoration:none;display:block;margin-bottom:24px;letter-spacing:-1px}
+.cta-phone:hover{text-decoration:underline}
+.cta-row{display:flex;gap:16px;justify-content:center;flex-wrap:wrap}
+
+/* FOOTER */
+.footer{background:var(--darker);padding:60px 24px 32px;color:rgba(255,255,255,.5)}
+.footer-inner{max-width:1200px;margin:0 auto;display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:40px}
+.footer-brand{font-size:18px;font-weight:900;color:#fff;margin-bottom:12px}
+.footer-brand span{color:var(--fire)}
+.footer p{font-size:13px;line-height:1.7}
+.footer h4{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:rgba(255,255,255,.3);margin-bottom:16px}
+.footer ul{list-style:none}
+.footer ul li{margin-bottom:8px}
+.footer ul a{color:rgba(255,255,255,.5);text-decoration:none;font-size:13px;transition:color .2s}
+.footer ul a:hover{color:var(--fire)}
+.footer-bottom{max-width:1200px;margin:40px auto 0;padding-top:24px;border-top:1px solid rgba(255,255,255,.06);text-align:center;font-size:12px}
+
+/* RESPONSIVE */
+@media(max-width:768px){
+  .nav-links{display:none}
+  .nav-menu-btn{display:block}
+  .services-grid,.diff-grid,.contractor-grid{grid-template-columns:1fr}
+  .about-grid{grid-template-columns:1fr;gap:32px}
+  .footer-inner{grid-template-columns:1fr 1fr}
+  .hero-stats{flex-direction:column;gap:24px}
+}
+@media(max-width:480px){
+  .footer-inner{grid-template-columns:1fr}
+  .hero-btns{flex-direction:column;align-items:center}
+}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="/app" class="nav-logo" title="Team Login">
+      <svg width="32" height="38" viewBox="0 0 32 38" fill="none"><path d="M16 2C16 2 6 10 6 20C6 26 10 30 16 30C22 30 26 26 26 20C26 10 16 2 16 2Z" fill="#f05a28"/><path d="M16 8C16 8 10 14 10 20C10 23 12 25 14 26C13 23 14 20 16 18C18 20 19 23 18 26C20 25 22 23 22 20C22 14 16 8 16 8Z" fill="#ff7847"/><ellipse cx="16" cy="30" rx="5" ry="6" fill="#3498db"/><ellipse cx="16" cy="29" rx="3" ry="3.5" fill="#5dade2"/></svg>
+      <div class="nav-brand">Stephens <span>Advanced</span></div>
+    </a>
+    <div class="nav-links">
+      <a href="#services">Services</a>
+      <a href="#edge">Our Edge</a>
+      <a href="#contractors">Contractors</a>
+      <a href="/portal">Customer Portal</a>
+      <a href="/apply">Apply</a>
+      <a href="#request" class="nav-cta">Request Service</a>
+    </div>
+    <button class="nav-menu-btn" onclick="document.querySelector('.nav-links').style.display=document.querySelector('.nav-links').style.display==='flex'?'none':'flex'">&#9776;</button>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-content">
+    <div class="hero-badge">DFW's Trusted Fire Protection Partner</div>
+    <h1>Fire Suppression <span>&amp; Safety</span> Expertise</h1>
+    <p>Licensed inspections, installations, and service for kitchen hood suppression systems, fire extinguishers, clean agent systems, and emergency lighting across the Dallas-Fort Worth metroplex.</p>
+    <div class="hero-btns">
+      <a href="tel:2149944799" class="btn-primary">Call (214) 994-4799</a>
+      <a href="#request" class="btn-secondary">Request Service</a>
+    </div>
+    <div class="hero-stats">
+      <div class="hero-stat"><div class="hero-stat-n">18,000+</div><div class="hero-stat-l">Systems Serviced</div></div>
+      <div class="hero-stat"><div class="hero-stat-n">DFW</div><div class="hero-stat-l">Metroplex Coverage</div></div>
+      <div class="hero-stat"><div class="hero-stat-n">24/7</div><div class="hero-stat-l">Emergency Service</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- SERVICES -->
+<section class="services" id="services">
+  <div class="section-inner">
+    <div class="section-label">Our Services</div>
+    <div class="section-title">Complete Fire Protection Solutions</div>
+    <div class="section-sub">From routine inspections to emergency repairs, we keep your business compliant and your people safe.</div>
+    <div class="services-grid">
+      <div class="service-card">
+        <div class="service-icon" style="background:linear-gradient(135deg,#1a1020,#2d1a0a)">&#128293;</div>
+        <div class="service-body">
+          <h3>Kitchen Hood Suppression</h3>
+          <p>Semi-annual inspections, installations, and repairs for Ansul, Pyro-Chem, Buckeye, Amerex, Kidde, and Captive-Aire systems. NFPA 17A compliant.</p>
+          <a href="#request" class="service-link">Schedule Inspection &rarr;</a>
+        </div>
+      </div>
+      <div class="service-card">
+        <div class="service-icon" style="background:linear-gradient(135deg,#0d1a2e,#1a2040)">&#129519;</div>
+        <div class="service-body">
+          <h3>Fire Extinguishers</h3>
+          <p>Annual inspections, 6-year internals, 12-year hydrostatic testing, and replacements for all extinguisher types. NFPA 10 compliant.</p>
+          <a href="#request" class="service-link">Schedule Inspection &rarr;</a>
+        </div>
+      </div>
+      <div class="service-card">
+        <div class="service-icon" style="background:linear-gradient(135deg,#1a1a2e,#0d2030)">&#128161;</div>
+        <div class="service-body">
+          <h3>Clean Agent &amp; E-Lights</h3>
+          <p>FM-200, Novec 1230, and CO2 system inspections. Annual emergency lighting 90-minute discharge tests per NFPA 101.</p>
+          <a href="#request" class="service-link">Schedule Inspection &rarr;</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- WHAT SETS US APART -->
+<section class="diff" id="edge">
+  <div class="section-inner">
+    <div class="section-label">What Sets Us Apart</div>
+    <div class="section-title-w">We Built the Platform Nobody Else Has</div>
+    <div class="section-sub" style="color:rgba(255,255,255,.5)">Every other fire suppression company in DFW hands you a paper report and disappears. We built a complete digital platform from scratch that changes how fire protection service works.</div>
+    <div class="diff-grid">
+      <div class="diff-card">
+        <div class="diff-card-icon">&#9889;</div>
+        <h3>Instant Digital Reports</h3>
+        <p>Your inspection reports are generated on-site, signed digitally, and delivered as professional PDFs before we leave your property. No waiting days for paperwork.</p>
+      </div>
+      <div class="diff-card">
+        <div class="diff-card-icon">&#128187;</div>
+        <h3>Customer Portal</h3>
+        <p>Every client gets a private portal showing their full equipment inventory, inspection history, compliance status, and upcoming service dates. Access it anytime from any device.</p>
+      </div>
+      <div class="diff-card">
+        <div class="diff-card-icon">&#128200;</div>
+        <h3>Automated Compliance Reporting</h3>
+        <p>We report directly to your local fire marshal through The Compliance Engine in every applicable jurisdiction. You never chase down compliance documentation again.</p>
+      </div>
+      <div class="diff-card">
+        <div class="diff-card-icon">&#128274;</div>
+        <h3>No Paperwork. No Delays.</h3>
+        <p>Invoices, reports, and payment links delivered in one email. Pay by card, Apple Pay, or check. Everything tracked, nothing lost, no paper to file.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ABOUT -->
+<section class="about" id="about">
+  <div class="section-inner">
+    <div class="about-grid">
+      <div class="about-img">&#128509;</div>
+      <div>
+        <div class="section-label">About Us</div>
+        <h2>Licensed and Built for DFW</h2>
+        <p>Stephens Advanced LLC is a full-service fire suppression and safety company serving the Dallas-Fort Worth metroplex. We specialize in the inspection, testing, and maintenance of commercial kitchen hood suppression systems, portable fire extinguishers, clean agent systems, and emergency lighting.</p>
+        <p>We're licensed by the Texas State Fire Marshal's Office and report directly to local fire marshals through The Compliance Engine in applicable jurisdictions.</p>
+        <ul class="about-list">
+          <li>Texas State Fire Marshal Licensed</li>
+          <li>Full DFW metroplex coverage &mdash; 33+ cities</li>
+          <li>Brycer / TCE compliance reporting</li>
+          <li>24/7 emergency service available</li>
+          <li>All major suppression system brands serviced</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CONTRACTOR SECTION -->
+<section class="contractor" id="contractors">
+  <div class="section-inner">
+    <div class="section-label">For Contractors &amp; Fire Protection Companies</div>
+    <div class="section-title-w">Contractor &amp; Trade Partner Services</div>
+    <div class="section-sub" style="color:rgba(255,255,255,.5)">We work with general contractors, restaurant developers, and fire protection companies across Texas.</div>
+    <div class="contractor-grid">
+      <div class="con-card">
+        <h3>System Design &amp; Plan Drawing</h3>
+        <ul>
+          <li>Kitchen hood suppression system design and plan preparation</li>
+          <li>Paint booth suppression system design and plan preparation</li>
+          <li>Submit-ready plans for permit and AHJ approval</li>
+        </ul>
+      </div>
+      <div class="con-card">
+        <h3>Captive-Aire Subcontract Installation</h3>
+        <ul>
+          <li>Licensed installer for Captive-Aire TANK and CORE suppression systems</li>
+          <li>Available as subcontractor for fire protection companies and GCs</li>
+          <li>Full commissioning and testing included</li>
+        </ul>
+      </div>
+      <div class="con-card">
+        <h3>Kitchen System Technical Consulting</h3>
+        <ul>
+          <li>System selection: Ansul, Pyro-Chem, Buckeye, Kidde, Captive-Aire</li>
+          <li>Code compliance review (NFPA 17A, NFPA 96)</li>
+          <li>Troubleshooting and diagnostics for existing installations</li>
+        </ul>
+      </div>
+      <div class="con-card">
+        <h3>Inspection &amp; ITM Subcontracting</h3>
+        <ul>
+          <li>Available to cover DFW territory for national fire protection companies</li>
+          <li>All major brands serviced</li>
+          <li>Brycer/TCE compliance reporting included</li>
+        </ul>
+      </div>
+    </div>
+    <div style="text-align:center;margin-top:40px">
+      <a href="#partner" class="btn-primary">Partner With Us</a>
+    </div>
+  </div>
+</section>
+
+<!-- PARTNER WITH US -->
+<section style="padding:80px 24px;background:var(--darker);text-align:center" id="partner">
+  <div class="section-inner">
+    <div class="section-label">Trade Partners</div>
+    <div class="section-title-w">Let's Talk</div>
+    <p style="font-size:16px;color:rgba(255,255,255,.6);max-width:500px;margin:0 auto 32px;line-height:1.6">For contractor partnerships, subcontract work, system design, and trade inquiries — call Jon directly. The plan builder for multi-system bids is coming soon.</p>
+    <a href="tel:2149944799" style="font-size:clamp(28px,4vw,44px);font-weight:900;color:#fff;text-decoration:none;display:block;margin-bottom:16px">(214) 994-4799</a>
+    <p style="font-size:14px;color:rgba(255,255,255,.4)">Jon Stephens — Owner / Licensed Technician</p>
+  </div>
+</section>
+
+<!-- SERVICE REQUEST FORM -->
+<section class="request" id="request">
+  <div class="section-inner" style="text-align:center">
+    <div class="section-label">Get Started</div>
+    <div class="section-title">Request Service</div>
+    <div class="section-sub" style="max-width:520px;margin-left:auto;margin-right:auto">Fill out the form below and we'll get back to you to confirm scheduling.</div>
+
+    <!-- LOCATION TYPE SELECTOR -->
+    <div id="loc-type-picker" style="display:flex;gap:16px;justify-content:center;margin-bottom:32px">
+      <button onclick="showSingleForm()" style="flex:1;max-width:260px;padding:20px;border:2px solid #eee;border-radius:var(--radius);background:#fff;cursor:pointer;transition:all .2s" id="pick-single">
+        <div style="font-size:28px;margin-bottom:8px">&#127970;</div>
+        <div style="font-size:15px;font-weight:800;color:var(--dark)">I Have One Location</div>
+        <div style="font-size:12px;color:#888;margin-top:4px">Single restaurant, business, or facility</div>
+      </button>
+      <button onclick="showMultiForm()" style="flex:1;max-width:260px;padding:20px;border:2px solid #eee;border-radius:var(--radius);background:#fff;cursor:pointer;transition:all .2s" id="pick-multi">
+        <div style="font-size:28px;margin-bottom:8px">&#127959;</div>
+        <div style="font-size:15px;font-weight:800;color:var(--dark)">I Manage Multiple Locations</div>
+        <div style="font-size:12px;color:#888;margin-top:4px">Franchise group, management company, or multi-site</div>
+      </button>
+    </div>
+
+    <!-- SINGLE LOCATION FORM (existing) -->
+    <div id="single-form" style="display:none">
+    <form class="request-form" id="serviceForm" onsubmit="submitServiceRequest(event)">
+      <div class="fg">
+        <label>Request Type</label>
+        <select id="req-type" onchange="updatePricing()">
+          <option value="inspection">Inspection / Service</option>
+          <option value="emergency">Emergency Service</option>
+          <option value="install">New Installation</option>
+          <option value="trade_partner">Trade Partner Inquiry</option>
+        </select>
+      </div>
+      <div class="fg">
+        <label>Business Name *</label>
+        <input type="text" id="req-business" placeholder="e.g. Primo Brothers Pizza" required>
+      </div>
+      <div class="fg">
+        <label>Contact Name *</label>
+        <input type="text" id="req-name" placeholder="Your name" required>
+      </div>
+      <div class="fg">
+        <label>Phone Number *</label>
+        <input type="tel" id="req-phone" placeholder="(xxx) xxx-xxxx" required>
+      </div>
+      <div class="fg">
+        <label>Email</label>
+        <input type="email" id="req-email" placeholder="For invoice and report delivery">
+      </div>
+      <div class="fg">
+        <label>Street Address *</label>
+        <input type="text" id="req-address" placeholder="123 Main St" required>
+      </div>
+      <div style="display:flex;gap:12px">
+        <div class="fg" style="flex:2">
+          <label>City *</label>
+          <input type="text" id="req-city" placeholder="Fort Worth" required>
+        </div>
+        <div class="fg" style="flex:1">
+          <label>State</label>
+          <input type="text" id="req-state" value="TX" style="text-align:center">
+        </div>
+        <div class="fg" style="flex:1">
+          <label>Zip</label>
+          <input type="text" id="req-zip" placeholder="76040">
+        </div>
+      </div>
+
+      <div style="text-align:left;margin:20px 0 8px">
+        <label style="display:block;margin-bottom:12px">What do you need serviced? <span style="color:#888;font-weight:400;text-transform:none;letter-spacing:0">(check all that apply)</span></label>
+        <div style="display:flex;flex-wrap:wrap;gap:8px" id="scope-checks">
+          <label style="display:flex;align-items:center;gap:6px;padding:10px 16px;border:2px solid #eee;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600;text-transform:none;letter-spacing:0;color:#444"><input type="checkbox" value="suppression" onchange="updatePricing()"> Kitchen Hood System</label>
+          <label style="display:flex;align-items:center;gap:6px;padding:10px 16px;border:2px solid #eee;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600;text-transform:none;letter-spacing:0;color:#444"><input type="checkbox" value="extinguishers" onchange="updatePricing()"> Fire Extinguishers</label>
+          <label style="display:flex;align-items:center;gap:6px;padding:10px 16px;border:2px solid #eee;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600;text-transform:none;letter-spacing:0;color:#444"><input type="checkbox" value="clean_agent" onchange="updatePricing()"> Clean Agent System</label>
+          <label style="display:flex;align-items:center;gap:6px;padding:10px 16px;border:2px solid #eee;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600;text-transform:none;letter-spacing:0;color:#444"><input type="checkbox" value="elights" onchange="updatePricing()"> Emergency Lighting</label>
+          <label style="display:flex;align-items:center;gap:6px;padding:10px 16px;border:2px solid #eee;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600;text-transform:none;letter-spacing:0;color:#444"><input type="checkbox" value="paint_booth" onchange="updatePricing()"> Paint Booth System</label>
+        </div>
+      </div>
+
+      <div class="fg" style="text-align:left">
+        <label>How many fire extinguishers? <span style="color:#888;font-weight:400;text-transform:none;letter-spacing:0">(if applicable)</span></label>
+        <input type="number" id="req-ext-count" placeholder="0" min="0" value="0" onchange="updatePricing()">
+      </div>
+
+      <div class="fg" style="text-align:left">
+        <label>How many suppression systems? <span style="color:#888;font-weight:400;text-transform:none;letter-spacing:0">(hood lines, paint booths, etc.)</span></label>
+        <input type="number" id="req-sys-count" placeholder="1" min="0" value="1" onchange="updatePricing()">
+      </div>
+
+      <div class="fg" style="text-align:left">
+        <label>Preferred Date</label>
+        <input type="date" id="req-date">
+      </div>
+
+      <div class="fg">
+        <label>Notes / Special Instructions</label>
+        <textarea id="req-desc" placeholder="Anything we should know — access instructions, gate codes, specific issues, etc."></textarea>
+      </div>
+
+      <!-- PRICING ESTIMATE -->
+      <div id="pricing-box" style="text-align:left;background:#f8f9fb;border:2px solid #eee;border-radius:12px;padding:20px;margin:20px 0">
+        <div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:#999;margin-bottom:12px">Estimated Service Minimum</div>
+        <div id="pricing-lines" style="font-size:14px;color:#444;line-height:2"></div>
+        <div style="border-top:2px solid #ddd;margin-top:12px;padding-top:12px;display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:16px;font-weight:900;color:#1a1a2e">Estimated Minimum</span>
+          <span style="font-size:22px;font-weight:900;color:#f05a28" id="pricing-total">$250.00</span>
+        </div>
+        <div style="font-size:11px;color:#aaa;margin-top:8px;line-height:1.5">Final invoice may vary based on equipment count, parts, and conditions found on-site. Extinguisher pricing is per unit ($20/ea). Suppression system minimums start at $250 per system.</div>
+      </div>
+
+      <!-- AGREEMENT -->
+      <div style="text-align:left;margin:16px 0">
+        <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;font-size:13px;font-weight:500;color:#666;text-transform:none;letter-spacing:0;line-height:1.5">
+          <input type="checkbox" id="req-agree" required style="margin-top:3px;width:18px;height:18px;flex-shrink:0">
+          I understand the estimated service minimums shown above. Final pricing will be confirmed before work begins. I authorize Stephens Advanced LLC to perform the requested inspection/service at the address provided.
+        </label>
+      </div>
+
+      <button type="submit" class="submit-btn" id="req-submit">Submit Service Request</button>
+      <div class="form-status" id="req-status"></div>
+    </form>
+    </div><!-- end single-form -->
+
+    <!-- MULTI LOCATION FORM -->
+    <div id="multi-form" style="display:none">
+      <form class="request-form" id="multiForm" onsubmit="submitMultiRequest(event)">
+        <div style="text-align:left;background:#f0f4f8;border:2px solid #ddd;border-radius:12px;padding:20px;margin-bottom:24px">
+          <div style="font-size:14px;font-weight:800;color:var(--dark);margin-bottom:4px">Step 1: Company Information</div>
+          <div style="font-size:12px;color:#888">This is the billing entity — the company that pays the invoices.</div>
+        </div>
+        <div class="fg">
+          <label>Company / Management Group Name *</label>
+          <input type="text" id="multi-company" placeholder="e.g. ABC Restaurant Group" required>
+        </div>
+        <div class="fg">
+          <label>Contact Name *</label>
+          <input type="text" id="multi-contact" placeholder="Your name" required>
+        </div>
+        <div class="fg">
+          <label>Phone *</label>
+          <input type="tel" id="multi-phone" placeholder="(xxx) xxx-xxxx" required>
+        </div>
+        <div class="fg">
+          <label>Email</label>
+          <input type="email" id="multi-email" placeholder="For invoices and reports">
+        </div>
+        <div class="fg">
+          <label>Billing Address</label>
+          <input type="text" id="multi-bill-addr" placeholder="Company billing address">
+        </div>
+
+        <div style="text-align:left;background:#f0f4f8;border:2px solid #ddd;border-radius:12px;padding:20px;margin:24px 0">
+          <div style="font-size:14px;font-weight:800;color:var(--dark);margin-bottom:4px">Step 2: Your Locations</div>
+          <div style="font-size:12px;color:#888">Add each location that needs service. We'll set up a job for each one.</div>
+        </div>
+
+        <div id="multi-locations">
+          <div class="multi-loc" data-idx="0">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+              <div style="font-size:14px;font-weight:800;color:var(--fire)">Location 1</div>
+            </div>
+            <div class="fg"><label>Location Name *</label><input type="text" class="ml-name" placeholder="e.g. Primo Brothers — Main St" required></div>
+            <div class="fg"><label>Street Address *</label><input type="text" class="ml-addr" placeholder="123 Main St" required></div>
+            <div style="display:flex;gap:12px">
+              <div class="fg" style="flex:2"><label>City *</label><input type="text" class="ml-city" placeholder="Fort Worth" required></div>
+              <div class="fg" style="flex:1"><label>Zip</label><input type="text" class="ml-zip" placeholder="76040"></div>
+            </div>
+            <div class="fg"><label>On-Site Contact Name</label><input type="text" class="ml-site-contact" placeholder="Kitchen manager, etc."></div>
+            <div class="fg"><label>On-Site Contact Phone</label><input type="tel" class="ml-site-phone" placeholder="(xxx) xxx-xxxx"></div>
+            <div style="text-align:left;margin:12px 0">
+              <label style="display:block;margin-bottom:8px;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#999">Equipment at this location</label>
+              <div style="display:flex;flex-wrap:wrap;gap:6px">
+                <label style="display:flex;align-items:center;gap:4px;padding:8px 12px;border:2px solid #eee;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;color:#444;text-transform:none;letter-spacing:0"><input type="checkbox" class="ml-scope" value="suppression"> Kitchen Hood</label>
+                <label style="display:flex;align-items:center;gap:4px;padding:8px 12px;border:2px solid #eee;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;color:#444;text-transform:none;letter-spacing:0"><input type="checkbox" class="ml-scope" value="extinguishers"> Extinguishers</label>
+                <label style="display:flex;align-items:center;gap:4px;padding:8px 12px;border:2px solid #eee;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;color:#444;text-transform:none;letter-spacing:0"><input type="checkbox" class="ml-scope" value="elights"> E-Lights</label>
+                <label style="display:flex;align-items:center;gap:4px;padding:8px 12px;border:2px solid #eee;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;color:#444;text-transform:none;letter-spacing:0"><input type="checkbox" class="ml-scope" value="paint_booth"> Paint Booth</label>
+              </div>
+            </div>
+            <div style="display:flex;gap:12px">
+              <div class="fg" style="flex:1"><label>Suppression Systems</label><input type="number" class="ml-sys" value="1" min="0"></div>
+              <div class="fg" style="flex:1"><label>Extinguishers</label><input type="number" class="ml-ext" value="0" min="0"></div>
+            </div>
+            <hr style="border:none;border-top:1px solid #eee;margin:16px 0">
+          </div>
+        </div>
+
+        <button type="button" onclick="addMultiLocation()" style="width:100%;padding:14px;border:2px dashed #ddd;border-radius:var(--radius);background:transparent;color:var(--fire);font-size:14px;font-weight:800;cursor:pointer;margin-bottom:24px">+ Add Another Location</button>
+
+        <div class="fg">
+          <label>Notes / Special Instructions</label>
+          <textarea id="multi-notes" placeholder="Anything else we should know"></textarea>
+        </div>
+
+        <div style="text-align:left;margin:16px 0">
+          <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;font-size:13px;font-weight:500;color:#666;text-transform:none;letter-spacing:0;line-height:1.5">
+            <input type="checkbox" id="multi-agree" required style="margin-top:3px;width:18px;height:18px;flex-shrink:0">
+            I understand that service minimums start at $250 per suppression system and $20 per extinguisher. Final pricing will be confirmed before work begins.
+          </label>
+        </div>
+
+        <button type="submit" class="submit-btn" id="multi-submit">Submit All Locations</button>
+        <div class="form-status" id="multi-status"></div>
+      </form>
+    </div><!-- end multi-form -->
+
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta" id="contact">
+  <h2>Ready to Get Started?</h2>
+  <p>Call us today. We'll get you scheduled.</p>
+  <a href="tel:2149944799" class="cta-phone">(214) 994-4799</a>
+  <div class="cta-row">
+    <a href="#request" class="btn-primary" style="background:#fff;color:var(--fire)">Request Service</a>
+    <a href="/portal" class="btn-secondary" style="border-color:rgba(255,255,255,.4)">Customer Portal</a>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer class="footer">
+  <div class="footer-inner">
+    <div>
+      <div class="footer-brand">Stephens <span>Advanced</span> LLC</div>
+      <p>Fire Suppression &amp; Safety<br>Euless, Texas</p>
+      <p style="margin-top:12px"><a href="tel:2149944799" style="color:var(--fire);text-decoration:none;font-weight:700">(214) 994-4799</a></p>
+    </div>
+    <div>
+      <h4>Services</h4>
+      <ul>
+        <li><a href="#services">Kitchen Hood Suppression</a></li>
+        <li><a href="#services">Fire Extinguishers</a></li>
+        <li><a href="#services">Clean Agent Systems</a></li>
+        <li><a href="#services">Emergency Lighting</a></li>
+        <li><a href="#services">Paint Booth Suppression</a></li>
+      </ul>
+    </div>
+    <div>
+      <h4>Company</h4>
+      <ul>
+        <li><a href="#about">About Us</a></li>
+        <li><a href="#contractors">Contractors</a></li>
+        <li><a href="#request">Request Service</a></li>
+        <li><a href="/portal">Customer Portal</a></li>
+      </ul>
+    </div>
+    <div>
+      <h4>Service Area</h4>
+      <ul>
+        <li><a href="#request">Fort Worth</a></li>
+        <li><a href="#request">Dallas</a></li>
+        <li><a href="#request">Arlington</a></li>
+        <li><a href="#request">Plano</a></li>
+        <li><a href="#request">All DFW Cities</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    &copy; 2026 Stephens Advanced LLC. All rights reserved. Licensed by the Texas State Fire Marshal's Office.
+  </div>
+</footer>
+
+<script>
+// Smooth scroll
+document.querySelectorAll('a[href^="#"]').forEach(a=>{
+  a.addEventListener('click',e=>{
+    e.preventDefault()
+    const t=document.querySelector(a.getAttribute('href'))
+    if(t)t.scrollIntoView({behavior:'smooth',block:'start'})
+  })
+})
+
+// Service Request Form
+const SB=supabase.createClient('https://motjasdokoxwiodwzyps.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1vdGphc2Rva294d2lvZHd6eXBzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzNDI2NTcsImV4cCI6MjA4ODkxODY1N30.IMf0plnDRhVgts9LjJr219Tax4J175iuWN1u6ZKTZ-I',{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}})
+
+function updatePricing(){
+  const checks=Array.from(document.querySelectorAll('#scope-checks input:checked')).map(c=>c.value)
+  const sysCount=parseInt(document.getElementById('req-sys-count')?.value)||0
+  const extCount=parseInt(document.getElementById('req-ext-count')?.value)||0
+  const type=document.getElementById('req-type').value
+  let lines=[],total=0
+
+  if(type==='emergency'){
+    lines.push({desc:'Emergency Service Call',price:500})
+    total+=500
+  }
+
+  const hasSuppression=checks.includes('suppression')||checks.includes('clean_agent')||checks.includes('paint_booth')
+
+  if(hasSuppression){
+    const count=Math.max(sysCount,1)
+    lines.push({desc:'Suppression System Semi-Annual Inspection ('+count+' system'+(count>1?'s':'')+')',price:250*count})
+    total+=250*count
+  }
+
+  if(checks.includes('extinguishers')&&extCount>0){
+    if(!hasSuppression){
+      lines.push({desc:'Trip Charge (extinguisher-only visit)',price:150})
+      total+=150
+    }
+    lines.push({desc:'Annual Jobsite Inspection (NFPA 10)',price:50})
+    total+=50
+    lines.push({desc:'Fire Extinguisher Inspection ('+extCount+' units @ $20/ea)',price:extCount*20})
+    total+=extCount*20
+  }
+
+  if(checks.includes('elights')){
+    lines.push({desc:'Emergency Lighting Annual Test',price:20})
+    total+=20
+  }
+
+  if(!lines.length){
+    lines.push({desc:'Service minimum',price:250})
+    total=250
+  }
+
+  const box=document.getElementById('pricing-lines')
+  box.innerHTML=lines.map(l=>`<div style="display:flex;justify-content:space-between"><span>${l.desc}</span><span style="font-weight:700">$${l.price.toFixed(2)}</span></div>`).join('')
+  document.getElementById('pricing-total').textContent='$'+total.toFixed(2)
+}
+
+async function submitServiceRequest(e){
+  e.preventDefault()
+  const btn=document.getElementById('req-submit')
+  const st=document.getElementById('req-status')
+  btn.disabled=true;btn.textContent='Submitting...'
+  st.textContent='';st.style.color='#888'
+
+  const type=document.getElementById('req-type').value
+  const business=document.getElementById('req-business').value.trim()
+  const name=document.getElementById('req-name').value.trim()
+  const phone=document.getElementById('req-phone').value.trim()
+  const email=document.getElementById('req-email').value.trim()
+  const address=document.getElementById('req-address').value.trim()
+  const city=document.getElementById('req-city').value.trim()
+  const state=document.getElementById('req-state').value.trim()||'TX'
+  const zip=document.getElementById('req-zip').value.trim()
+  const extCount=parseInt(document.getElementById('req-ext-count')?.value)||0
+  const sysCount=parseInt(document.getElementById('req-sys-count')?.value)||0
+  const prefDate=document.getElementById('req-date')?.value||''
+  const desc=document.getElementById('req-desc').value.trim()
+  const checks=Array.from(document.querySelectorAll('#scope-checks input:checked')).map(c=>c.value)
+  const scope=[]
+  if(checks.includes('suppression'))scope.push('suppression')
+  if(checks.includes('extinguishers'))scope.push('extinguishers')
+  if(checks.includes('clean_agent'))scope.push('suppression')
+  if(checks.includes('elights'))scope.push('elights')
+  if(checks.includes('paint_booth'))scope.push('suppression')
+  if(!scope.length)scope.push('suppression','extinguishers')
+
+  const estimate=document.getElementById('pricing-total')?.textContent||''
+
+  try{
+    // Create location
+    const{data:loc}=await SB.from('locations').insert({
+      name:business,address:address,city:city,state:state,zip:zip,
+      contact_name:name,contact_phone:phone,contact_email:email||null,
+      is_brycer_jurisdiction:false
+    }).select().single()
+
+    if(loc){
+      // Create job
+      await SB.from('jobs').insert({
+        location_id:loc.id,
+        type:type==='emergency'?'emergency':'inspection',
+        scope:[...new Set(scope)],
+        status:'scheduled',
+        scheduled_date:prefDate||new Date().toISOString().split('T')[0],
+        scheduled_time:'09:00',
+        notes:'WEB SERVICE REQUEST — '+type.toUpperCase()+
+          '\nContact: '+name+' / '+phone+(email?' / '+email:'')+
+          '\nSystems: '+sysCount+' | Extinguishers: '+extCount+
+          '\nServices: '+checks.join(', ')+
+          '\nEstimate: '+estimate+
+          '\n\n'+(desc||'No additional notes')
+      })
+    }
+
+    // Generate portal token
+    let portalUrl = ''
+    if (loc) {
+      const arr = new Uint8Array(16)
+      crypto.getRandomValues(arr)
+      const token = Array.from(arr, b => b.toString(16).padStart(2, '0')).join('')
+      await SB.from('portal_tokens').insert({token, location_id: loc.id, billing_account_id: null, expires_at: new Date(Date.now() + 15*24*60*60*1000).toISOString()})
+      portalUrl = 'https://stephensadvanced.com/portal?t=' + token
+    }
+
+    // Send notification email
+    try{
+      await fetch('/api/send-email',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          to:'jonathan@stephensadvanced.com',
+          subject:'SERVICE REQUEST — '+business+' — '+city,
+          html:`<div style="font-family:Arial;font-size:14px;color:#333;max-width:560px">
+            <div style="background:#f05a28;color:#fff;padding:16px 20px;border-radius:8px 8px 0 0;font-size:18px;font-weight:900">New Service Request</div>
+            <div style="padding:20px;border:1px solid #eee;border-top:none;border-radius:0 0 8px 8px">
+              <p style="margin:8px 0"><b>Type:</b> ${type}</p>
+              <p style="margin:8px 0"><b>Business:</b> ${business}</p>
+              <p style="margin:8px 0"><b>Contact:</b> ${name}</p>
+              <p style="margin:8px 0"><b>Phone:</b> <a href="tel:${phone}">${phone}</a></p>
+              ${email?'<p style="margin:8px 0"><b>Email:</b> '+email+'</p>':''}
+              <p style="margin:8px 0"><b>Address:</b> ${address}, ${city}, ${state} ${zip}</p>
+              <p style="margin:8px 0"><b>Systems:</b> ${sysCount} | <b>Extinguishers:</b> ${extCount}</p>
+              <p style="margin:8px 0"><b>Services:</b> ${checks.join(', ')||'Not specified'}</p>
+              <p style="margin:8px 0"><b>Preferred Date:</b> ${prefDate||'ASAP'}</p>
+              <p style="margin:8px 0"><b>Estimate:</b> ${estimate}</p>
+              ${desc?'<p style="margin:8px 0"><b>Notes:</b> '+desc+'</p>':''}
+              <div style="margin-top:16px;padding-top:12px;border-top:1px solid #eee;text-align:center">
+                <a href="https://stephensadvanced.com/app" style="display:inline-block;padding:12px 28px;background:#f05a28;color:#fff;text-decoration:none;border-radius:8px;font-weight:800">Open App</a>
+              </div>
+            </div>
+          </div>`
+        })
+      })
+    }catch(emailErr){console.error('email notify:',emailErr)}
+
+    if (portalUrl) {
+      st.innerHTML = 'Request submitted! <br><br><a href="' + portalUrl + '" style="display:inline-block;padding:14px 28px;background:#f05a28;color:#fff;text-decoration:none;border-radius:8px;font-weight:800;font-size:16px">Access Your Portal →</a><br><br><span style="font-size:12px;color:#888">Your portal link is active for 15 days. You can edit your information, review equipment, and track service status.</span>'
+    } else {
+      st.textContent = 'Request submitted! We\'ll contact you to confirm scheduling.'
+    }
+    st.style.color='#10b981'
+    btn.textContent='Submitted!'
+    document.getElementById('serviceForm').reset()
+    updatePricing()
+    setTimeout(()=>{btn.disabled=false;btn.textContent='Submit Service Request'},5000)
+  }catch(err){
+    console.error('submit error:',err)
+    st.textContent='Error submitting. Please call (214) 994-4799 instead.'
+    st.style.color='#ef4444'
+    btn.disabled=false;btn.textContent='Submit Service Request'
+  }
+}
+
+// init pricing on load
+document.addEventListener('DOMContentLoaded',updatePricing)
+
+// Form type switching
+function showSingleForm(){
+  document.getElementById('single-form').style.display='block'
+  document.getElementById('multi-form').style.display='none'
+  document.getElementById('pick-single').style.borderColor='var(--fire)'
+  document.getElementById('pick-single').style.background='rgba(240,90,40,.04)'
+  document.getElementById('pick-multi').style.borderColor='#eee'
+  document.getElementById('pick-multi').style.background='#fff'
+}
+function showMultiForm(){
+  document.getElementById('single-form').style.display='none'
+  document.getElementById('multi-form').style.display='block'
+  document.getElementById('pick-multi').style.borderColor='var(--fire)'
+  document.getElementById('pick-multi').style.background='rgba(240,90,40,.04)'
+  document.getElementById('pick-single').style.borderColor='#eee'
+  document.getElementById('pick-single').style.background='#fff'
+}
+
+// Multi-location: add location
+let _multiLocCount=1
+function addMultiLocation(){
+  _multiLocCount++
+  const wrap=document.getElementById('multi-locations')
+  const div=document.createElement('div')
+  div.className='multi-loc'
+  div.dataset.idx=_multiLocCount-1
+  div.innerHTML=`
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div style="font-size:14px;font-weight:800;color:var(--fire)">Location ${_multiLocCount}</div>
+      <button type="button" onclick="this.closest('.multi-loc').remove()" style="background:#ef4444;color:#fff;border:none;border-radius:6px;padding:4px 12px;font-size:12px;font-weight:700;cursor:pointer">Remove</button>
+    </div>
+    <div class="fg"><label>Location Name *</label><input type="text" class="ml-name" placeholder="Location name" required></div>
+    <div class="fg"><label>Street Address *</label><input type="text" class="ml-addr" placeholder="123 Main St" required></div>
+    <div style="display:flex;gap:12px">
+      <div class="fg" style="flex:2"><label>City *</label><input type="text" class="ml-city" placeholder="City" required></div>
+      <div class="fg" style="flex:1"><label>Zip</label><input type="text" class="ml-zip" placeholder="Zip"></div>
+    </div>
+    <div class="fg"><label>On-Site Contact</label><input type="text" class="ml-site-contact" placeholder="Name"></div>
+    <div class="fg"><label>On-Site Phone</label><input type="tel" class="ml-site-phone" placeholder="Phone"></div>
+    <div style="text-align:left;margin:12px 0">
+      <label style="display:block;margin-bottom:8px;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#999">Equipment</label>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        <label style="display:flex;align-items:center;gap:4px;padding:8px 12px;border:2px solid #eee;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;color:#444;text-transform:none;letter-spacing:0"><input type="checkbox" class="ml-scope" value="suppression"> Kitchen Hood</label>
+        <label style="display:flex;align-items:center;gap:4px;padding:8px 12px;border:2px solid #eee;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;color:#444;text-transform:none;letter-spacing:0"><input type="checkbox" class="ml-scope" value="extinguishers"> Extinguishers</label>
+        <label style="display:flex;align-items:center;gap:4px;padding:8px 12px;border:2px solid #eee;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;color:#444;text-transform:none;letter-spacing:0"><input type="checkbox" class="ml-scope" value="elights"> E-Lights</label>
+        <label style="display:flex;align-items:center;gap:4px;padding:8px 12px;border:2px solid #eee;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;color:#444;text-transform:none;letter-spacing:0"><input type="checkbox" class="ml-scope" value="paint_booth"> Paint Booth</label>
+      </div>
+    </div>
+    <div style="display:flex;gap:12px">
+      <div class="fg" style="flex:1"><label>Systems</label><input type="number" class="ml-sys" value="1" min="0"></div>
+      <div class="fg" style="flex:1"><label>Extinguishers</label><input type="number" class="ml-ext" value="0" min="0"></div>
+    </div>
+    <hr style="border:none;border-top:1px solid #eee;margin:16px 0">
+  `
+  wrap.appendChild(div)
+}
+
+// Multi-location submit
+async function submitMultiRequest(e){
+  e.preventDefault()
+  const btn=document.getElementById('multi-submit')
+  const st=document.getElementById('multi-status')
+  btn.disabled=true;btn.textContent='Submitting...'
+  st.textContent=''
+
+  const company=document.getElementById('multi-company').value.trim()
+  const contact=document.getElementById('multi-contact').value.trim()
+  const phone=document.getElementById('multi-phone').value.trim()
+  const email=document.getElementById('multi-email').value.trim()
+  const billAddr=document.getElementById('multi-bill-addr').value.trim()
+  const notes=document.getElementById('multi-notes').value.trim()
+
+  try{
+    // Create billing account
+    const{data:ba,error:baErr}=await SB.from('billing_accounts').insert({
+      name:company,contact_name:contact,phone:phone,email:email||null,address:billAddr||null
+    }).select().single()
+    if(baErr)throw new Error('Could not create company: '+baErr.message)
+
+    // Create each location + job
+    const locs=document.querySelectorAll('.multi-loc')
+    let locCount=0
+    for(const locEl of locs){
+      const name=locEl.querySelector('.ml-name')?.value?.trim()
+      const addr=locEl.querySelector('.ml-addr')?.value?.trim()
+      const city=locEl.querySelector('.ml-city')?.value?.trim()
+      const zip=locEl.querySelector('.ml-zip')?.value?.trim()
+      const siteContact=locEl.querySelector('.ml-site-contact')?.value?.trim()
+      const sitePhone=locEl.querySelector('.ml-site-phone')?.value?.trim()
+      const scopes=Array.from(locEl.querySelectorAll('.ml-scope:checked')).map(c=>c.value)
+      const sysCt=parseInt(locEl.querySelector('.ml-sys')?.value)||0
+      const extCt=parseInt(locEl.querySelector('.ml-ext')?.value)||0
+      if(!name||!addr)continue
+
+      const scope=[]
+      if(scopes.includes('suppression')||scopes.includes('paint_booth'))scope.push('suppression')
+      if(scopes.includes('extinguishers'))scope.push('extinguishers')
+      if(scopes.includes('elights'))scope.push('elights')
+      if(!scope.length)scope.push('suppression','extinguishers')
+
+      const{data:loc}=await SB.from('locations').insert({
+        name:name,address:addr,city:city||'',state:'TX',zip:zip||'',
+        billing_account_id:ba.id,contact_name:siteContact||contact,
+        contact_phone:sitePhone||phone,contact_email:email||null
+      }).select().single()
+
+      if(loc){
+        await SB.from('jobs').insert({
+          location_id:loc.id,billing_account_id:ba.id,
+          type:'inspection',scope:[...new Set(scope)],status:'scheduled',
+          scheduled_date:new Date().toISOString().split('T')[0],
+          notes:'WEB SERVICE REQUEST — MULTI-LOCATION\nCompany: '+company+'\nContact: '+contact+' / '+phone+
+            '\nSystems: '+sysCt+' | Ext: '+extCt+'\nScopes: '+scopes.join(', ')+
+            (notes?'\n\n'+notes:'')
+        })
+        locCount++
+      }
+    }
+
+    // Generate portal token for first location
+    let portalUrl = ''
+    const firstLoc = document.querySelector('.multi-loc .ml-name')?.value?.trim()
+    if (locCount > 0) {
+      const {data:firstLocData} = await SB.from('locations').select('id').eq('billing_account_id', ba.id).limit(1).single()
+      if (firstLocData) {
+        const arr = new Uint8Array(16)
+        crypto.getRandomValues(arr)
+        const token = Array.from(arr, b => b.toString(16).padStart(2, '0')).join('')
+        await SB.from('portal_tokens').insert({token, location_id: firstLocData.id, billing_account_id: ba.id, expires_at: new Date(Date.now() + 15*24*60*60*1000).toISOString()})
+        portalUrl = 'https://stephensadvanced.com/portal?t=' + token
+      }
+    }
+
+    // Email notification
+    try{
+      await fetch('/api/send-email',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          to:'jonathan@stephensadvanced.com',
+          subject:'MULTI-LOCATION REQUEST — '+company+' — '+locCount+' locations',
+          html:`<div style="font-family:Arial;font-size:14px;color:#333;max-width:560px">
+            <div style="background:#f05a28;color:#fff;padding:16px 20px;border-radius:8px 8px 0 0;font-size:18px;font-weight:900">Multi-Location Service Request</div>
+            <div style="padding:20px;border:1px solid #eee;border-top:none;border-radius:0 0 8px 8px">
+              <p><b>Company:</b> ${company}</p>
+              <p><b>Contact:</b> ${contact} / ${phone}${email?' / '+email:''}</p>
+              <p><b>Locations:</b> ${locCount}</p>
+              ${notes?'<p><b>Notes:</b> '+notes+'</p>':''}
+              <div style="margin-top:16px;text-align:center"><a href="https://stephensadvanced.com/app" style="display:inline-block;padding:12px 28px;background:#f05a28;color:#fff;text-decoration:none;border-radius:8px;font-weight:800">Open App</a></div>
+            </div></div>`
+        })
+      })
+    }catch(emailErr){}
+
+    if (portalUrl) {
+      st.innerHTML = locCount+' location'+(locCount!==1?'s':'')+' submitted! <br><br><a href="' + portalUrl + '" style="display:inline-block;padding:14px 28px;background:#f05a28;color:#fff;text-decoration:none;border-radius:8px;font-weight:800;font-size:16px">Access Your Portal →</a><br><br><span style="font-size:12px;color:#888">Your portal link is active for 15 days. You can edit your information, review equipment, and track service status.</span>'
+    } else {
+      st.textContent=locCount+' location'+(locCount!==1?'s':'')+' submitted! We\'ll contact you to confirm scheduling.'
+    }
+    st.style.color='#10b981'
+    btn.textContent='Submitted!'
+    setTimeout(()=>{btn.disabled=false;btn.textContent='Submit All Locations'},5000)
+  }catch(err){
+    console.error('multi submit:',err)
+    st.textContent='Error: '+err.message+'. Call (214) 994-4799.'
+    st.style.color='#ef4444'
+    btn.disabled=false;btn.textContent='Submit All Locations'
+  }
+}
+// ═══ CHAT WIDGET ═══
+let _schMsgs=[],_schOpen=false,_schLastSend=0
+
+function toggleChat(){
+  _schOpen=!_schOpen
+  const p=document.getElementById('schPanel')
+  const b=document.getElementById('schBtn')
+  if(_schOpen){
+    p.style.display='flex'
+    b.style.display='none'
+    if(!_schMsgs.length){
+      _schMsgs.push({role:'assistant',content:'Hey, how can I help you?'})
+      renderSchChat()
+    }
+    setTimeout(()=>{const i=document.getElementById('schInput');if(i)i.focus()},100)
+  }else{
+    p.style.display='none'
+    b.style.display='flex'
+  }
+}
+
+function renderSchChat(){
+  const el=document.getElementById('schMsgs')
+  if(!el)return
+  el.innerHTML=_schMsgs.map(m=>{
+    const isUser=m.role==='user'
+    return`<div style="display:flex;justify-content:${isUser?'flex-end':'flex-start'};margin-bottom:8px">
+      <div style="max-width:80%;padding:10px 14px;border-radius:${isUser?'16px 16px 4px 16px':'16px 16px 16px 4px'};background:${isUser?'#f05a28':'#1e1e2e'};color:#fff;font-size:14px;line-height:1.45;word-wrap:break-word">${escH(m.content)}</div>
+    </div>`
+  }).join('')
+  el.scrollTop=el.scrollHeight
+}
+
+function escH(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>')}
+
+async function sendSchMsg(){
+  const input=document.getElementById('schInput')
+  const msg=input?.value?.trim()
+  if(!msg)return
+  const now=Date.now()
+  if(now-_schLastSend<3000)return
+  _schLastSend=now
+  input.value=''
+  _schMsgs.push({role:'user',content:msg})
+  renderSchChat()
+
+  // show typing indicator
+  const typing=document.createElement('div')
+  typing.id='schTyping'
+  typing.style.cssText='display:flex;justify-content:flex-start;margin-bottom:8px'
+  typing.innerHTML='<div style="padding:10px 14px;border-radius:16px 16px 16px 4px;background:#1e1e2e;color:#888;font-size:14px">typing...</div>'
+  document.getElementById('schMsgs')?.appendChild(typing)
+  document.getElementById('schMsgs').scrollTop=document.getElementById('schMsgs').scrollHeight
+
+  try{
+    const res=await fetch('/api/scheduler-chat',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({messages:_schMsgs})
+    })
+    const data=await res.json()
+    const t=document.getElementById('schTyping');if(t)t.remove()
+    if(data.reply){
+      _schMsgs.push({role:'assistant',content:data.reply})
+    }else if(data.error){
+      _schMsgs.push({role:'assistant',content:'Sorry, something went wrong. You can call us at (214) 994-4799.'})
+    }
+  }catch(e){
+    const t=document.getElementById('schTyping');if(t)t.remove()
+    _schMsgs.push({role:'assistant',content:'Sorry, I\'m having trouble connecting. Call us at (214) 994-4799.'})
+  }
+  renderSchChat()
+}
+
+// ═══ ADDRESS AUTOCOMPLETE (light theme) ═══
+function initAddressAutocomplete(inputId,onSelect){
+  const input=document.getElementById(inputId);if(!input)return
+  let debounce=null
+  const dropdown=document.createElement('div')
+  dropdown.style.cssText='position:absolute;left:0;right:0;top:100%;background:#fff;border:1px solid #ddd;border-radius:0 0 8px 8px;z-index:999;display:none;max-height:200px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.1)'
+  input.parentElement.style.position='relative'
+  input.parentElement.appendChild(dropdown)
+  input.addEventListener('input',()=>{
+    clearTimeout(debounce);const val=input.value.trim()
+    if(val.length<3){dropdown.style.display='none';return}
+    debounce=setTimeout(async()=>{
+      try{
+        const res=await fetch('/api/maps',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'autocomplete',params:{input:val}})})
+        const data=await res.json()
+        if(data.predictions?.length){
+          dropdown.innerHTML=data.predictions.map(p=>`<div style="padding:10px 12px;font-size:13px;color:#333;cursor:pointer;border-bottom:1px solid #eee" onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background=''" data-pid="${p.place_id}" onclick="selectAddr('${inputId}','${p.place_id}')">${p.description}</div>`).join('')
+          dropdown.style.display='block'
+        }else dropdown.style.display='none'
+      }catch(e){dropdown.style.display='none'}
+    },300)
+  })
+  document.addEventListener('click',e=>{if(e.target!==input&&!dropdown.contains(e.target))dropdown.style.display='none'})
+  window._addrCallbacks=window._addrCallbacks||{}
+  window._addrCallbacks[inputId]=onSelect
+}
+
+async function selectAddr(inputId,placeId){
+  try{
+    const res=await fetch('/api/maps',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'place_details',params:{place_id:placeId}})})
+    const data=await res.json()
+    if(data.result){
+      const c=data.result.address_components||[]
+      const get=t=>c.find(x=>x.types.includes(t))
+      const parsed={address:[get('street_number')?.long_name,get('route')?.long_name].filter(Boolean).join(' '),city:get('locality')?.long_name||get('sublocality')?.long_name||'',state:get('administrative_area_level_1')?.short_name||'TX',zip:get('postal_code')?.long_name||''}
+      const cb=window._addrCallbacks?.[inputId];if(cb)cb(parsed)
+      document.getElementById(inputId).value=parsed.address
+    }
+  }catch(e){}
+  document.querySelectorAll('div[style*="z-index: 999"],div[style*="z-index:999"]').forEach(d=>d.style.display='none')
+}
+
+// Attach autocomplete to service request form
+document.addEventListener('DOMContentLoaded',()=>{
+  initAddressAutocomplete('req-address',p=>{
+    const c=document.getElementById('req-city');if(c)c.value=p.city
+    const s=document.getElementById('req-state');if(s)s.value=p.state
+    const z=document.getElementById('req-zip');if(z)z.value=p.zip
+  })
+})
+</script>
+
+<!-- Chat Button -->
+<button id="schBtn" onclick="toggleChat()" style="position:fixed;bottom:24px;right:24px;width:56px;height:56px;border-radius:50%;background:#f05a28;border:none;color:#fff;font-size:24px;cursor:pointer;z-index:1000;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 20px rgba(240,90,40,.4);transition:transform .15s">💬</button>
+
+<!-- Chat Panel -->
+<div id="schPanel" style="display:none;position:fixed;bottom:0;right:0;width:380px;height:520px;background:#111118;border-radius:16px 16px 0 0;z-index:1001;flex-direction:column;box-shadow:0 -4px 40px rgba(0,0,0,.5);border:1px solid #222">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid #222">
+    <div style="display:flex;align-items:center;gap:10px">
+      <div style="width:8px;height:8px;border-radius:50%;background:#10b981"></div>
+      <span style="font-size:15px;font-weight:700;color:#fff">Chat with us</span>
+    </div>
+    <button onclick="toggleChat()" style="background:none;border:none;color:#888;font-size:20px;cursor:pointer;padding:4px 8px">✕</button>
+  </div>
+  <div id="schMsgs" style="flex:1;overflow-y:auto;padding:16px;-webkit-overflow-scrolling:touch"></div>
+  <div style="padding:12px 16px;border-top:1px solid #222;display:flex;gap:8px;padding-bottom:max(12px,env(safe-area-inset-bottom))">
+    <input id="schInput" type="text" placeholder="Type a message..." onkeydown="if(event.key==='Enter')sendSchMsg()" style="flex:1;padding:10px 14px;border-radius:24px;border:1px solid #333;background:#1a1a2e;color:#fff;font-size:14px;outline:none">
+    <button onclick="sendSchMsg()" style="width:40px;height:40px;border-radius:50%;background:#f05a28;border:none;color:#fff;font-size:16px;cursor:pointer;flex-shrink:0">→</button>
+  </div>
+</div>
+
+<style>
+@media(max-width:480px){
+  #schPanel{width:100vw!important;height:100dvh!important;border-radius:0!important;border:none!important}
+}
+#schBtn:active{transform:scale(.9)}
+#schInput::placeholder{color:#555}
+</style>
+</body>
+</html>
