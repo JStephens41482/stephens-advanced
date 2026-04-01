@@ -2689,10 +2689,20 @@ async function updateJobChecklist(){
       const done=rpts.some(r=>r.report_type===rptType)
       flags.push({label:label+(allSyss.length>1?' — '+sysName:''),done,action})
     })
-    // if suppression line exists but no systems on file
+    // if suppression line exists but no systems on file — infer from line item descriptions
     if(!allSyss.length){
-      const done=rpts.some(r=>r.report_type==='kitchen_suppression')
-      flags.push({label:'Kitchen Hood Report',done,action:`openSuppReport('${jid}','')`})
+      const hasDCLine=descs.match(/dry.?chem|paint|booth/)
+      const hasCALine=descs.match(/clean.?agent|fm.?200|novec/)
+      if(hasDCLine){
+        const done=rpts.some(r=>r.report_type==='dry_chemical')
+        flags.push({label:'Dry Chem / Paint Booth Report',done,action:`openDryChemReport('${jid}','')`})
+      }else if(hasCALine){
+        const done=rpts.some(r=>r.report_type==='clean_agent')
+        flags.push({label:'Clean Agent Report',done,action:`openCleanAgentReport('${jid}','')`})
+      }else{
+        const done=rpts.some(r=>r.report_type==='kitchen_suppression')
+        flags.push({label:'Kitchen Hood Report',done,action:`openSuppReport('${jid}','')`})
+      }
     }
   }
 
