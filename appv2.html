@@ -5860,7 +5860,7 @@ async function openExtReport(jobId,editMode){
     // match by id first, then by index
     const p=(prev.units||[]).find(u=>u.id===e.id)||(prev.units||[])[i]||{}
     return{
-      id:e.id,type:p.type||e.type||'',size:p.size||e.size||'',
+      id:e.id,type:p.type||e.type||'ABC Dry Chemical',size:p.size||e.size||'10lb',
       location:p.location||e.location_in_building||'',
       mfgDate:p.mfgDate||e.manufacture_date||'',
       lastInternal:p.lastInternal||e.last_internal||'',
@@ -6190,7 +6190,17 @@ async function handleExtPhoto(ev){
           body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:500,
             messages:[{role:'user',content:[
               {type:'image',source:{type:'base64',media_type:'image/jpeg',data:small.split(',')[1]}},
-              {type:'text',text:`Identify this fire extinguisher. Return ONLY valid JSON: {"type":"ABC Dry Chemical|CO2|Class K|Water|Halon|Halotron|Class D|Purple K|Clean Agent","size":"e.g. 5lb or 6 Liter","color":"red/silver/yellow/etc","brand":"if visible","mfgDate":"YYYY-MM if visible on label — dates may be in military format like 30MAR26 meaning 2026-03, JAN25 meaning 2025-01, or stamped as MM-YYYY, convert to YYYY-MM","condition":"pass or fail","notes":"any visible damage, expired tags, missing pin, dented, corroded, or other notable features"}`}
+              {type:'text',text:`Identify this fire extinguisher and read ALL dates on the tag/label. Return ONLY valid JSON:
+{"type":"ABC Dry Chemical|BC Dry Chemical|CO2|Class K|Water|Halon|Halotron|Class D|Purple K|Clean Agent",
+"size":"e.g. 5lb, 10lb, 6 Liter — read from label, common sizes are 2.5lb, 5lb, 10lb, 20lb for dry chem, 5lb/10lb/15lb/20lb for CO2, 6 Liter for Class K",
+"color":"red/silver/yellow/chrome/etc",
+"brand":"Amerex, Badger, Buckeye, Kidde, Ansul, First Alert, Strike First, etc — if visible",
+"mfgDate":"YYYY-MM — manufacturing date stamped on body or label. Military format: 30MAR26=2026-03, JAN25=2025-01. Also check for stamped month/year on bottom ring.",
+"lastService":"YYYY-MM — most recent annual inspection date from the service tag (punch-hole tag or sticker). Look for the most recent year and month punched/marked.",
+"lastInternal":"YYYY-MM — 6-year internal inspection date if shown on tag (look for '6-yr' or 'internal' notation). Only applies to stored-pressure dry chemical types, NOT CO2/Water/Class K.",
+"lastHydro":"YYYY-MM — hydrostatic test date if visible (stamped on body near DOT stamp, or on a test label). Format varies: may be stamped as '03-2020' or 'RE-TEST 2020'.",
+"condition":"pass or fail — fail if: missing pin, broken seal, low pressure gauge, visible damage, corroded, dented cylinder, obstructed, expired tag (no current year service), missing tag entirely",
+"notes":"describe any visible damage, expired tags, missing pin, dents, corrosion, faded label, wrong mounting height, blocked access, or other deficiencies"}`}
             ]}]
           })
         })
@@ -6198,34 +6208,55 @@ async function handleExtPhoto(ev){
         const txt=data.content?.[0]?.text||''
         let p;try{p=JSON.parse(txt.replace(/```json|```/g,'').trim())}catch{p={type:'ABC Dry Chemical',size:'',notes:'Could not identify'}}
 
+        // determine NFPA 10 due dates from AI data
+        const nfpa2=NFPA10[p.type]||NFPA10['ABC Dry Chemical']
+        let aiNotes=[]
+        if(p.mfgDate){
+          const mfg=new Date(p.mfgDate+'-01'),now2=new Date()
+          if(nfpa2.internal){
+            const intBase=p.lastInternal?new Date(p.lastInternal+'-01'):mfg
+            const intDue=new Date(intBase);intDue.setFullYear(intDue.getFullYear()+nfpa2.internal)
+            if(intDue<=now2)aiNotes.push(nfpa2.intLabel+' DUE')
+          }
+          const hydBase=p.lastHydro?new Date(p.lastHydro+'-01'):mfg
+          const hydDue=new Date(hydBase);hydDue.setFullYear(hydDue.getFullYear()+nfpa2.hydro)
+          if(hydDue<=now2)aiNotes.push(nfpa2.hydroLabel+' DUE')
+        }
+
         if(_snapExtIdx===-2){
           // new extinguisher — add to location
           await SB.from('extinguishers').insert({
             location_id:window._snapExtLocId,type:p.type||'ABC Dry Chemical',
-            size:p.size||null,location_in_building:null,manufacture_date:p.mfgDate||null
+            size:p.size||'10lb',location_in_building:null,
+            manufacture_date:p.mfgDate||null,last_internal:p.lastInternal||null,last_hydro:p.lastHydro||null
           })
           await load()
-          toast(`Added: ${p.type} ${p.size||''}`)
+          toast(`Added: ${p.type} ${p.size||''}${aiNotes.length?' — '+aiNotes.join(', '):''}`)
           await load()
-          // reopen report at the new extinguisher
           const l3=D.locs.find(x=>x.id===window._snapExtLocId)||{}
           const newIdx2=(l3.extinguishers||[]).length-1
-          pop() // close current shell
+          pop()
           openExtReport(window._snapExtJobId,Math.max(0,newIdx2))
         }else if(_snapExtIdx>=0){
-          // existing ext — AI populates fields + saves photo
           const d=_extRptData[_snapExtIdx]
           d.photoB64=small
           if(p.type)d.type=p.type
           if(p.size)d.size=p.size
           if(p.mfgDate)d.mfgDate=p.mfgDate
+          if(p.lastInternal)d.lastInternal=p.lastInternal
+          if(p.lastHydro)d.lastHydro=p.lastHydro
           if(p.condition)d.condition=p.condition
-          if(p.notes)d.notes=(d.notes?d.notes+'; ':'')+p.notes
+          const allNotes=[p.notes,...aiNotes].filter(Boolean).join('; ')
+          if(allNotes)d.notes=(d.notes?d.notes+'; ':'')+allNotes
           if(d.id){
-            try{await SB.from('extinguishers').update({type:p.type||d.type,size:p.size||d.size,manufacture_date:p.mfgDate||null}).eq('id',d.id)}catch(e){}
+            try{await SB.from('extinguishers').update({
+              type:p.type||d.type,size:p.size||d.size,
+              manufacture_date:p.mfgDate||null,
+              last_internal:p.lastInternal||d.lastInternal||null,
+              last_hydro:p.lastHydro||d.lastHydro||null
+            }).eq('id',d.id)}catch(e){}
           }
-          toast(`Identified: ${p.type} ${p.size||''} — ${p.condition||''}`)
-          // just re-render current entry in place — no pop, no restart
+          toast(`Identified: ${p.type} ${p.size||''}${aiNotes.length?' — '+aiNotes.join(', '):''}`)
           renderExtCurrent()
         }
       }catch(err){console.error(err);toast('Could not identify',false)}
