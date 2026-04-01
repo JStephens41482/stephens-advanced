@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="Apply to become a fire suppression technician at Stephens Advanced LLC in Dallas-Fort Worth. FEL-K or higher required.">
+<title>Apply — Stephens Advanced LLC</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0d0f14;--c1:#151820;--c2:#1c1f2a;--fire:#f05a28;--w:#f0f1f4;--w2:#c8ccd6;--g1:#7c8497;--g2:#555d72;--b1:#2a2f3e;--ok:#10b981;--bad:#ef4444;--r:12px}
+body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--w);font-size:16px;line-height:1.6;-webkit-font-smoothing:antialiased}
+a{color:var(--fire);text-decoration:none}
+
+.wrap{max-width:720px;margin:0 auto;padding:24px 20px 80px}
+
+.back{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:var(--g1);margin-bottom:32px;cursor:pointer}
+.back:hover{color:var(--fire)}
+
+.hero{margin-bottom:48px}
+.hero h1{font-size:32px;font-weight:900;line-height:1.15;margin-bottom:12px}
+.hero h1 span{color:var(--fire)}
+.hero p{font-size:15px;color:var(--g1);max-width:560px}
+
+.section{margin-bottom:40px}
+.section h2{font-size:20px;font-weight:800;margin-bottom:16px;padding-bottom:8px;border-bottom:1px solid var(--b1)}
+.section h3{font-size:15px;font-weight:700;color:var(--fire);margin-bottom:8px;margin-top:20px}
+
+.req{background:var(--c1);border:1px solid var(--b1);border-radius:var(--r);padding:16px 18px;margin-bottom:10px;display:flex;gap:12px;align-items:flex-start}
+.req-icon{font-size:20px;flex-shrink:0;margin-top:2px}
+.req-text{font-size:14px;color:var(--w2)}
+.req-text strong{color:var(--w);font-weight:700}
+
+.deal{background:var(--c2);border:1.5px solid var(--fire);border-radius:var(--r);padding:20px;margin-bottom:10px}
+.deal-label{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:var(--fire);margin-bottom:6px}
+.deal-value{font-size:22px;font-weight:900;margin-bottom:4px}
+.deal-desc{font-size:13px;color:var(--g1)}
+
+.warn{background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.2);border-radius:var(--r);padding:16px 18px;margin-bottom:24px;font-size:13px;color:#f87171}
+
+.test-section{background:var(--c1);border:1px solid var(--b1);border-radius:var(--r);padding:20px;margin-bottom:16px}
+.test-title{font-size:15px;font-weight:800;margin-bottom:4px}
+.test-desc{font-size:13px;color:var(--g1);margin-bottom:12px}
+.test-q{background:var(--c2);border:1px solid var(--b1);border-radius:8px;padding:14px;margin-bottom:10px}
+.test-q-label{font-size:12px;font-weight:700;color:var(--fire);margin-bottom:6px}
+.test-q-text{font-size:14px;color:var(--w);margin-bottom:10px}
+.test-opts{display:flex;flex-direction:column;gap:6px}
+.test-opt{display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--c1);border:1px solid var(--b1);border-radius:6px;cursor:pointer;font-size:13px;color:var(--w2);transition:all .15s}
+.test-opt:hover{border-color:var(--fire);color:var(--w)}
+.test-opt.selected{border-color:var(--fire);background:rgba(240,90,40,.08);color:var(--w)}
+.test-opt input{display:none}
+.test-dot{width:16px;height:16px;border-radius:50%;border:2px solid var(--g2);flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all .15s}
+.test-opt.selected .test-dot{border-color:var(--fire);background:var(--fire)}
+.test-opt.selected .test-dot::after{content:'';width:6px;height:6px;border-radius:50%;background:#fff}
+
+.test-result{padding:16px;border-radius:var(--r);text-align:center;font-size:14px;font-weight:700;margin-top:16px;display:none}
+.test-result.pass{display:block;background:rgba(16,185,129,.08);border:1px solid var(--ok);color:var(--ok)}
+.test-result.fail{display:block;background:rgba(239,68,68,.06);border:1px solid var(--bad);color:var(--bad)}
+
+.form-group{margin-bottom:16px}
+.form-group label{display:block;font-size:12px;font-weight:700;color:var(--g1);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px}
+.form-group input,.form-group select,.form-group textarea{width:100%;padding:12px 14px;background:var(--c1);border:1.5px solid var(--b1);border-radius:8px;color:var(--w);font-family:inherit;font-size:14px;outline:none;transition:border-color .15s}
+.form-group input:focus,.form-group select:focus,.form-group textarea:focus{border-color:var(--fire)}
+.form-group textarea{min-height:80px;resize:vertical}
+.form-group select{-webkit-appearance:none;appearance:none}
+
+.btn-submit{width:100%;padding:16px;background:var(--fire);color:#fff;font-size:16px;font-weight:800;border:none;border-radius:var(--r);cursor:pointer;min-height:54px;transition:opacity .15s}
+.btn-submit:hover{opacity:.9}
+.btn-submit:disabled{opacity:.4;cursor:not-allowed}
+
+.score-bar{display:flex;gap:4px;margin-top:12px;margin-bottom:4px}
+.score-pip{flex:1;height:6px;border-radius:3px;background:var(--b1)}
+.score-pip.on{background:var(--fire)}
+.score-pip.pass{background:var(--ok)}
+.score-label{font-size:11px;color:var(--g1);text-align:right}
+
+#appForm{display:none}
+#testGate{display:block}
+
+.footer{text-align:center;padding:32px 0;font-size:12px;color:var(--g2);border-top:1px solid var(--b1);margin-top:48px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<a href="https://stephensadvanced.com" class="back">‹ Back to stephensadvanced.com</a>
+
+<div class="hero">
+  <h1>We need <span>technicians.</span></h1>
+  <p>Stephens Advanced is growing in DFW. If you hold a Texas FEL-K or higher, know your way around an R-102, and want to build something instead of just collecting a check, keep reading.</p>
+</div>
+
+<div class="section">
+  <h2>What we're looking for</h2>
+  
+  <div class="req">
+    <div class="req-icon">🪪</div>
+    <div class="req-text"><strong>Texas FEL-K license minimum.</strong> FEL-A preferred. You must be able to legally inspect and certify kitchen hood suppression systems in the state of Texas. No exceptions. No apprentice permits for this role.</div>
+  </div>
+  
+  <div class="req">
+    <div class="req-icon">🔧</div>
+    <div class="req-text"><strong>Hands-on system knowledge.</strong> You need to be able to service an Ansul R-102 and a Pyro-Chem PCL/Protex II. If you can trip a system, replace fusible links, check cartridge weight, and verify fuel shutoff without a manual in your hand, we're talking.</div>
+  </div>
+  
+  <div class="req">
+    <div class="req-icon">🧠</div>
+    <div class="req-text"><strong>You can think.</strong> This isn't a warm-body position. You'll work independently in the field, make judgment calls on equipment condition, talk to restaurant owners and facility managers, and manage your own route. We test for this below.</div>
+  </div>
+  
+  <div class="req">
+    <div class="req-icon">🚐</div>
+    <div class="req-text"><strong>Reliable vehicle.</strong> You need your own transportation. Truck or van preferred. You'll be running routes across the DFW metroplex.</div>
+  </div>
+
+  <div class="req">
+    <div class="req-icon">📱</div>
+    <div class="req-text"><strong>Smartphone.</strong> Our entire operation runs on a custom-built digital platform. Reports, signatures, invoices, scheduling, navigation, compliance filing. All from your phone. If you're not comfortable with technology, this isn't the right fit.</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>What we're offering</h2>
+  
+  <div class="deal">
+    <div class="deal-label">Commission structure</div>
+    <div class="deal-value">50% of net revenue</div>
+    <div class="deal-desc">On every new customer you bring to the table and every new sale you generate. You find the client, you close the deal, you earn half. This is not a ceiling. There is no cap.</div>
+  </div>
+
+  <div class="deal">
+    <div class="deal-label">Apprenticeship period</div>
+    <div class="deal-value">Learn the platform. Learn the standard.</div>
+    <div class="deal-desc">You'll ride along and train on our systems, our digital workflow, our inspection standards, and our customer expectations. This period is paid minimally. We're investing time in you. You're investing time in us. Once you're cleared to run routes solo, the commission structure kicks in.</div>
+  </div>
+
+  <div class="deal">
+    <div class="deal-label">What you're joining</div>
+    <div class="deal-value">Not a corporation. A company being built.</div>
+    <div class="deal-desc">We're a small operation with a technology platform that's years ahead of companies ten times our size. Every report is digital. Every inspection is tracked. Every customer has a portal. Compliance is automated. You're not joining a paper-and-clipboard shop. You're joining a company that's being built right.</div>
+  </div>
+
+  <div class="warn">
+    This is not a good fit if you're looking for a guaranteed salary, benefits from day one, or a 9-to-5 with no initiative required. This is for people who want to eat what they kill and build something.
+  </div>
+</div>
+
+<div class="section" id="testGate">
+  <h2>Prove it.</h2>
+  <p style="font-size:14px;color:var(--g1);margin-bottom:20px">Before you can apply, pass this screening. 10 questions. Technical knowledge, mechanical reasoning, and basic problem-solving. You need 7 out of 10 to proceed. One attempt.</p>
+
+  <div id="testArea"></div>
+  
+  <button class="btn-submit" id="testSubmit" onclick="scoreTest()" style="margin-top:16px">Submit Test</button>
+  <div class="score-bar" id="scoreBar" style="display:none"></div>
+  <div class="score-label" id="scoreLabel"></div>
+  <div class="test-result" id="testResult"></div>
+</div>
+
+<form id="appForm" onsubmit="submitApp(event)">
+  <div class="section">
+    <h2>Application</h2>
+    <p style="font-size:14px;color:var(--ok);margin-bottom:20px;font-weight:700">Test passed. Fill out the application below.</p>
+
+    <div class="form-group">
+      <label>Full Name *</label>
+      <input type="text" id="app-name" required>
+    </div>
+    <div class="form-group">
+      <label>Phone *</label>
+      <input type="tel" id="app-phone" required>
+    </div>
+    <div class="form-group">
+      <label>Email</label>
+      <input type="email" id="app-email">
+    </div>
+    <div class="form-group">
+      <label>City you live in *</label>
+      <input type="text" id="app-city" required>
+    </div>
+    <div class="form-group">
+      <label>License type *</label>
+      <select id="app-license" required>
+        <option value="">Select...</option>
+        <option value="FEL-K">FEL-K (Kitchen Cooking Systems)</option>
+        <option value="FEL-A">FEL-A (Fixed Systems)</option>
+        <option value="FEL-PL">FEL-PL (Planning)</option>
+        <option value="Other">Other state license</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>License number *</label>
+      <input type="text" id="app-licnum" required placeholder="e.g. FEL-K-1234567">
+    </div>
+    <div class="form-group">
+      <label>Years of experience in fire suppression</label>
+      <input type="number" id="app-years" min="0" max="50">
+    </div>
+    <div class="form-group">
+      <label>Systems you have hands-on experience with (check all that apply)</label>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">
+        <label class="test-opt" style="flex:unset;padding:8px 14px"><input type="checkbox" value="Ansul R-102"> Ansul R-102</label>
+        <label class="test-opt" style="flex:unset;padding:8px 14px"><input type="checkbox" value="Pyro-Chem PCL"> Pyro-Chem PCL/Protex II</label>
+        <label class="test-opt" style="flex:unset;padding:8px 14px"><input type="checkbox" value="Buckeye Kitchen Mister"> Buckeye Kitchen Mister</label>
+        <label class="test-opt" style="flex:unset;padding:8px 14px"><input type="checkbox" value="Kidde WHDR"> Kidde WHDR</label>
+        <label class="test-opt" style="flex:unset;padding:8px 14px"><input type="checkbox" value="Captive-Aire"> Captive-Aire</label>
+        <label class="test-opt" style="flex:unset;padding:8px 14px"><input type="checkbox" value="Amerex"> Amerex</label>
+        <label class="test-opt" style="flex:unset;padding:8px 14px"><input type="checkbox" value="FM-200"> FM-200/Clean Agent</label>
+        <label class="test-opt" style="flex:unset;padding:8px 14px"><input type="checkbox" value="Paint Booth"> Paint Booth Systems</label>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Do you have your own vehicle?</label>
+      <select id="app-vehicle">
+        <option value="">Select...</option>
+        <option value="truck">Yes — truck</option>
+        <option value="van">Yes — van</option>
+        <option value="suv">Yes — SUV</option>
+        <option value="car">Yes — car</option>
+        <option value="no">No</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Anything else we should know?</label>
+      <textarea id="app-notes" placeholder="Tell us about yourself. What are you looking for? What drives you?"></textarea>
+    </div>
+
+    <button type="submit" class="btn-submit" id="appSubmitBtn">Submit Application</button>
+    <div id="appStatus" style="text-align:center;font-size:13px;margin-top:12px;min-height:20px"></div>
+  </div>
+</form>
+
+<div class="footer">
+  Stephens Advanced LLC · Fire Suppression & Safety · DFW Texas<br>
+  <a href="https://stephensadvanced.com">stephensadvanced.com</a> · (214) 994-4799
+</div>
+
+</div>
+
+<script>
+const QUESTIONS = [
+  {
+    q: "A Pyro-Chem Kitchen Knight II system uses what type of nozzle caps?",
+    opts: ["Metal blow-off caps","Rubber blow-off caps","Silicone screw-on caps","No caps required"],
+    answer: 0
+  },
+  {
+    q: "During a semi-annual kitchen hood inspection per NFPA 17A, what component must be replaced every time?",
+    opts: ["The agent tank","The manual pull cable","The fusible links","The micro switch"],
+    answer: 2
+  },
+  {
+    q: "A Pyro-Chem Kitchen Knight II system uses what size CO2 cartridge?",
+    opts: ["8 gram","16 gram","24 gram","38 gram"],
+    answer: 1
+  },
+  {
+    q: "Per NFPA 10, how often does a stored-pressure ABC dry chemical extinguisher require an internal examination?",
+    opts: ["Annually","Every 3 years","Every 6 years","Every 12 years"],
+    answer: 2
+  },
+  {
+    q: "You arrive at a restaurant to inspect an Ansul R-102. The system has one LT-30 nitrogen cartridge. How do you verify the cartridge is serviceable?",
+    opts: ["Check the pressure gauge on the cartridge","Weigh it and compare to the stamped tare weight","Weigh it and verify the hydrostatic test date is current","Shake it and listen for agent movement"],
+    answer: 2
+  },
+  {
+    q: "A CO2 fire extinguisher requires a hydrostatic test every how many years?",
+    opts: ["5 years","6 years","10 years","12 years"],
+    answer: 0
+  },
+  {
+    q: "When testing a kitchen hood suppression system from the terminal fusible link, what should happen to the fuel supply?",
+    opts: ["Nothing, fuel shutoff is tested separately","The gas valve should close automatically","The fuel line should be manually disconnected first","The exhaust fan should shut off the fuel"],
+    answer: 1
+  },
+  {
+    q: "You're inspecting extinguishers at a commercial building. One unit is a 10lb ABC stored-pressure with a manufacture date of 2014. It has no service collar or service label. What do you tell the customer?",
+    opts: ["It's fine, hydro isn't required until 15 years","It needs a 6-year internal examination","It's due for a 12-year hydrostatic test and needs to be pulled from service until tested","Condemn it and replace it"],
+    answer: 2
+  },
+  {
+    q: "What color are the blow-off caps on a Buckeye Kitchen Mister system?",
+    opts: ["Red rubber","Blue plastic","Yellow plastic","Stainless steel"],
+    answer: 0
+  },
+  {
+    q: "You're running 4 jobs today across DFW. Job A is in Frisco, Job B is in Arlington, Job C is in Plano, Job D is in McKinney. Your base is Euless. What's the most efficient route order?",
+    opts: ["A → B → C → D","B → A → C → D","B → C → A → D","D → A → C → B"],
+    answer: 1
+  }
+];
+
+let testTaken = false;
+
+function renderTest() {
+  let h = '';
+  QUESTIONS.forEach((q, i) => {
+    h += `<div class="test-q">
+      <div class="test-q-label">Question ${i + 1} of ${QUESTIONS.length}</div>
+      <div class="test-q-text">${q.q}</div>
+      <div class="test-opts">
+        ${q.opts.map((o, j) => `
+          <label class="test-opt" onclick="selectOpt(this,${i},${j})">
+            <input type="radio" name="q${i}" value="${j}">
+            <div class="test-dot"></div>
+            ${o}
+          </label>
+        `).join('')}
+      </div>
+    </div>`;
+  });
+  document.getElementById('testArea').innerHTML = h;
+}
+
+function selectOpt(el, qi, oi) {
+  const parent = el.closest('.test-opts');
+  parent.querySelectorAll('.test-opt').forEach(o => o.classList.remove('selected'));
+  el.classList.add('selected');
+  el.querySelector('input').checked = true;
+}
+
+function scoreTest() {
+  if (testTaken) return;
+  
+  let score = 0;
+  let answered = 0;
+  
+  QUESTIONS.forEach((q, i) => {
+    const selected = document.querySelector(`input[name="q${i}"]:checked`);
+    if (selected) {
+      answered++;
+      if (parseInt(selected.value) === q.answer) score++;
+    }
+  });
+  
+  if (answered < QUESTIONS.length) {
+    document.getElementById('testResult').className = 'test-result fail';
+    document.getElementById('testResult').textContent = 'Answer all 10 questions before submitting.';
+    document.getElementById('testResult').style.display = 'block';
+    return;
+  }
+  
+  testTaken = true;
+  document.getElementById('testSubmit').disabled = true;
+  
+  // Show score bar
+  const bar = document.getElementById('scoreBar');
+  bar.style.display = 'flex';
+  bar.innerHTML = QUESTIONS.map((_, i) => {
+    const selected = document.querySelector(`input[name="q${i}"]:checked`);
+    const correct = selected && parseInt(selected.value) === QUESTIONS[i].answer;
+    return `<div class="score-pip ${correct ? 'pass' : 'on'}"></div>`;
+  }).join('');
+  
+  document.getElementById('scoreLabel').textContent = score + ' / ' + QUESTIONS.length;
+  
+  const result = document.getElementById('testResult');
+  
+  if (score >= 7) {
+    result.className = 'test-result pass';
+    result.textContent = score + '/10 — You passed. Application is below.';
+    result.style.display = 'block';
+    
+    setTimeout(() => {
+      document.getElementById('testGate').style.display = 'none';
+      document.getElementById('appForm').style.display = 'block';
+      document.getElementById('appForm').scrollIntoView({ behavior: 'smooth' });
+    }, 1500);
+  } else {
+    result.className = 'test-result fail';
+    result.textContent = score + '/10 — You need 7 to pass. Study NFPA 10 and 17A and try again.';
+    result.style.display = 'block';
+    // Allow retry after 30 seconds
+    setTimeout(() => {
+      testTaken = false;
+      document.getElementById('testSubmit').disabled = false;
+      result.textContent += ' You can retry now.';
+    }, 30000);
+  }
+}
+
+async function submitApp(e) {
+  e.preventDefault();
+  const btn = document.getElementById('appSubmitBtn');
+  const st = document.getElementById('appStatus');
+  btn.disabled = true;
+  btn.textContent = 'Submitting...';
+  
+  const name = document.getElementById('app-name').value.trim();
+  const phone = document.getElementById('app-phone').value.trim();
+  const email = document.getElementById('app-email').value.trim();
+  const city = document.getElementById('app-city').value.trim();
+  const license = document.getElementById('app-license').value;
+  const licnum = document.getElementById('app-licnum').value.trim();
+  const years = document.getElementById('app-years').value;
+  const vehicle = document.getElementById('app-vehicle').value;
+  const notes = document.getElementById('app-notes').value.trim();
+  const systems = Array.from(document.querySelectorAll('#appForm input[type=checkbox]:checked')).map(c => c.value);
+  
+  try {
+    await fetch('/api/send-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        to: 'jonathan@stephensadvanced.com',
+        subject: 'TECH APPLICATION — ' + name + ' — ' + license + ' — ' + city,
+        html: `<div style="font-family:Arial;font-size:14px;color:#333;max-width:560px">
+          <div style="background:#f05a28;color:#fff;padding:16px 20px;border-radius:8px 8px 0 0;font-size:18px;font-weight:900">New Technician Application</div>
+          <div style="padding:20px;border:1px solid #eee;border-top:none;border-radius:0 0 8px 8px">
+            <p style="margin:8px 0"><b>Name:</b> ${name}</p>
+            <p style="margin:8px 0"><b>Phone:</b> <a href="tel:${phone}">${phone}</a></p>
+            <p style="margin:8px 0"><b>Email:</b> ${email || 'Not provided'}</p>
+            <p style="margin:8px 0"><b>City:</b> ${city}</p>
+            <p style="margin:8px 0"><b>License:</b> ${license} — ${licnum}</p>
+            <p style="margin:8px 0"><b>Years Experience:</b> ${years || 'Not specified'}</p>
+            <p style="margin:8px 0"><b>Vehicle:</b> ${vehicle || 'Not specified'}</p>
+            <p style="margin:8px 0"><b>Systems:</b> ${systems.join(', ') || 'None selected'}</p>
+            <p style="margin:8px 0"><b>Notes:</b> ${notes || 'None'}</p>
+            <p style="margin:8px 0"><b>Test Score:</b> Passed screening (7+ / 10)</p>
+          </div>
+        </div>`
+      })
+    });
+    
+    st.style.color = '#10b981';
+    st.textContent = 'Application submitted. Jon will be in touch.';
+    btn.textContent = 'Submitted';
+  } catch (err) {
+    st.style.color = '#ef4444';
+    st.textContent = 'Error submitting. Call (214) 994-4799 directly.';
+    btn.disabled = false;
+    btn.textContent = 'Submit Application';
+  }
+}
+
+renderTest();
+</script>
+</body>
+</html>
