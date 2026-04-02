@@ -2593,6 +2593,7 @@ async function openJob(id){
         ${D.techs.filter(t2=>t2.active).map(t2=>`<option value="${t2.id}"${j.assigned_to===t2.id?' selected':''}>${esc(t2.name)}</option>`).join('')}
       </select>
     </div>`:''}
+    ${j.scheduled_date!==td()?`<button style="width:100%;padding:10px;margin-top:8px;border-radius:var(--rs);background:var(--infos);border:1px solid var(--info);color:var(--info);font-size:12px;font-weight:800;cursor:pointer" onclick="addToTodaySchedule('${j.id}')">📅 Add to Today's Schedule</button>`:'<div style="font-size:11px;color:var(--ok);font-weight:700;margin-top:8px;text-align:center">✓ On today\'s schedule</div>'}
   </div>
 
   <!-- LOCATION -->
@@ -2993,6 +2994,15 @@ function setSt(btn,eid,st){
   btn.parentElement.querySelectorAll('.sb').forEach(b=>b.className='sb')
   const map={pass:'sp',swap:'ss',replace:'sr',condemn:'sc2',remove:'sx'}
   btn.classList.add(map[st]||'')
+}
+
+async function addToTodaySchedule(jobId){
+  const today=td()
+  await SB.from('jobs').update({scheduled_date:today}).eq('id',jobId)
+  audit('rescheduled','job',jobId,'jon',{new_date:today},'Added to today\'s schedule')
+  await load()
+  toast('Added to today\'s schedule')
+  pop();openJob(jobId)
 }
 
 async function assignJob(jobId,techId){
@@ -5677,16 +5687,8 @@ async function saveJob(){
   await load();toast('Job created ✓')
   nSt={loc:null,mk:false};window._preCalDate=null;window._preCalTime=null
   popAll()
-  rJobs();rJobs()
-  if(newJob?.id)openJob(newJob.id)
-  // offer to add to iPhone calendar
-  const calLoc=D.locs.find(x=>x.id===lid)||{}
-  addToCalendar({
-    title:'Stephens Advanced — '+(calLoc.name||'Job'),
-    date:jobDate,time:jobTime,
-    addr:[calLoc.address,calLoc.city].filter(Boolean).join(', '),
-    notes:jobNoteTxt
-  })
+  rCal()
+  if(newJob?.id)setTimeout(()=>openJob(newJob.id),100)
 }
 
 async function resendJobInvoice(invId,custName,invNum){
