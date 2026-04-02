@@ -7654,6 +7654,11 @@ async function openCleanAgentReport(jobId,sysId){
   // default 3 cylinders, expandable
   const prevCyls=prev.cylinders||[{num:1,agent:'',tare:'',gross:'',actual:'',pressure:'',ok:''}]
 
+  // init check state BEFORE building template (template reads it)
+  window._caCheckState=prev.checks||{}
+  const caChecks=checks
+  caChecks.forEach((_,i)=>{if(window._caCheckState[i]===undefined)window._caCheckState[i]='yes'})
+
   let h=`<div class="ov-hdr">
     <button class="ov-back" onclick="pop()">‹</button>
     <div class="ov-title">Clean Agent Report</div>
@@ -7759,8 +7764,6 @@ async function openCleanAgentReport(jobId,sysId){
     <button class="btn-p" id="caRptSaveBtn2" onclick="saveCleanAgentReport('${jobId}','${sysId}')">✓ Save Report</button>
   </div>`
 
-  window._caCheckState=prev.checks||{}
-  checks.forEach((_,i)=>{if(window._caCheckState[i]===undefined)window._caCheckState[i]='yes'})
   window._caServiceType=prev.serviceType||'semi'
   window._caCyls=prevCyls.map(c=>({...c}))
 
