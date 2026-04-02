@@ -6187,7 +6187,7 @@ async function handleExtPhoto(ev){
       toast('AI reading extinguisher...')
       try{
         const res=await fetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:500,
+          body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1024,
             messages:[{role:'user',content:[
               {type:'image',source:{type:'base64',media_type:'image/jpeg',data:small.split(',')[1]}},
               {type:'text',text:`Identify this fire extinguisher and read ALL dates on the tag/label. Return ONLY valid JSON:
