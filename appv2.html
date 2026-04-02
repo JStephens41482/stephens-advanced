@@ -5426,7 +5426,24 @@ async function _confirmSendEmail(){
       audit('sent','invoice',d.invId,'jon',{to:d.to},'Invoice '+d.invNum+' sent to '+d.to)
       await load()
       if(st){st.textContent='✓ Sent to '+d.to;st.style.color='var(--ok)'}
-      if(btn){btn.innerHTML='✓ Sent';btn.style.background='var(--ok)'}
+      if(btn){
+        btn.innerHTML='✓ Sent';btn.style.background='var(--ok)';btn.style.pointerEvents='none'
+        // show Job Done button
+        const doneBtn=document.createElement('button')
+        doneBtn.style.cssText='width:100%;padding:16px;border-radius:var(--r);background:var(--ok);color:#fff;font-size:16px;font-weight:900;border:none;cursor:pointer;margin-top:12px;min-height:54px'
+        doneBtn.textContent='✓ Job Done — Close Out'
+        doneBtn.onclick=async()=>{
+          doneBtn.textContent='Closing...';doneBtn.disabled=true
+          await SB.from('jobs').update({status:'completed',completed_at:new Date().toISOString()}).eq('id',d.inv.job_id)
+          try{await SB.from('calendar_events').update({color:'#9ca3af'}).eq('job_id',d.inv.job_id)}catch(e){}
+          audit('completed','job',d.inv.job_id,'jon',{status:'completed'},'Job completed after invoice sent')
+          await load()
+          toast('Job closed out ✓')
+          popAll()
+          rCal()
+        }
+        btn.parentElement.appendChild(doneBtn)
+      }
       toast('Invoice emailed with '+attachments.length+' report'+(attachments.length!==1?'s':''))
     }else{throw new Error(data.error||'Send failed')}
   }catch(err){
@@ -6829,9 +6846,11 @@ async function openDryChemReport(jobId,sysId){
   const sys=(l.suppression_systems||[]).find(s=>s.id===sysId)||(l.suppression_systems||[])[0]||{}
   const a=[l.address,l.city,l.state,l.zip].filter(Boolean).join(', ')
 
-  // load previous
+  // load previous — this job first, then last report for this location
+  let prev={}
   const{data:prevRpt}=await SB.from('reports').select('report_data').eq('job_id',jobId).eq('report_type','dry_chemical').limit(1)
-  const prev=prevRpt?.[0]?.report_data||{}
+  if(prevRpt?.length){prev=prevRpt[0].report_data||{}}
+  else{const locId2=j.location_id||l.id;if(locId2){const{data:locPrev}=await SB.from('reports').select('report_data').eq('location_id',locId2).eq('report_type','dry_chemical').order('created_at',{ascending:false}).limit(1);if(locPrev?.length)prev=locPrev[0].report_data||{}}}
 
   const checks=[
     'System location and positioning unchanged',
