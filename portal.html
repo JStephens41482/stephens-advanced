@@ -690,12 +690,36 @@ async function viewReport(rptId){
   </div>`
 
   if(rpt.report_type==='extinguisher'&&rd.units?.length){
-    html+=`<div class="section"><div class="section-t">Extinguishers · ${rd.units.length}</div>
-      <table><tr><th>#</th><th>Type / Size</th><th>Location</th><th>Status</th><th>Notes</th></tr>`
+    const flagged=rd.units.filter(u=>u.flagged||u.condition==='fail')
+    html+=`<div class="section"><div class="section-t">Extinguishers · ${rd.units.length}${flagged.length?' · <span style="color:#ef4444">'+flagged.length+' flagged</span>':''}</div>
+      <table><tr><th>#</th><th>Type / Size</th><th>Brand</th><th>Serial</th><th>Location</th><th>Mfg</th><th>Status</th><th>6yr Int.</th><th>Hydro</th><th>Notes</th></tr>`
     rd.units.forEach((u,i)=>{
-      html+=`<tr><td>${i+1}</td><td>${u.type||''} ${u.size||''}</td><td>${u.location||''}</td><td style="color:${u.condition==='pass'?'#10b981':'#ef4444'};font-weight:700">${(u.condition||'').toUpperCase()}</td><td>${u.notes||''}</td></tr>`
+      const isFlagged=u.flagged||u.condition==='fail'
+      html+=`<tr style="${isFlagged?'background:#fef2f2':''}">
+        <td>${i+1}</td>
+        <td>${u.type||''} ${u.size||''}</td>
+        <td>${u.manufacturer||''}</td>
+        <td style="font-family:monospace;font-size:10px">${u.serial||''}</td>
+        <td>${u.location||''}</td>
+        <td>${u.mfgDate||''}</td>
+        <td style="color:${u.condition==='pass'?'#10b981':'#ef4444'};font-weight:700">${(u.condition||'').toUpperCase()}</td>
+        <td>${u.lastInternal||'—'}</td>
+        <td>${u.lastHydro||'—'}</td>
+        <td>${u.notes||''}${u.flagged&&u.flagNote?' [FLAG: '+u.flagNote+']':''}</td>
+      </tr>`
     })
     html+=`</table></div>`
+    if(flagged.length){
+      html+=`<div class="section" style="border-color:#fee2e2"><div class="section-t" style="color:#ef4444">Flagged Units — Action Required</div>`
+      flagged.forEach((u,i)=>{
+        const num=rd.units.indexOf(u)+1
+        html+=`<div style="padding:6px 0;border-bottom:1px solid #fee2e2;font-size:12px">
+          <strong style="color:#ef4444">#${num} ${u.type||''} ${u.size||''}</strong>${u.serial?' · <span style="font-family:monospace">'+u.serial+'</span>':''}${u.location?' · '+u.location:''}
+          <div style="color:#dc2626;margin-top:2px">${u.flagNote||u.notes||'Issue detected'}</div>
+        </div>`
+      })
+      html+=`</div>`
+    }
   }
 
   if(rpt.report_type==='kitchen_suppression'||rpt.report_type==='dry_chemical'||rpt.report_type==='clean_agent'){
