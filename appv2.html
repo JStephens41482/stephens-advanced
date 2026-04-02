@@ -6203,8 +6203,12 @@ async function handleExtScan(ev){
       })
     })
     const data=await res.json()
+    console.log('Claude response:',JSON.stringify(data).slice(0,500))
+    if(data.error){toast('AI error: '+(data.error?.message||data.error),false);pop();_extView='detail';renderExtSession();return}
     const txt=data.content?.[0]?.text||''
-    let p;try{p=JSON.parse(txt.replace(/```json|```/g,'').trim())}catch{p={}}
+    console.log('AI text:',txt)
+    if(!txt){toast('AI returned empty — try again',false);pop();_extView='detail';renderExtSession();return}
+    let p;try{p=JSON.parse(txt.replace(/```json|```/g,'').trim())}catch(parseErr){console.error('JSON parse fail:',txt);p={}}
 
     if(p.type)u.type=p.type;if(p.size)u.size=p.size;if(p.brand)u.manufacturer=p.brand
     if(p.serial)u.serial=p.serial;if(p.mfgDate)u.mfgDate=p.mfgDate;if(p.model)u.model=p.model
