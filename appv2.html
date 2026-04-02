@@ -3147,6 +3147,32 @@ async function openCust(id){
   }
   h+=`</div>`
 
+  // auto-populate equipment from last invoice if none on file
+  if((!l.suppression_systems?.length||!l.extinguishers?.length)&&locInvs.length){
+    const lastInv=locInvs.sort((a,b)=>(b.date||'').localeCompare(a.date||''))[0]
+    if(lastInv){
+      const{data:ll}=await SB.from('invoice_lines').select('description,quantity').eq('invoice_id',lastInv.id)
+      const lines2=ll||[]
+      if(!l.suppression_systems?.length){
+        const syss=lines2.filter(ln=>(ln.description||'').toLowerCase().match(/semi.?annual|suppression|kitchen|ansul|pyro|buckeye|kidde|captive|clean.?agent|fm.?200|dry.?chem|dry chemical|paint|booth/))
+        for(const s of syss){
+          try{await SB.from('suppression_systems').insert({location_id:id,system_type:s.description.split('|')[0].trim(),category:'standard',tank_count:1,nozzle_count:0,fusible_link_count:0})}catch(e){}
+        }
+        if(syss.length){await load();l.suppression_systems=D.locs.find(x=>x.id===id)?.suppression_systems||[]}
+      }
+      if(!l.extinguishers?.length){
+        const extLine=lines2.find(ln=>(ln.description||'').toLowerCase().match(/extinguisher/))
+        if(extLine){
+          const qty=+(extLine.quantity)||1
+          for(let ei=0;ei<qty;ei++){
+            try{await SB.from('extinguishers').insert({location_id:id,type:'ABC Dry Chemical',size:'10lb'})}catch(e){}
+          }
+          await load();l.extinguishers=D.locs.find(x=>x.id===id)?.extinguishers||[]
+        }
+      }
+    }
+  }
+
   if(l.suppression_systems?.length){
     h+=`<div class="ds"><div class="ds-t" style="display:flex;justify-content:space-between;align-items:center"><span>Suppression Systems · ${l.suppression_systems.length}</span><button style="font-size:11px;font-weight:700;color:var(--fire)" onclick="openAddSupp('${l.id}')">+ Add</button></div>`
     l.suppression_systems.forEach(s=>{
