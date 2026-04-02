@@ -5888,6 +5888,8 @@ function openAddExt(locId){
   </div>`)
 }
 
+// ═══ EXTINGUISHER INVENTORY SESSION ═══
+// Walk a building. Snap/scan each unit. AI identifies. Flag problems. Generate report.
 const EXT_SIZES={
   'ABC Dry Chemical':['2.5lb','5lb','10lb','20lb','30lb'],
   'CO2':['5lb','10lb','15lb','20lb'],
@@ -5899,6 +5901,365 @@ const EXT_SIZES={
   'Purple K':['2.5lb','5lb','10lb','20lb','30lb'],
   'Clean Agent':['5lb','13lb'],
 }
+const MFR_PATTERNS={Amerex:[/^B\d{3}/i,/^A\d{3}/i],Kidde:[/^XY/i,/^PRO/i],Buckeye:[/^BK/i],Ansul:[/^AN/i,/^SEN/i],'Pyro-Chem':[/^PC/i],Badger:[/^BG/i],'First Alert':[/^FE/i],'Strike First':[/^SF/i]}
+function guessManufacturer(raw){for(const[name,pats]of Object.entries(MFR_PATTERNS)){if(pats.some(p=>p.test(raw)))return name}return null}
+// ─── Inventory Session State ───
+let _extUnits=[] // [{id,number,type,size,location,mfgDate,lastInternal,lastHydro,condition,notes,flagged,flagNote,serial,manufacturer,barcodeRaw,photo}]
+let _extView='list' // list|detail|flags
+let _extActiveId=null
+let _extJobId=null
+let _extLocId=null
+let _extSearchText=''
+
+function _extActive(){return _extUnits.find(u=>u.id===_extActiveId)||null}
+function _extFlagged(){return _extUnits.filter(u=>u.flagged)}
+
+async function openExtReport(jobId,editMode){
+  const j=D.jobs.find(x=>x.id===jobId);if(!j)return
+  const l=D.locs.find(x=>x.id===(j.location_id||j.location?.id))||j.location||{}
+  _extJobId=jobId;_extLocId=l.id||j.location_id
+  window._extJobId=jobId;window._extLoc=l
+
+  // load previous report or build from extinguishers on file
+  const{data:prevRpt}=await SB.from('reports').select('report_data').eq('job_id',jobId).eq('report_type','extinguisher').limit(1)
+  const prev=prevRpt?.[0]?.report_data||{}
+  const exts=l.extinguishers||[]
+
+  if(prev.units?.length){
+    _extUnits=prev.units.map((u,i)=>({
+      id:u.id||('ext-'+Date.now()+'-'+i),number:i+1,
+      type:u.type||'ABC Dry Chemical',size:u.size||'10lb',
+      location:u.location||'',mfgDate:u.mfgDate||'',
+      lastInternal:u.lastInternal||'',lastHydro:u.lastHydro||'',
+      condition:u.condition||'pass',notes:u.notes||'',
+      flagged:u.flagged||u.condition==='fail',flagNote:u.flagNote||'',
+      serial:u.serial||'',manufacturer:u.manufacturer||'',
+      barcodeRaw:u.barcodeRaw||'',photo:u.photoB64||u.photo||''
+    }))
+  }else if(exts.length){
+    _extUnits=exts.map((e,i)=>({
+      id:e.id,number:i+1,
+      type:e.type||'ABC Dry Chemical',size:e.size||'10lb',
+      location:e.location_in_building||'',mfgDate:e.manufacture_date||'',
+      lastInternal:e.last_internal||'',lastHydro:e.last_hydro||'',
+      condition:'pass',notes:'',flagged:false,flagNote:'',
+      serial:e.serial_number||'',manufacturer:'',barcodeRaw:'',photo:''
+    }))
+  }else{
+    _extUnits=[]
+  }
+
+  _extView='list';_extActiveId=null;_extSearchText=''
+  renderExtSession()
+}
+
+function renderExtSession(){
+  const units=_extUnits
+  const flagged=_extFlagged()
+
+  if(_extView==='detail'&&_extActive()){
+    renderExtDetail();return
+  }
+  if(_extView==='flags'){
+    renderExtFlags();return
+  }
+
+  // ─── LIST VIEW ───
+  const filtered=_extSearchText?units.filter(u=>(u.serial||'').toLowerCase().includes(_extSearchText)||(u.manufacturer||'').toLowerCase().includes(_extSearchText)||(u.type||'').toLowerCase().includes(_extSearchText)||(u.flagNote||'').toLowerCase().includes(_extSearchText)||String(u.number).includes(_extSearchText)):units
+
+  let h=`<div class="ov-hdr">
+    <button class="ov-back" onclick="pop()">‹</button>
+    <div class="ov-title">Extinguisher Inventory</div>
+    <div style="text-align:right"><div style="font-size:20px;font-weight:900;font-variant-numeric:tabular-nums">${units.length}</div><div style="font-size:9px;color:var(--g2);text-transform:uppercase;letter-spacing:1px">units</div></div>
+  </div><div class="ov-body" style="padding-bottom:120px">
+
+  <div style="display:flex;gap:8px;margin-bottom:12px">
+    <div style="flex:1;text-align:center;padding:8px;background:var(--c1);border:1px solid var(--b1);border-radius:var(--rs)"><div style="font-size:16px;font-weight:800;color:var(--fire)">${units.filter(u=>u.photo).length}</div><div style="font-size:9px;color:var(--g2)">PHOTOS</div></div>
+    <div style="flex:1;text-align:center;padding:8px;background:var(--c1);border:1px solid var(--b1);border-radius:var(--rs)"><div style="font-size:16px;font-weight:800;color:var(--ok)">${units.filter(u=>u.condition==='pass').length}</div><div style="font-size:9px;color:var(--g2)">PASS</div></div>
+    <div style="flex:1;text-align:center;padding:8px;background:${flagged.length?'var(--bads)':'var(--c1)'};border:1px solid ${flagged.length?'var(--bad)':'var(--b1)'};border-radius:var(--rs);cursor:${flagged.length?'pointer':'default'}" ${flagged.length?`onclick="_extView='flags';renderExtSession()"`:''}><div style="font-size:16px;font-weight:800;color:var(--bad)">${flagged.length}</div><div style="font-size:9px;color:var(--g2)">FLAGGED</div></div>
+  </div>`
+
+  if(units.length>=5){
+    h+=`<input value="${esc(_extSearchText)}" oninput="_extSearchText=this.value.toLowerCase();renderExtSession()" placeholder="Search serial, type, notes..." style="width:100%;padding:10px 12px;background:var(--c1);border:1px solid var(--b1);border-radius:var(--rs);color:var(--w);font-size:13px;margin-bottom:8px;outline:none;box-sizing:border-box">`
+  }
+
+  if(!filtered.length&&!units.length){
+    h+=`<div style="text-align:center;padding:60px 20px;color:var(--g2)"><div style="font-size:40px;margin-bottom:12px;opacity:.3">⊘</div><div style="font-size:15px;font-weight:600;color:var(--g1);margin-bottom:4px">No extinguishers yet</div><div style="font-size:13px">Tap below to start scanning</div></div>`
+  }
+
+  filtered.forEach(u=>{
+    const nfpa=NFPA10[u.type]||NFPA10['ABC Dry Chemical']
+    let dueTags=''
+    if(u.mfgDate&&nfpa.internal){const base=u.lastInternal?new Date(u.lastInternal+'-01'):new Date(u.mfgDate+'-01');const d2=new Date(base);d2.setFullYear(d2.getFullYear()+nfpa.internal);if(d2<=new Date())dueTags+='<span style="font-size:9px;font-weight:800;padding:2px 6px;border-radius:3px;background:var(--bads);color:var(--bad);margin-left:4px">6YR DUE</span>'}
+    if(u.mfgDate){const base=u.lastHydro?new Date(u.lastHydro+'-01'):new Date(u.mfgDate+'-01');const d2=new Date(base);d2.setFullYear(d2.getFullYear()+nfpa.hydro);if(d2<=new Date())dueTags+='<span style="font-size:9px;font-weight:800;padding:2px 6px;border-radius:3px;background:var(--warns);color:var(--warn);margin-left:4px">HYDRO DUE</span>'}
+
+    h+=`<div style="display:flex;gap:10px;padding:10px;margin-bottom:4px;background:var(--c1);border:1px solid ${u.flagged?'var(--bad)':'var(--b1)'};border-radius:var(--rs);cursor:pointer;align-items:center" onclick="_extActiveId='${u.id}';_extView='detail';renderExtSession()">
+      ${u.photo?`<img src="${u.photo}" style="width:44px;height:44px;object-fit:cover;border-radius:6px;flex-shrink:0">`:`<div style="width:44px;height:44px;border-radius:6px;background:var(--c2);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;color:var(--g2)">🧯</div>`}
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:6px">
+          <span style="font-size:13px;font-weight:700;color:var(--w)">#${u.number} ${esc(u.type)} ${esc(u.size)}</span>
+          ${u.flagged?'<span style="font-size:10px">🚩</span>':''}
+        </div>
+        <div style="font-size:11px;color:var(--g1);margin-top:2px;display:flex;gap:4px;align-items:center;flex-wrap:wrap">
+          <span style="padding:2px 6px;border-radius:3px;font-size:9px;font-weight:800;background:${u.condition==='pass'?'var(--oks)':'var(--bads)'};color:${u.condition==='pass'?'var(--ok)':'var(--bad)'}">${u.condition==='pass'?'PASS':'FAIL'}</span>
+          ${u.location?'<span>'+esc(u.location)+'</span>':''}
+          ${u.serial?'<span style="font-family:monospace;font-size:10px;color:var(--g2)">'+esc(u.serial)+'</span>':''}
+          ${dueTags}
+        </div>
+      </div>
+      <span style="color:var(--g2);font-size:14px">›</span>
+    </div>`
+  })
+
+  h+=`</div>
+  <div style="position:fixed;bottom:0;left:0;right:0;z-index:100;background:linear-gradient(transparent,var(--bg) 20%);padding:16px 16px 24px;display:flex;gap:8px">
+    <button class="btn-p" style="flex:1" onclick="extAddAndSnap()">📷 Snap Next</button>
+    <button class="btn-dim" style="flex:0;padding:12px 16px" onclick="extAddManual()">+ Manual</button>
+    ${flagged.length?`<button style="flex:0;padding:12px 16px;border-radius:var(--r);background:var(--bads);border:1px solid var(--bad);color:var(--bad);font-weight:800;cursor:pointer" onclick="_extView='flags';renderExtSession()">🚩 ${flagged.length}</button>`:''}
+  </div>`
+
+  push(h)
+}
+
+function renderExtDetail(){
+  const u=_extActive();if(!u)return
+  const nfpa=NFPA10[u.type]||NFPA10['ABC Dry Chemical']
+  const idx=_extUnits.findIndex(x=>x.id===u.id)
+  let internalDue='',hydroDue=''
+  if(nfpa.internal&&u.mfgDate){const base=u.lastInternal?new Date(u.lastInternal+'-01'):new Date(u.mfgDate+'-01');const d2=new Date(base);d2.setFullYear(d2.getFullYear()+nfpa.internal);if(d2<=new Date())internalDue='DUE'}
+  if(u.mfgDate){const base=u.lastHydro?new Date(u.lastHydro+'-01'):new Date(u.mfgDate+'-01');const d2=new Date(base);d2.setFullYear(d2.getFullYear()+nfpa.hydro);if(d2<=new Date())hydroDue='DUE'}
+
+  let h=`<div class="ov-hdr">
+    <button class="ov-back" onclick="_extView='list';renderExtSession()">‹</button>
+    <div class="ov-title">#${u.number} ${esc(u.type)} ${esc(u.size)}</div>
+    <button class="ov-act" style="color:var(--bad)" onclick="if(confirm('Delete this unit?')){_extUnits=_extUnits.filter(x=>x.id!=='${u.id}');_extView='list';renderExtSession()}">Delete</button>
+  </div><div class="ov-body" style="padding-bottom:120px">
+
+  <!-- FLAG TOGGLE -->
+  <div style="display:flex;align-items:center;gap:12px;padding:14px 16px;background:${u.flagged?'var(--bads)':'var(--c1)'};border:1px solid ${u.flagged?'var(--bad)':'var(--b1)'};border-radius:var(--r);margin-bottom:12px;cursor:pointer" onclick="_extUnits.find(x=>x.id==='${u.id}').flagged=!_extUnits.find(x=>x.id==='${u.id}').flagged;renderExtDetail()">
+    <div style="width:28px;height:28px;border-radius:6px;background:${u.flagged?'var(--bad)':'var(--b1)'};display:flex;align-items:center;justify-content:center;font-size:14px">${u.flagged?'🚩':' '}</div>
+    <div><div style="font-size:14px;font-weight:600;color:${u.flagged?'var(--bad)':'var(--g1)'}">${u.flagged?'FLAGGED':'Tap to flag this unit'}</div>
+    <div style="font-size:11px;color:var(--g2)">${u.flagged?'Needs attention':'Mark for follow-up'}</div></div>
+  </div>
+  ${u.flagged?`<textarea placeholder="What's wrong? (gauge in red, damaged hose, missing pin, expired tag...)" oninput="_extUnits.find(x=>x.id==='${u.id}').flagNote=this.value" style="width:100%;background:var(--bads);border:1px solid var(--bad);border-radius:var(--rs);padding:10px 12px;color:#fca5a5;font-size:13px;outline:none;resize:vertical;box-sizing:border-box;margin-bottom:12px;min-height:60px">${esc(u.flagNote)}</textarea>`:''}
+
+  <!-- PHOTO -->
+  ${u.photo?`<img src="${u.photo}" style="width:100%;max-height:200px;object-fit:cover;border-radius:var(--r);margin-bottom:8px">`:''}
+  <div style="display:flex;gap:8px;margin-bottom:16px">
+    <button class="btn-dim" style="flex:1;font-size:12px" onclick="extSnapPhoto('${u.id}')">📷 ${u.photo?'Retake':'Take Photo'}</button>
+    ${u.photo?`<button class="btn-dim" style="flex:0;padding:10px 14px;color:var(--bad);font-size:12px" onclick="_extUnits.find(x=>x.id==='${u.id}').photo='';renderExtDetail()">✕</button>`:''}
+  </div>
+
+  <!-- CONDITION -->
+  <div style="font-size:10px;font-weight:800;color:var(--g2);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">CONDITION</div>
+  <div style="display:flex;gap:8px;margin-bottom:16px">
+    <button style="flex:1;padding:14px;border-radius:var(--rs);font-size:14px;font-weight:800;border:2px solid ${u.condition==='pass'?'var(--ok)':'var(--b1)'};background:${u.condition==='pass'?'var(--oks)':'var(--c2)'};color:${u.condition==='pass'?'var(--ok)':'var(--g2)'};cursor:pointer" onclick="_extUnits.find(x=>x.id==='${u.id}').condition='pass';renderExtDetail()">✓ Pass</button>
+    <button style="flex:1;padding:14px;border-radius:var(--rs);font-size:14px;font-weight:800;border:2px solid ${u.condition==='fail'?'var(--bad)':'var(--b1)'};background:${u.condition==='fail'?'var(--bads)':'var(--c2)'};color:${u.condition==='fail'?'var(--bad)':'var(--g2)'};cursor:pointer" onclick="_extUnits.find(x=>x.id==='${u.id}').condition='fail';_extUnits.find(x=>x.id==='${u.id}').flagged=true;renderExtDetail()">✕ Fail</button>
+  </div>
+
+  <!-- BARCODE -->
+  <div style="font-size:10px;font-weight:800;color:var(--g2);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">BARCODE / SERIAL</div>
+  ${u.barcodeRaw?`<div style="background:var(--c1);border:1px solid var(--b1);border-left:3px solid var(--fire);border-radius:var(--rs);padding:10px 12px;margin-bottom:6px;font-family:monospace;font-size:12px;color:var(--w)">${esc(u.barcodeRaw)}${u.manufacturer?' · '+esc(u.manufacturer):''}</div>`:''}
+  <div style="display:flex;gap:8px;margin-bottom:16px">
+    <input value="${esc(u.serial||'')}" placeholder="Serial number" oninput="_extUnits.find(x=>x.id==='${u.id}').serial=this.value" style="flex:1;padding:10px;background:var(--c1);border:1px solid var(--b1);border-radius:var(--rs);color:var(--w);font-size:13px;font-family:monospace;outline:none">
+    <input value="${esc(u.manufacturer||'')}" placeholder="Manufacturer" oninput="_extUnits.find(x=>x.id==='${u.id}').manufacturer=this.value" style="flex:1;padding:10px;background:var(--c1);border:1px solid var(--b1);border-radius:var(--rs);color:var(--w);font-size:13px;outline:none">
+  </div>
+
+  <!-- TYPE/SIZE -->
+  <div style="font-size:10px;font-weight:800;color:var(--g2);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">TYPE & SIZE</div>
+  <div style="display:flex;gap:8px;margin-bottom:16px">
+    <select onchange="_extUnits.find(x=>x.id==='${u.id}').type=this.value;renderExtDetail()" style="flex:1;padding:10px;background:var(--c1);border:1px solid var(--b1);border-radius:var(--rs);color:var(--w);font-size:13px">
+      ${Object.keys(EXT_SIZES).map(t=>`<option${t===u.type?' selected':''}>${t}</option>`).join('')}
+    </select>
+    <select onchange="_extUnits.find(x=>x.id==='${u.id}').size=this.value" style="flex:1;padding:10px;background:var(--c1);border:1px solid var(--b1);border-radius:var(--rs);color:var(--w);font-size:13px">
+      ${(EXT_SIZES[u.type]||EXT_SIZES['ABC Dry Chemical']).map(s=>`<option${s===u.size?' selected':''}>${s}</option>`).join('')}
+    </select>
+  </div>
+
+  <!-- LOCATION -->
+  <div style="font-size:10px;font-weight:800;color:var(--g2);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">LOCATION IN BUILDING</div>
+  <input value="${esc(u.location||'')}" placeholder="e.g. Kitchen, Front Counter, Back Hall" oninput="_extUnits.find(x=>x.id==='${u.id}').location=this.value" style="width:100%;padding:10px;background:var(--c1);border:1px solid var(--b1);border-radius:var(--rs);color:var(--w);font-size:13px;outline:none;box-sizing:border-box;margin-bottom:16px">
+
+  <!-- DATES -->
+  <div style="font-size:10px;font-weight:800;color:var(--g2);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">NFPA 10 — ${nfpa.hydroLabel}${nfpa.internal?' · '+nfpa.intLabel:''}</div>
+  <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
+    <div style="display:flex;align-items:center;gap:8px"><span style="font-size:11px;color:var(--g1);width:80px">Mfg Date</span><input type="month" value="${u.mfgDate||''}" oninput="_extUnits.find(x=>x.id==='${u.id}').mfgDate=this.value" style="flex:1;padding:8px;background:var(--c1);border:1px solid var(--b1);border-radius:var(--rs);color:var(--w);font-size:13px;outline:none"></div>
+    ${nfpa.internal?`<div style="display:flex;align-items:center;gap:8px"><span style="font-size:11px;color:var(--g1);width:80px">Last 6-yr${internalDue?' <span style=color:var(--bad)>DUE</span>':''}</span><input type="month" value="${u.lastInternal||''}" oninput="_extUnits.find(x=>x.id==='${u.id}').lastInternal=this.value" style="flex:1;padding:8px;background:var(--c1);border:1px solid var(--b1);border-radius:var(--rs);color:var(--w);font-size:13px;outline:none"></div>`:''}
+    <div style="display:flex;align-items:center;gap:8px"><span style="font-size:11px;color:var(--g1);width:80px">Last Hydro${hydroDue?' <span style=color:var(--bad)>DUE</span>':''}</span><input type="month" value="${u.lastHydro||''}" oninput="_extUnits.find(x=>x.id==='${u.id}').lastHydro=this.value" style="flex:1;padding:8px;background:var(--c1);border:1px solid var(--b1);border-radius:var(--rs);color:var(--w);font-size:13px;outline:none"></div>
+  </div>
+
+  <!-- NOTES -->
+  <div style="font-size:10px;font-weight:800;color:var(--g2);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">NOTES</div>
+  <input value="${esc(u.notes||'')}" placeholder="General notes..." oninput="_extUnits.find(x=>x.id==='${u.id}').notes=this.value" style="width:100%;padding:10px;background:var(--c1);border:1px solid var(--b1);border-radius:var(--rs);color:var(--w);font-size:13px;outline:none;box-sizing:border-box">
+
+  </div>
+  <div style="position:fixed;bottom:0;left:0;right:0;z-index:100;background:linear-gradient(transparent,var(--bg) 20%);padding:16px 16px 24px;display:flex;gap:8px">
+    <button style="flex:0;padding:12px 16px;border-radius:var(--r);background:var(--c2);border:1px solid var(--b1);color:var(--w2);font-weight:700;cursor:pointer${idx===0?';opacity:.3':''}" ${idx===0?'disabled':''} onclick="_extActiveId=_extUnits[${idx-1}]?.id;renderExtSession()">◀</button>
+    <button class="btn-p" style="flex:1" onclick="extAddAndSnap()">📷 Snap Next</button>
+    <button style="flex:0;padding:12px 16px;border-radius:var(--r);background:var(--c2);border:1px solid var(--b1);color:var(--w2);font-weight:700;cursor:pointer${idx>=_extUnits.length-1?';opacity:.3':''}" ${idx>=_extUnits.length-1?'disabled':''} onclick="_extActiveId=_extUnits[${idx+1}]?.id;renderExtSession()">▶</button>
+  </div>`
+
+  push(h)
+}
+
+function renderExtFlags(){
+  const flagged=_extFlagged()
+  let h=`<div class="ov-hdr">
+    <button class="ov-back" onclick="_extView='list';renderExtSession()">‹</button>
+    <div class="ov-title" style="color:var(--bad)">Flagged Units</div>
+    <div style="font-size:18px;font-weight:900;color:var(--bad)">${flagged.length}</div>
+  </div><div class="ov-body">`
+  if(!flagged.length){
+    h+=`<div style="text-align:center;padding:40px;color:var(--g2)">No flagged units</div>`
+  }
+  flagged.forEach(u=>{
+    h+=`<div style="background:var(--bads);border:1px solid var(--bad);border-radius:var(--rs);padding:12px;margin-bottom:8px;cursor:pointer" onclick="_extActiveId='${u.id}';_extView='detail';renderExtSession()">
+      <div style="font-size:13px;font-weight:700;color:var(--bad)">#${u.number} ${esc(u.type)} ${esc(u.size)}</div>
+      <div style="font-size:12px;color:#fca5a5;margin-top:4px">${esc(u.flagNote||u.notes||'No note')}</div>
+      ${u.location?`<div style="font-size:11px;color:var(--g2);margin-top:2px">${esc(u.location)}</div>`:''}
+    </div>`
+  })
+  h+=`</div>
+  <div style="position:fixed;bottom:0;left:0;right:0;z-index:100;background:linear-gradient(transparent,var(--bg) 20%);padding:16px 16px 24px">
+    <button class="btn-p" onclick="finishExtReport('${_extJobId}')">Done — Save Report</button>
+  </div>`
+  push(h)
+}
+
+// ─── Add & Snap / Manual ───
+function extAddAndSnap(){
+  const num=_extUnits.length+1
+  const id='ext-'+Date.now()+'-'+num
+  _extUnits.push({id,number:num,type:'ABC Dry Chemical',size:'10lb',location:'',mfgDate:'',lastInternal:'',lastHydro:'',condition:'pass',notes:'',flagged:false,flagNote:'',serial:'',manufacturer:'',barcodeRaw:'',photo:''})
+  _extActiveId=id
+  extSnapPhoto(id)
+}
+
+function extAddManual(){
+  const num=_extUnits.length+1
+  const id='ext-'+Date.now()+'-'+num
+  _extUnits.push({id,number:num,type:'ABC Dry Chemical',size:'10lb',location:'',mfgDate:'',lastInternal:'',lastHydro:'',condition:'pass',notes:'',flagged:false,flagNote:'',serial:'',manufacturer:'',barcodeRaw:'',photo:''})
+  _extActiveId=id;_extView='detail';renderExtSession()
+}
+
+// ─── Photo capture with AI ───
+function extSnapPhoto(unitId){
+  _extActiveId=unitId
+  // create file input if needed
+  let inp=$('extSessionPhotoInput')
+  if(!inp){inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.capture='environment';inp.id='extSessionPhotoInput';inp.style.display='none';inp.onchange=handleExtSessionPhoto;document.body.appendChild(inp)}
+  inp.click()
+}
+
+async function handleExtSessionPhoto(ev){
+  const file=ev.target.files[0];if(!file)return
+  const reader=new FileReader()
+  reader.onload=async e=>{
+    const b64Full=e.target.result
+    const img=new Image()
+    img.onload=async()=>{
+      const canvas=document.createElement('canvas')
+      const max=1000;let w=img.width,h=img.height
+      if(w>max||h>max){if(w>h){h=Math.round(h*max/w);w=max}else{w=Math.round(w*max/h);h=max}}
+      canvas.width=w;canvas.height=h;canvas.getContext('2d').drawImage(img,0,0,w,h)
+      const small=canvas.toDataURL('image/jpeg',0.75)
+
+      const u=_extUnits.find(x=>x.id===_extActiveId)
+      if(u)u.photo=small
+
+      // AI identify
+      toast('AI reading extinguisher...')
+      try{
+        const res=await fetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1024,
+            messages:[{role:'user',content:[
+              {type:'image',source:{type:'base64',media_type:'image/jpeg',data:small.split(',')[1]}},
+              {type:'text',text:`Identify this fire extinguisher and read ALL dates on the tag/label. Return ONLY valid JSON:
+{"type":"ABC Dry Chemical|BC Dry Chemical|CO2|Class K|Water|Halon|Halotron|Class D|Purple K|Clean Agent",
+"size":"e.g. 5lb, 10lb, 6 Liter",
+"brand":"Amerex, Badger, Buckeye, Kidde, Ansul, First Alert, Strike First, etc",
+"serial":"serial number if visible on label/tag",
+"mfgDate":"YYYY-MM — manufacturing date. Military format: 30MAR26=2026-03, JAN25=2025-01",
+"lastService":"YYYY-MM — most recent annual inspection from service tag",
+"lastInternal":"YYYY-MM — 6-year internal date if shown (stored-pressure dry chem types only)",
+"lastHydro":"YYYY-MM — hydrostatic test date if visible",
+"condition":"pass or fail — fail if: missing pin, broken seal, low gauge, damage, corroded, expired tag, no tag",
+"notes":"describe any visible issues"}`}
+            ]}]
+          })
+        })
+        const data=await res.json()
+        const txt=data.content?.[0]?.text||''
+        let p;try{p=JSON.parse(txt.replace(/```json|```/g,'').trim())}catch{p={}}
+
+        if(u){
+          if(p.type)u.type=p.type
+          if(p.size)u.size=p.size
+          if(p.brand)u.manufacturer=p.brand
+          if(p.serial)u.serial=p.serial
+          if(p.mfgDate)u.mfgDate=p.mfgDate
+          if(p.lastInternal)u.lastInternal=p.lastInternal
+          if(p.lastHydro)u.lastHydro=p.lastHydro
+          if(p.condition)u.condition=p.condition
+          if(p.condition==='fail')u.flagged=true
+          if(p.notes)u.notes=p.notes
+
+          // check NFPA 10 due dates
+          const nfpa2=NFPA10[u.type]||NFPA10['ABC Dry Chemical']
+          let aiDue=[]
+          if(u.mfgDate&&nfpa2.internal){const base=u.lastInternal?new Date(u.lastInternal+'-01'):new Date(u.mfgDate+'-01');const d2=new Date(base);d2.setFullYear(d2.getFullYear()+nfpa2.internal);if(d2<=new Date())aiDue.push('6yr internal DUE')}
+          if(u.mfgDate){const base=u.lastHydro?new Date(u.lastHydro+'-01'):new Date(u.mfgDate+'-01');const d2=new Date(base);d2.setFullYear(d2.getFullYear()+nfpa2.hydro);if(d2<=new Date())aiDue.push(nfpa2.hydro+'yr hydro DUE')}
+
+          toast(`${p.type||'?'} ${p.size||''}${aiDue.length?' — '+aiDue.join(', '):''}`)
+
+          // save to DB if this ext has a real ID
+          if(u.id&&!u.id.startsWith('ext-')){
+            try{await SB.from('extinguishers').update({type:u.type,size:u.size,serial_number:u.serial||null,manufacture_date:u.mfgDate||null,last_internal:u.lastInternal||null,last_hydro:u.lastHydro||null}).eq('id',u.id)}catch(e){}
+          }
+        }
+      }catch(err){console.error(err);toast('Could not identify — added anyway',false)}
+
+      _extView='detail';renderExtSession()
+    }
+    img.src=b64Full
+  }
+  reader.readAsDataURL(file)
+  ev.target.value=''
+}
+
+// ─── Finish & Save ───
+async function finishExtReport(jobId,silent){
+  // save report data in the format buildExtReportHtml expects
+  const reportData={
+    units:_extUnits.map(u=>({
+      id:u.id,type:u.type,size:u.size,location:u.location,
+      mfgDate:u.mfgDate,lastInternal:u.lastInternal,lastHydro:u.lastHydro,
+      condition:u.condition,notes:u.notes+(u.flagged&&u.flagNote?' [FLAGGED: '+u.flagNote+']':''),
+      photoB64:u.photo,serial:u.serial,manufacturer:u.manufacturer,
+      barcodeRaw:u.barcodeRaw,flagged:u.flagged,flagNote:u.flagNote
+    })),
+    savedAt:new Date().toISOString()
+  }
+
+  const locId=_extLocId||D.jobs.find(x=>x.id===jobId)?.location_id
+  try{
+    const{data:ex}=await SB.from('reports').select('id').eq('job_id',jobId).eq('report_type','extinguisher').limit(1)
+    if(ex?.length){await SB.from('reports').update({report_data:reportData}).eq('id',ex[0].id)}
+    else{await SB.from('reports').insert({job_id:jobId,location_id:locId,report_type:'extinguisher',report_data:reportData})}
+  }catch(e){console.error('save ext report:',e)}
+
+  // update extinguisher records in DB
+  for(const u of _extUnits){
+    if(!u.id||u.id.startsWith('ext-'))continue
+    const upd={};if(u.lastInternal)upd.last_internal=u.lastInternal;if(u.lastHydro)upd.last_hydro=u.lastHydro
+    if(Object.keys(upd).length){try{await SB.from('extinguishers').update(upd).eq('id',u.id)}catch(e){}}
+  }
+
+  await load()
+  if(!silent){toast('Extinguisher report saved — '+_extUnits.length+' units');pop()}
+  updateJobChecklist()
+}
+
 function updateExtSizes(){
   const type=$('ext-type')?.value
   if(type==='_custom'){
@@ -5955,10 +6316,7 @@ const NFPA10={
   'Clean Agent':{hydro:12,internal:6,hydroLabel:'12-year hydro',intLabel:'6-year internal'}
 }
 
-let _extRptData=[]
-let _extRptIdx=0
-
-async function openExtReport(jobId,editMode){
+/* OLD EXT REPORT CODE REMOVED — replaced by Inventory Session above
   const j=D.jobs.find(x=>x.id===jobId);if(!j)return
   const l=D.locs.find(x=>x.id===(j.location_id||j.location?.id))||j.location||{}
   const exts=l.extinguishers||[]
@@ -6375,8 +6733,7 @@ async function handleExtPhoto(ev){
     img.src=b64Full
   }
   reader.readAsDataURL(file)
-  ev.target.value=''
-}
+END OLD EXT CODE */
 
 // ═══ SHARED REPORT PDF TEMPLATE ═══
 const RPT_LOGO=`<svg width="44" height="50" viewBox="0 0 32 38" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M16 2C16 2 6 10 6 20C6 26 10 30 16 30C22 30 26 26 26 20C26 10 16 2 16 2Z" fill="#f05a28"/><path d="M16 8C16 8 10 14 10 20C10 23 12 25 14 26C13 23 14 20 16 18C18 20 19 23 18 26C20 25 22 23 22 20C22 14 16 8 16 8Z" fill="#ff7847"/><ellipse cx="16" cy="30" rx="5" ry="6" fill="#3498db"/><ellipse cx="16" cy="29" rx="3" ry="3.5" fill="#5dade2"/></svg>`
