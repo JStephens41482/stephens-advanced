@@ -6199,66 +6199,65 @@ async function handleExtStepPhoto(ev,step){
   else if(step===1){u.photoLabel=b64;u.photo=b64} // label photo is also the primary photo
   else if(step===2)u.photoMaint=b64
 
-  // barcode detection on label photo (step 1) — read barcodes then look up product data
+  // Step 1: Label photo — AI reads everything + barcode lookup
   if(step===1){
-    // try BarcodeDetector API first
-    if(_hasBarcodeAPI){
-      try{
-        const img2=new Image();img2.src=b64
-        await new Promise(r=>{img2.onload=r})
-        const detector=new BarcodeDetector({formats:BC_FORMATS})
-        const barcodes=await detector.detect(img2)
-        if(barcodes.length){
-          u.barcodes=barcodes.map(bc=>({raw:bc.rawValue,format:bc.format}))
-          // look up EACH barcode via API to get product data
-          for(const bc of barcodes){
-            if(!u.barcodeRaw)u.barcodeRaw=bc.rawValue
-            if(['code_128','code_39'].includes(bc.format)){u.serial=bc.rawValue;continue}
-            // UPC/EAN — look up product
-            try{
-              toast('Looking up barcode...')
-              const lookupRes=await fetch('/api/upc-lookup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({barcode:bc.rawValue,format:bc.format})})
-              const prod=await lookupRes.json()
-              if(prod.success){
-                if(prod.brand)u.manufacturer=prod.brand
-                if(prod.type)u.type=prod.type
-                if(prod.size)u.size=prod.size
-                if(prod.model)u.model=prod.model
-                if(prod.serial)u.serial=prod.serial
-                toast(`${prod.brand||''} ${prod.type||''} ${prod.size||''}`.trim()||'Product found')
-              }
-            }catch(e){console.error('upc lookup:',e)}
-          }
-          // fallback manufacturer detection from serial patterns
-          if(!u.manufacturer){const mfr=guessManufacturer(u.serial||u.barcodeRaw||'');if(mfr)u.manufacturer=mfr}
-        }
-      }catch(e){console.error('barcode:',e)}
-    }
-  }
-
-  // AI analysis on label photo (step 1)
-  if(step===1){
-    toast('AI reading...')
+    toast('Reading label...')
     try{
+      // Single AI call reads barcode numbers, type, size, brand, serial, dates, condition
       const res=await fetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1024,
           messages:[{role:'user',content:[
             {type:'image',source:{type:'base64',media_type:'image/jpeg',data:b64.split(',')[1]}},
-            {type:'text',text:`Identify this fire extinguisher from its front label. Return ONLY valid JSON:
-{"type":"ABC Dry Chemical|BC Dry Chemical|CO2|Class K|Water|Halon|Halotron|Class D|Purple K|Clean Agent","size":"e.g. 5lb, 10lb, 6 Liter","brand":"Amerex, Badger, Buckeye, Kidde, Ansul, First Alert, Strike First, etc","serial":"serial number if visible","mfgDate":"YYYY-MM","lastInternal":"YYYY-MM if visible","lastHydro":"YYYY-MM if visible","condition":"pass or fail","notes":"any visible issues"}`}
+            {type:'text',text:`Read this fire extinguisher label. Read ALL barcodes visible (there are usually 2 — one serial, one UPC product code). Return ONLY valid JSON:
+{"type":"ABC Dry Chemical|BC Dry Chemical|CO2|Class K|Water|Halon|Halotron|Class D|Purple K|Clean Agent",
+"size":"e.g. 5lb, 10lb, 6 Liter","brand":"Amerex, Badger, Buckeye, Kidde, Ansul, First Alert, Strike First, etc",
+"serial":"serial number from label or barcode — usually alphanumeric, often starts with manufacturer prefix",
+"upc":"UPC/EAN product barcode digits if visible (12-13 digits)",
+"mfgDate":"YYYY-MM","lastInternal":"YYYY-MM if visible","lastHydro":"YYYY-MM if visible",
+"condition":"pass or fail","notes":"any visible issues","model":"model number if visible"}`}
           ]}]
         })
       })
       const data=await res.json()
       const txt=data.content?.[0]?.text||''
       let p;try{p=JSON.parse(txt.replace(/```json|```/g,'').trim())}catch{p={}}
-      if(p.type)u.type=p.type;if(p.size)u.size=p.size;if(p.brand&&!u.manufacturer)u.manufacturer=p.brand
-      if(p.serial&&!u.serial)u.serial=p.serial;if(p.mfgDate)u.mfgDate=p.mfgDate
+      if(p.type)u.type=p.type;if(p.size)u.size=p.size;if(p.brand)u.manufacturer=p.brand
+      if(p.serial)u.serial=p.serial;if(p.mfgDate)u.mfgDate=p.mfgDate;if(p.model)u.model=p.model
       if(p.lastInternal)u.lastInternal=p.lastInternal;if(p.lastHydro)u.lastHydro=p.lastHydro
       if(p.condition)u.condition=p.condition;if(p.condition==='fail')u.flagged=true
       if(p.notes)u.notes=p.notes
-      toast(`${u.type} ${u.size}${u.serial?' · '+u.serial:''}`)
-    }catch(e){toast('AI unavailable',false)}
+      if(p.upc){u.barcodeRaw=p.upc;toast('Looking up UPC...')}
+
+      // UPC product lookup if AI found a barcode
+      if(p.upc&&p.upc.length>=10){
+        try{
+          const lookupRes=await fetch('/api/upc-lookup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({barcode:p.upc,format:'upc_a'})})
+          const prod=await lookupRes.json()
+          if(prod.success){
+            if(prod.brand&&!u.manufacturer)u.manufacturer=prod.brand
+            if(prod.type&&u.type==='ABC Dry Chemical')u.type=prod.type
+            if(prod.size&&!u.size)u.size=prod.size
+            if(prod.model&&!u.model)u.model=prod.model
+          }
+        }catch(e){}
+      }
+
+      // Also try native BarcodeDetector if available (bonus — may catch barcodes AI missed)
+      if(_hasBarcodeAPI){
+        try{
+          const img2=new Image();img2.src=b64;await new Promise(r=>{img2.onload=r})
+          const barcodes=await new BarcodeDetector({formats:BC_FORMATS}).detect(img2)
+          barcodes.forEach(bc=>{
+            if(!u.barcodeRaw)u.barcodeRaw=bc.rawValue
+            if(['code_128','code_39'].includes(bc.format)&&!u.serial)u.serial=bc.rawValue
+            u.barcodes=(u.barcodes||[]);u.barcodes.push({raw:bc.rawValue,format:bc.format})
+          })
+        }catch(e){}
+      }
+
+      if(!u.manufacturer){const mfr=guessManufacturer(u.serial||u.barcodeRaw||'');if(mfr)u.manufacturer=mfr}
+      toast(`${u.type} ${u.size}${u.serial?' · '+u.serial:''}${u.manufacturer?' · '+u.manufacturer:''}`)
+    }catch(e){toast('Could not read label',false)}
   }
 
   // AI reads maintenance tag (step 2)
