@@ -789,8 +789,8 @@ const norm=s=>(s||'').toLowerCase().replace(/[^a-z0-9]/g,'')
 // known standard catalog keys — custom items outside this set get saved for reuse
 const KNOWN_KEYS=new Set(['extinguisherinspection','suppressionsemiannual','suppressioncatank','suppressioncacore','fusiblelink','blowoffcap','siliconecap','nozzle','ansullt10cartridge','ansullt30cartridge','16gco2cartridge','new5lbabcextinguisher','new10lbabcextinguisher','newclasskextinguisher','elightannualtest','hydrostatictestclassk','hydrostatictestco2','hydrostatictesth2o','hydrostatictestabс','drycheminalinternalinspection','labor','emergencycall','afterhourscall','holidayweekendcall'])
 async function saveCustomItem(desc,price){
-  const nk=norm(desc);if(!nk||KNOWN_KEYS.has(nk))return
-  try{await SB.from('custom_items').upsert({normalized_key:nk,description:desc,unit_price:+(price)||0},{onConflict:'normalized_key'})}catch(e){}
+  // disabled — custom items no longer saved to prevent dropdown bloat
+  // standard items are in the quick-add dropdown, one-offs don't need reuse
 }
 const fmtD=n=>isNaN(+n)?'$0.00':('$'+(+n).toFixed(2))
 const esc=s=>(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')
