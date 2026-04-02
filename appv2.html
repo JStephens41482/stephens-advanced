@@ -2873,7 +2873,7 @@ async function updateJobChecklist(){
     const fi=parseInt(el.dataset.flag)
     const f=flags[fi]
     if(f&&f.action){
-      el.addEventListener('click',()=>{try{eval(f.action)}catch(e){console.error('flag click:',e);toast('Error: '+e.message,false)}})
+      el.addEventListener('click',async()=>{try{await eval(f.action)}catch(e){console.error('flag click:',e);toast('Error: '+e.message,false)}})
     }
   })
 }
