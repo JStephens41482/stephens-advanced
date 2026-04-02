@@ -6184,8 +6184,9 @@ function extShowPhotoStep(){
     <div style="font-size:48px;margin-bottom:16px;opacity:.6">${step===0?'📷':step===1?'🔍':'🏷'}</div>
     <div style="font-size:18px;font-weight:800;margin-bottom:8px">${_EXT_STEPS[step]}</div>
     <div style="font-size:13px;color:var(--g1);margin-bottom:32px">${_EXT_HINTS[step]}</div>
-    <button class="btn-p" style="max-width:280px;margin:0 auto;font-size:16px" onclick="$('extStepInput').click()">📷 Take Photo</button>
-    <input type="file" id="extStepInput" accept="image/*" capture="environment" style="display:none" onchange="handleExtStepPhoto(event,${step})">
+    <label style="display:inline-block;max-width:280px;margin:0 auto;padding:16px 32px;background:var(--fire);color:#fff;font-size:16px;font-weight:800;border-radius:var(--r);cursor:pointer;text-align:center">📷 Take Photo
+      <input type="file" accept="image/*" capture="environment" style="position:absolute;opacity:0;width:0;height:0" onchange="handleExtStepPhoto(event,${step})">
+    </label>
   </div>`
   push(h)
 }
