@@ -2386,6 +2386,7 @@ function rJobsList(q){
 // JOB WORK ORDER — live editable invoice during the job
 let jobLines=[] // [{desc,qty,price,id}]
 let jobNotes=''
+let jobPhotos=[] // [{b64,caption}]
 let invLines=[] // for editing existing invoices in openInvDetail
 
 function buildJobLines(j){
@@ -2528,6 +2529,7 @@ async function openJob(id){
   if(isActive){
     jobLines=buildJobLines(j).map((l2,i)=>({...l2,id:'jl'+i}))
     jobNotes=j.notes||''
+    jobPhotos=(j.photos||[]).map(b64=>({b64,caption:''}))
   }
 
   // parts catalog for quick-add dropdown
@@ -2625,6 +2627,12 @@ async function openJob(id){
     <div style="margin-top:12px">
       <label class="fg-l">Tech Notes / Deficiencies</label>
       <textarea id="job-notes" placeholder="What was found, what was done, deficiencies noted..." style="min-height:80px" oninput="jobNotes=this.value">${esc(jobNotes)}</textarea>
+      <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
+        <button style="padding:8px 14px;border-radius:var(--rs);background:var(--c2);border:1px solid var(--b1);color:var(--w2);font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:4px" onclick="$('jobPhotoInput').click()">📷 Add Photo</button>
+        <span id="jobPhotoCount" style="font-size:11px;color:var(--g2)">${jobPhotos.length?jobPhotos.length+' photo'+(jobPhotos.length>1?'s':''):''}</span>
+      </div>
+      <input type="file" id="jobPhotoInput" accept="image/*" capture="environment" style="display:none" onchange="handleJobPhoto(event)">
+      <div id="jobPhotoPreview" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${jobPhotos.map((p,pi)=>`<div style="position:relative"><img src="${p.b64}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:1px solid var(--b1)"><button onclick="jobPhotos.splice(${pi},1);renderJobPhotos()" style="position:absolute;top:-4px;right:-4px;width:18px;height:18px;border-radius:50%;background:var(--bad);color:#fff;font-size:10px;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</button></div>`).join('')}</div>
     </div>
     </div>`
 
@@ -2682,6 +2690,52 @@ async function openJob(id){
   if(isActive){
     setTimeout(()=>{renderJobLines();initSig()},80)
   }
+}
+
+function handleJobPhoto(ev){
+  const file=ev.target.files[0];if(!file)return
+  const reader=new FileReader()
+  reader.onload=e=>{
+    const img=new Image()
+    img.onload=()=>{
+      const canvas=document.createElement('canvas')
+      const max=1200;let w=img.width,h=img.height
+      if(w>max||h>max){if(w>h){h=Math.round(h*max/w);w=max}else{w=Math.round(w*max/h);h=max}}
+      canvas.width=w;canvas.height=h;canvas.getContext('2d').drawImage(img,0,0,w,h)
+      const b64=canvas.toDataURL('image/jpeg',0.8)
+      jobPhotos.push({b64,caption:''})
+      renderJobPhotos()
+      // upload to storage
+      try{
+        const blob=dataURItoBlob(b64)
+        const jid=window._activeJobId
+        if(jid)uploadDocument(blob,'job-photo-'+Date.now()+'.jpg','photo','job',jid,{source:'tech_notes'})
+      }catch(e){console.error('photo upload:',e)}
+      // save to job record
+      saveJobPhotos()
+    }
+    img.src=e.target.result
+  }
+  reader.readAsDataURL(file)
+  ev.target.value=''
+}
+
+function dataURItoBlob(dataURI){
+  const split=dataURI.split(','),mime=split[0].match(/:(.*?);/)[1]
+  const b=atob(split[1]),arr=new Uint8Array(b.length)
+  for(let i=0;i<b.length;i++)arr[i]=b.charCodeAt(i)
+  return new Blob([arr],{type:mime})
+}
+
+function renderJobPhotos(){
+  const wrap=$('jobPhotoPreview');if(!wrap)return
+  wrap.innerHTML=jobPhotos.map((p,pi)=>`<div style="position:relative"><img src="${p.b64}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:1px solid var(--b1)"><button onclick="jobPhotos.splice(${pi},1);renderJobPhotos();saveJobPhotos()" style="position:absolute;top:-4px;right:-4px;width:18px;height:18px;border-radius:50%;background:var(--bad);color:#fff;font-size:10px;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</button></div>`).join('')
+  const cnt=$('jobPhotoCount');if(cnt)cnt.textContent=jobPhotos.length?jobPhotos.length+' photo'+(jobPhotos.length>1?'s':''):''
+}
+
+async function saveJobPhotos(){
+  const jid=window._activeJobId;if(!jid)return
+  try{await SB.from('jobs').update({photos:jobPhotos.map(p=>p.b64)}).eq('id',jid)}catch(e){console.error('save photos:',e)}
 }
 
 function renderJobLines(){
@@ -5278,13 +5332,22 @@ async function _confirmSendEmail(){
     if(payData.success&&payData.paymentLink)payUrl=payData.paymentLink
   }catch(e){console.error('payment link:',e)}
 
-  const html=buildInvoiceEmailHtml({
+  let html=buildInvoiceEmailHtml({
     invNum:d.invNum,custName:d.custName,
     addr:[d.loc.address,d.loc.city,d.loc.state,d.loc.zip].filter(Boolean).join(', '),
     date:d.inv.date?new Date(d.inv.date).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):'',
     dueDate:d.inv.due_date?new Date(d.inv.due_date).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):'',
     lines:d.ls,total:d.total,portalUrl,payUrl
   })
+
+  // append job photos to email if any exist
+  const job2=D.jobs.find(j2=>j2.id===d.inv.job_id)
+  if(job2?.photos?.length){
+    let photoHtml='<div style="margin-top:20px;padding-top:16px;border-top:1px solid #eee"><div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#999;margin-bottom:12px">Site Photos</div>'
+    job2.photos.forEach(p=>{photoHtml+=`<img src="${p}" style="max-width:100%;border-radius:8px;margin-bottom:8px;border:1px solid #eee">`})
+    photoHtml+='</div>'
+    html=html.replace('</div></div></div>',photoHtml+'</div></div></div>')
+  }
 
   // build report PDF attachments — convert HTML to real PDFs
   let attachments=[]
