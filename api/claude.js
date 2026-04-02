@@ -7,7 +7,7 @@ module.exports = async function handler(req, res) {
     headers: {
       'Content-Type': 'application/json',
       'x-api-key': key,
-      'anthropic-version': '2024-10-22'
+      'anthropic-version': '2023-06-01'
     },
     body: JSON.stringify(req.body)
   })
