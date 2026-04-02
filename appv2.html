@@ -6904,7 +6904,12 @@ async function openDryChemReport(jobId,sysId){
   </div>
 
   <div class="ds"><div class="ds-t">System Information</div>
-    <div class="ds-row"><div class="ds-lbl">System Type</div><div class="ds-val"><input id="dc-sys-type" value="${esc(prev.sysType||sys.system_type||'')}" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600"></div></div>
+    <div class="ds-row"><div class="ds-lbl">System Brand</div><div class="ds-val">
+      <select id="dc-sys-type" style="text-align:right;border:none;background:var(--c1);color:var(--w);font-size:13px;font-weight:600;width:100%;border-radius:6px;padding:4px">
+        ${['','Amerex','Ansul','Badger','Buckeye','Kidde','Monarch','Pyro-Chem','Range Guard','Other'].map(m=>{const cur=prev.sysType||sys.system_type||'';return`<option value="${m}"${cur===m?' selected':''}>${m||'— Select —'}</option>`}).join('')}
+        ${(()=>{const cur=prev.sysType||sys.system_type||'';const known=['','Amerex','Ansul','Badger','Buckeye','Kidde','Monarch','Pyro-Chem','Range Guard','Other'];return cur&&!known.includes(cur)?`<option value="${esc(cur)}" selected>${esc(cur)}</option>`:''})()}
+      </select>
+    </div></div>
     <div class="ds-row"><div class="ds-lbl">Agent Type</div><div class="ds-val"><input id="dc-agent" placeholder="ABC, BC, Purple K..." value="${esc(prev.agent||'')}" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600"></div></div>
     <div class="ds-row"><div class="ds-lbl">Cylinder Count</div><div class="ds-val"><input id="dc-cyls" type="number" value="${prev.cylCount||sys.tank_count||1}" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600;width:60px"></div></div>
     <div class="ds-row"><div class="ds-lbl">Nozzle Count</div><div class="ds-val"><input id="dc-nozzles" type="number" value="${prev.nozzleCount||sys.nozzle_count||0}" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600;width:60px"></div></div>
