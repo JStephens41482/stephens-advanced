@@ -6199,24 +6199,41 @@ async function handleExtStepPhoto(ev,step){
   else if(step===1){u.photoLabel=b64;u.photo=b64} // label photo is also the primary photo
   else if(step===2)u.photoMaint=b64
 
-  // barcode detection on label photo (step 1)
-  if(step===1&&_hasBarcodeAPI){
-    try{
-      const img2=new Image();img2.src=b64
-      await new Promise(r=>{img2.onload=r})
-      const detector=new BarcodeDetector({formats:BC_FORMATS})
-      const barcodes=await detector.detect(img2)
-      if(barcodes.length){
-        u.barcodes=barcodes.map(bc=>({raw:bc.rawValue,format:bc.format}))
-        barcodes.forEach(bc=>{
-          const mfr=guessManufacturer(bc.rawValue)
-          if(mfr)u.manufacturer=mfr
-          if(['code_128','code_39'].includes(bc.format))u.serial=bc.rawValue
-          if(!u.barcodeRaw)u.barcodeRaw=bc.rawValue
-        })
-        toast('Barcode read: '+(u.serial||u.barcodeRaw))
-      }
-    }catch(e){console.error('barcode:',e)}
+  // barcode detection on label photo (step 1) — read barcodes then look up product data
+  if(step===1){
+    // try BarcodeDetector API first
+    if(_hasBarcodeAPI){
+      try{
+        const img2=new Image();img2.src=b64
+        await new Promise(r=>{img2.onload=r})
+        const detector=new BarcodeDetector({formats:BC_FORMATS})
+        const barcodes=await detector.detect(img2)
+        if(barcodes.length){
+          u.barcodes=barcodes.map(bc=>({raw:bc.rawValue,format:bc.format}))
+          // look up EACH barcode via API to get product data
+          for(const bc of barcodes){
+            if(!u.barcodeRaw)u.barcodeRaw=bc.rawValue
+            if(['code_128','code_39'].includes(bc.format)){u.serial=bc.rawValue;continue}
+            // UPC/EAN — look up product
+            try{
+              toast('Looking up barcode...')
+              const lookupRes=await fetch('/api/upc-lookup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({barcode:bc.rawValue,format:bc.format})})
+              const prod=await lookupRes.json()
+              if(prod.success){
+                if(prod.brand)u.manufacturer=prod.brand
+                if(prod.type)u.type=prod.type
+                if(prod.size)u.size=prod.size
+                if(prod.model)u.model=prod.model
+                if(prod.serial)u.serial=prod.serial
+                toast(`${prod.brand||''} ${prod.type||''} ${prod.size||''}`.trim()||'Product found')
+              }
+            }catch(e){console.error('upc lookup:',e)}
+          }
+          // fallback manufacturer detection from serial patterns
+          if(!u.manufacturer){const mfr=guessManufacturer(u.serial||u.barcodeRaw||'');if(mfr)u.manufacturer=mfr}
+        }
+      }catch(e){console.error('barcode:',e)}
+    }
   }
 
   // AI analysis on label photo (step 1)
