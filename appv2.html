@@ -6051,7 +6051,14 @@ function renderExtDetail(){
 
   <!-- PHOTO -->
   ${u.photo?`<img src="${u.photo}" style="width:100%;max-height:180px;object-fit:cover;border-radius:var(--r);margin-bottom:8px;border:2px solid ${u.barcodeRaw?'var(--ok)':'var(--b1)'}">`:''}
+  ${u.photoMaint?`<img src="${u.photoMaint}" style="width:100%;max-height:120px;object-fit:cover;border-radius:var(--r);margin-bottom:8px;border:1px solid var(--b1)">`:''}
   <div style="display:flex;gap:8px;margin-bottom:16px">
+    <label style="flex:1;padding:10px;border-radius:var(--rs);background:var(--c2);border:1px solid var(--b1);color:var(--w2);font-size:12px;font-weight:700;cursor:pointer;text-align:center">📷 Rescan Label
+      <input type="file" accept="image/*" capture="environment" style="position:absolute;opacity:0;width:0;height:0" onchange="extRescanLabel(event,'${u.id}')">
+    </label>
+    <label style="flex:1;padding:10px;border-radius:var(--rs);background:${u.photoMaint?'var(--c2)':'var(--infos)'};border:1px solid ${u.photoMaint?'var(--b1)':'var(--info)'};color:${u.photoMaint?'var(--w2)':'var(--info)'};font-size:12px;font-weight:700;cursor:pointer;text-align:center">🏷 ${u.photoMaint?'Rescan':'Scan'} Tags
+      <input type="file" accept="image/*" capture="environment" style="position:absolute;opacity:0;width:0;height:0" onchange="extScanTags(event,'${u.id}')">
+    </label>
   </div>
 
   <!-- CONDITION -->
@@ -6194,11 +6201,16 @@ async function handleExtScan(ev){
       body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1024,
         messages:[{role:'user',content:[
           {type:'image',source:{type:'base64',media_type:'image/jpeg',data:b64.split(',')[1]}},
-          {type:'text',text:`Read this fire extinguisher label. Read ALL barcodes and text visible. Return ONLY valid JSON:
+          {type:'text',text:`Read this fire extinguisher front label carefully. Return ONLY valid JSON:
 {"type":"ABC Dry Chemical|BC Dry Chemical|CO2|Class K|Water|Halon|Halotron|Class D|Purple K|Clean Agent",
-"size":"e.g. 5lb, 10lb, 6 Liter","brand":"Amerex, Badger, Buckeye, Kidde, Ansul, First Alert, Strike First, etc",
-"serial":"serial number if visible","upc":"UPC/EAN barcode digits (12-13 digits) if visible",
-"mfgDate":"YYYY-MM","condition":"pass or fail","notes":"visible issues","model":"model number if visible"}`}
+"size":"read the capacity — e.g. 5lb, 10lb, 20lb, 6 Liter, 2.5gal",
+"brand":"Amerex, Badger, Buckeye, Kidde, Ansul, First Alert, Strike First — read from label",
+"serial":"serial number — look for S/N, SER, or a long alphanumeric code on the label",
+"upc":"if you can see a UPC barcode, read the 12-13 digit number under it",
+"mfgDate":"YYYY-MM — CRITICAL: look for manufacture date. It may be: (1) stamped on the metal body/collar near the bottom, (2) printed on the label as 'MFG DATE' or 'DOM', (3) encoded in military format like JAN25=2025-01 or 03/2020=2020-03, (4) a date code stamped into the bottom ring. Convert to YYYY-MM format.",
+"condition":"pass or fail — fail if: gauge in red, missing pin, damaged hose, dented, corroded, expired tag",
+"notes":"describe any visible damage or issues",
+"model":"model number — look for part number or model designation on label"}`}
         ]}]
       })
     })
@@ -6272,9 +6284,89 @@ function resizePhoto(file,maxPx,quality){
 }
 
 // ─── Retake / add extra photo ───
-function extRetakePhoto(unitId,photoKey){
+function extRetakePhoto(unitId){
   _extActiveId=unitId
   extShowScanner(unitId)
+}
+
+async function extRescanLabel(ev,unitId){
+  const file=ev.target.files[0];if(!file)return
+  toast('Rescanning label...')
+  const b64=await resizePhoto(file,1000,0.8)
+  const u=_extUnits.find(x=>x.id===unitId);if(!u)return
+  u.photo=b64;u.photoLabel=b64
+  // rerun AI on new label photo — same logic as handleExtScan
+  try{
+    const res=await fetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1024,
+        messages:[{role:'user',content:[
+          {type:'image',source:{type:'base64',media_type:'image/jpeg',data:b64.split(',')[1]}},
+          {type:'text',text:`Read this fire extinguisher front label carefully. Return ONLY valid JSON:
+{"type":"ABC Dry Chemical|BC Dry Chemical|CO2|Class K|Water|Halon|Halotron|Class D|Purple K|Clean Agent",
+"size":"read the capacity — e.g. 5lb, 10lb, 20lb, 6 Liter, 2.5gal",
+"brand":"read from label","serial":"S/N or serial number","upc":"12-13 digit UPC if visible",
+"mfgDate":"YYYY-MM — look for MFG DATE, DOM, or stamped date on collar/body/label",
+"condition":"pass or fail","notes":"visible issues","model":"model/part number"}`}
+        ]}]
+      })
+    })
+    const data=await res.json()
+    if(data.error){toast('AI error',false);ev.target.value='';renderExtDetail();return}
+    const txt=data.content?.[0]?.text||''
+    let p;try{p=JSON.parse(txt.replace(/```json|```/g,'').trim())}catch{p={}}
+    if(p.type)u.type=p.type;if(p.size)u.size=p.size;if(p.brand)u.manufacturer=p.brand
+    if(p.serial)u.serial=p.serial;if(p.mfgDate)u.mfgDate=p.mfgDate;if(p.model)u.model=p.model
+    if(p.condition)u.condition=p.condition;if(p.condition==='fail')u.flagged=true
+    if(p.notes)u.notes=p.notes
+    toast(`${u.type} ${u.size}${u.serial?' · '+u.serial:''}`)
+  }catch(e){toast('Read failed',false)}
+  ev.target.value='';renderExtDetail()
+}
+
+async function extScanTags(ev,unitId){
+  const file=ev.target.files[0];if(!file)return
+  toast('Reading service tags...')
+  const b64=await resizePhoto(file,1000,0.8)
+  const u=_extUnits.find(x=>x.id===unitId);if(!u)return
+  u.photoMaint=b64
+  try{
+    const res=await fetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1024,
+        messages:[{role:'user',content:[
+          {type:'image',source:{type:'base64',media_type:'image/jpeg',data:b64.split(',')[1]}},
+          {type:'text',text:`Read the maintenance/service tags on this fire extinguisher. These are typically:
+- A PUNCH TAG (cardboard or plastic tag with months and years — holes are punched to show inspection dates)
+- A SERVICE STICKER showing the servicing company, tech name, and date
+- A HYDROSTATIC TEST LABEL showing the test date (often stamped into metal)
+- A 6-YEAR INTERNAL label if the unit has had its 6-year maintenance
+
+Read ALL dates visible. For punch tags, the most recent punched month/year is the last inspection.
+
+Return ONLY valid JSON:
+{"lastService":"YYYY-MM — most recent annual inspection date from the punch tag or sticker. Look for the most recent year with a month punched/marked.",
+"lastInternal":"YYYY-MM — 6-year internal examination date if shown. Look for '6YR', '6-YEAR', or 'INTERNAL' label.",
+"lastHydro":"YYYY-MM — hydrostatic test date. Look for 'HYDRO', 'HT', or a date stamped into the body/collar. Often format: MM-YYYY or just year.",
+"serviceCompany":"name of the company on the service tag",
+"techName":"technician name if visible",
+"notes":"anything notable about the tags — missing tags, expired, damaged, multiple tags, etc"}`}
+        ]}]
+      })
+    })
+    const data=await res.json()
+    if(data.error){toast('AI error',false);ev.target.value='';renderExtDetail();return}
+    const txt=data.content?.[0]?.text||''
+    let p;try{p=JSON.parse(txt.replace(/```json|```/g,'').trim())}catch{p={}}
+    if(p.lastInternal)u.lastInternal=p.lastInternal
+    if(p.lastHydro)u.lastHydro=p.lastHydro
+    if(p.notes)u.notes=(u.notes?u.notes+'; ':'')+p.notes
+    // check NFPA 10 due dates
+    const nfpa2=NFPA10[u.type]||NFPA10['ABC Dry Chemical']
+    let due=[]
+    if(u.mfgDate&&nfpa2.internal){const base=u.lastInternal?new Date(u.lastInternal+'-01'):new Date(u.mfgDate+'-01');const d2=new Date(base);d2.setFullYear(d2.getFullYear()+nfpa2.internal);if(d2<=new Date())due.push('6yr DUE')}
+    if(u.mfgDate){const base=u.lastHydro?new Date(u.lastHydro+'-01'):new Date(u.mfgDate+'-01');const d2=new Date(base);d2.setFullYear(d2.getFullYear()+nfpa2.hydro);if(d2<=new Date())due.push('Hydro DUE')}
+    toast(`Tags read${due.length?' — '+due.join(', '):''}${p.serviceCompany?' · by '+p.serviceCompany:''}`)
+  }catch(e){toast('Read failed',false)}
+  ev.target.value='';renderExtDetail()
 }
 
 // ─── Copy flag list to clipboard ───
