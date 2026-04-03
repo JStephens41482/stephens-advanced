@@ -2753,7 +2753,13 @@ async function openJob(id){
     startJobAutoSave()
     setTimeout(()=>updateJobChecklist(),150)
 
-    h+=`<div style="padding:0 0 max(env(safe-area-inset-bottom),12px)"><button class="btn-p" id="compBtn" style="background:var(--g3);color:var(--g1)" onclick="compJ('${j.id}')">✓ Complete Job — Generate Invoice</button></div>`
+    h+=`<div style="padding:0 0 max(env(safe-area-inset-bottom),12px)">
+      <label style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--c1);border:1px solid var(--b1);border-radius:var(--rs);margin-bottom:8px;cursor:pointer;font-size:13px;color:var(--w)">
+        <input type="checkbox" id="pay-at-service" style="width:20px;height:20px;accent-color:var(--fire)">
+        <div><div style="font-weight:700">Customer paying now?</div><div style="font-size:11px;color:var(--g1)">10% prompt-pay discount applied if paid within 24 hours</div></div>
+      </label>
+      <button class="btn-p" id="compBtn" style="background:var(--g3);color:var(--g1)" onclick="compJ('${j.id}')">✓ Complete Job — Generate Invoice</button>
+    </div>`
   }else{
     h+=`<div style="padding:12px 0"><button class="btn-dim" onclick="pop()">← Back</button></div>`
   }
@@ -5465,6 +5471,17 @@ async function _confirmSendEmail(){
     job2.photos.forEach(p=>{photoHtml+=`<img src="${p}" style="max-width:100%;border-radius:8px;margin-bottom:8px;border:1px solid #eee">`})
     photoHtml+='</div>'
     html=html.replace('</div></div></div>',photoHtml+'</div></div></div>')
+  }
+
+  // append prompt-pay discount notice to email if not already discounted
+  const ppRuleEmail=getPricingRule('prompt_pay_discount')
+  const hasDiscountLine=(d.ls||[]).some(l=>(l.description||'').toLowerCase().includes('discount'))
+  if(ppRuleEmail&&!hasDiscountLine){
+    const discountHtml=`<div style="margin-top:16px;padding:14px 18px;background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;text-align:center">
+      <div style="font-size:14px;font-weight:800;color:#92400e">💰 ${ppRuleEmail.percentage}% Prompt Pay Discount</div>
+      <div style="font-size:12px;color:#a16207;margin-top:4px">Pay within 24 hours of service and receive ${ppRuleEmail.percentage}% off your total. Use the Pay Now button above.</div>
+    </div>`
+    html=html.replace('</div></div></div>',discountHtml+'</div></div></div>')
   }
 
   // build report PDF attachments — convert HTML to real PDFs
