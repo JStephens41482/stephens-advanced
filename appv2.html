@@ -3742,11 +3742,10 @@ async function openInvDetail(id){
       const sysId=syss2[0].id
       const hasCA=syss2.some(s=>{const t=(s.system_type||'').toLowerCase();return t.includes('fm-200')||t.includes('fm200')||t.includes('novec')||t.includes('co2')||t.includes('clean agent')||t.includes('halon')||t.includes('inergen')})
       const hasExisting=rpts?.some(r=>r.report_type==='kitchen_suppression'||r.report_type==='clean_agent')
-      if(!hasExisting){
-        h+=`<div class="qa" style="margin-bottom:16px">
-          <button class="qa-btn" style="flex:1" onclick="${hasCA?`openCleanAgentReport('${jobId}','${sysId}')`:`openSuppReport('${jobId}','${sysId}')`}">+ Add ${hasCA?'Clean Agent':'Kitchen Hood'} Report</button>
-        </div>`
-      }
+      const rptLabel=hasExisting?'+ Add Another':'+ Add'
+      h+=`<div class="qa" style="margin-bottom:16px">
+        <button class="qa-btn" style="flex:1" onclick="${hasCA?`openCleanAgentReport('${jobId}','${sysId}')`:`openSuppReport('${jobId}','${sysId}')`}">${rptLabel} ${hasCA?'Clean Agent':'Kitchen Hood'} Report</button>
+      </div>`
     }
   }
 
@@ -8198,11 +8197,8 @@ async function _doSaveSuppReport(jobId,sysId,silent,btn){
   toast('Report saved ✓')
   _manualSaving=true;pop();_manualSaving=false
   setTimeout(()=>updateJobChecklist(),200)
-  // only offer additional report if location has multiple suppression systems
-  const loc2=D.locs.find(x=>x.id===locId)||{}
-  if((loc2.suppression_systems||[]).length>1){
-    showAdditionalReportOption(jobId,sysLocation)
-  }
+  // always offer additional report — technician knows how many systems are on site
+  showAdditionalReportOption(jobId,sysLocation)
 }
 
 function showAdditionalReportOption(jobId,prevLocation){
