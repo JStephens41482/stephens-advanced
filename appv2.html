@@ -6095,10 +6095,13 @@ function renderExtSession(){
   })
 
   h+=`</div>
-  <div style="position:fixed;bottom:0;left:0;right:0;z-index:100;background:linear-gradient(transparent,var(--bg) 20%);padding:16px 16px 24px;display:flex;gap:8px">
-    <button class="btn-p" style="flex:1" onclick="extAddAndSnap()">📷 Snap Next</button>
-    <button class="btn-dim" style="flex:0;padding:12px 16px" onclick="extAddManual()">+ Manual</button>
-    ${flagged.length?`<button style="flex:0;padding:12px 16px;border-radius:var(--r);background:var(--bads);border:1px solid var(--bad);color:var(--bad);font-weight:800;cursor:pointer" onclick="_extView='flags';renderExtSession()">🚩 ${flagged.length}</button>`:''}
+  <div style="position:fixed;bottom:0;left:0;right:0;z-index:100;background:linear-gradient(transparent,var(--bg) 20%);padding:16px 16px 24px">
+    <div style="display:flex;gap:8px;margin-bottom:8px">
+      <button class="btn-p" style="flex:1" onclick="extAddAndSnap()">📷 Snap Next</button>
+      <button class="btn-dim" style="flex:0;padding:12px 16px" onclick="extAddManual()">+ Manual</button>
+      ${flagged.length?`<button style="flex:0;padding:12px 16px;border-radius:var(--r);background:var(--bads);border:1px solid var(--bad);color:var(--bad);font-weight:800;cursor:pointer" onclick="_extView='flags';renderExtSession()">🚩 ${flagged.length}</button>`:''}
+    </div>
+    ${units.length?`<button style="width:100%;padding:14px;border-radius:var(--r);background:var(--ok);color:#fff;font-size:15px;font-weight:800;border:none;cursor:pointer" onclick="finishExtReport('${_extJobId}')">✓ Finished — ${units.length} Unit${units.length!==1?'s':''} Inspected</button>`:''}
   </div>`
 
   push(h)
