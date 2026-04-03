@@ -394,6 +394,8 @@ function push(html,opts={}){
 let _autoSaving=false,_manualSaving=false
 function pop(){
   if(!stk.length)return
+  // auto-save job data (notes + lines) before closing
+  if(window._activeJobId&&_jobDataDirty)autoSaveJobData()
   // auto-save any open report before closing (skip if manual save triggered this pop)
   if(!_autoSaving&&!_manualSaving){_autoSaving=true;_autoSaveOpenReport();_autoSaving=false}
   const id=stk.pop()
@@ -441,6 +443,68 @@ function _autoSaveOpenReport(){
 function popAll(){
   while(stk.length)pop()
   document.getElementById('invOv').classList.remove('open')
+}
+
+// ═══ DATA PERSISTENCE ENGINE ═══
+let _autoSaveTimer=null
+let _lastAutoSave=0
+let _jobDataDirty=false
+
+// beforeunload — warn on unsaved data
+window.addEventListener('beforeunload',e=>{
+  if(_jobDataDirty||(_extUnits.length&&_extActiveId)){
+    e.preventDefault();e.returnValue='You have unsaved work. Sure you want to leave?'
+  }
+})
+
+// pagehide — last-ditch save attempt (fires on iOS when closing Safari)
+window.addEventListener('pagehide',()=>{
+  if(window._activeJobId&&_jobDataDirty)autoSaveJobData()
+  if(_extUnits.length&&window._extJobId)finishExtReport(window._extJobId,true)
+  _autoSaveOpenReport()
+})
+
+// Auto-save job data (notes + line items) every 30 seconds
+function startJobAutoSave(){
+  if(_autoSaveTimer)clearInterval(_autoSaveTimer)
+  _autoSaveTimer=setInterval(()=>{
+    if(window._activeJobId&&_jobDataDirty)autoSaveJobData()
+  },30000)
+}
+
+async function autoSaveJobData(){
+  const jid=window._activeJobId;if(!jid)return
+  const notes=($('job-notes')?.value||jobNotes||'').trim()
+  const lines=jobLines.filter(l=>(l.desc||'').trim()).map(l=>({desc:l.desc,qty:+(l.qty||1),price:+(l.price||0)}))
+  try{
+    await SB.from('jobs').update({notes:notes||null,work_order_lines:lines.length?lines:null}).eq('id',jid)
+    _jobDataDirty=false;_lastAutoSave=Date.now()
+    const ind=$('autoSaveInd');if(ind)ind.textContent='Saved ✓'
+  }catch(e){
+    console.error('auto-save job:',e)
+    const ind=$('autoSaveInd');if(ind)ind.textContent='Save failed'
+  }
+}
+
+function markJobDirty(){
+  _jobDataDirty=true
+  const ind=$('autoSaveInd');if(ind)ind.textContent='Unsaved changes...'
+}
+
+// Debounced report auto-save (for check toggles, field edits)
+let _reportSaveDebounce=null
+function debouncedReportSave(fn,delay){
+  clearTimeout(_reportSaveDebounce)
+  _reportSaveDebounce=setTimeout(fn,delay||5000)
+}
+
+// Debounced extinguisher auto-save
+let _extSaveDebounce=null
+function debouncedExtSave(){
+  clearTimeout(_extSaveDebounce)
+  _extSaveDebounce=setTimeout(()=>{
+    if(window._extJobId&&_extUnits.length)finishExtReport(window._extJobId,true)
+  },3000)
 }
 
 // iOS swipe back
@@ -2527,7 +2591,12 @@ async function openJob(id){
 
   // pre-populate job lines from equipment on file
   if(isActive){
-    jobLines=buildJobLines(j).map((l2,i)=>({...l2,id:'jl'+i}))
+    // restore saved work order lines if they exist, otherwise build from equipment
+    if(j.work_order_lines?.length){
+      jobLines=j.work_order_lines.map((l2,i)=>({desc:l2.desc||l2.description||'',qty:+(l2.qty||l2.quantity||1),price:+(l2.price||l2.unit_price||0),id:'jl'+i}))
+    }else{
+      jobLines=buildJobLines(j).map((l2,i)=>({...l2,id:'jl'+i}))
+    }
     jobNotes=j.notes||''
     jobPhotos=(j.photos||[]).map(b64=>({b64,caption:''}))
   }
@@ -2626,8 +2695,8 @@ async function openJob(id){
 
     <!-- TECH NOTES -->
     <div style="margin-top:12px">
-      <label class="fg-l">Tech Notes / Deficiencies</label>
-      <textarea id="job-notes" placeholder="What was found, what was done, deficiencies noted..." style="min-height:80px" oninput="jobNotes=this.value">${esc(jobNotes)}</textarea>
+      <label class="fg-l" style="display:flex;justify-content:space-between;align-items:center">Tech Notes / Deficiencies <span id="autoSaveInd" style="font-size:10px;font-weight:600;color:var(--g2)"></span></label>
+      <textarea id="job-notes" placeholder="What was found, what was done, deficiencies noted..." style="min-height:80px" oninput="jobNotes=this.value;markJobDirty()">${esc(jobNotes)}</textarea>
       <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
         <button style="padding:8px 14px;border-radius:var(--rs);background:var(--c2);border:1px solid var(--b1);color:var(--w2);font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:4px" onclick="$('jobPhotoInput').click()">📷 Add Photo</button>
         <span id="jobPhotoCount" style="font-size:11px;color:var(--g2)">${jobPhotos.length?jobPhotos.length+' photo'+(jobPhotos.length>1?'s':''):''}</span>
@@ -2680,6 +2749,8 @@ async function openJob(id){
     h+=`<div id="job-checklist-${j.id}" style="padding:12px 0"></div>`
     window._activeJobId=j.id
     window._activeJobLoc=l
+    _jobDataDirty=false
+    startJobAutoSave()
     setTimeout(()=>updateJobChecklist(),150)
 
     h+=`<div style="padding:0 0 max(env(safe-area-inset-bottom),12px)"><button class="btn-p" id="compBtn" style="background:var(--g3);color:var(--g1)" onclick="compJ('${j.id}')">✓ Complete Job — Generate Invoice</button></div>`
@@ -2771,6 +2842,7 @@ function jlEdit(i,field,val){
   const lt=$('jl-total-'+i);if(lt)lt.textContent='$'+((+(jobLines[i].qty||1))*(+(jobLines[i].price||0))).toFixed(2)
   updateWoTotal()
   if(field==='desc')updateJobChecklist()
+  markJobDirty()
 }
 
 function jlDel(i){
@@ -4129,6 +4201,8 @@ function initSwipes(){
   document.querySelectorAll('.swipe-wrap[data-swipe-inv]').forEach(el=>{
     initSwipe(el,async()=>{
       const id=el.dataset.swipeInv
+      const inv=D.invs.find(i=>i.id===id)
+      if(!confirm('Delete invoice '+(inv?.invoice_number||'')+' ($'+(+(inv?.total||0)).toFixed(2)+')?'))return
       await SB.from('invoice_lines').delete().eq('invoice_id',id)
       await SB.from('invoices').delete().eq('id',id)
       await load();toast('Invoice deleted');rMoney()
@@ -4137,6 +4211,9 @@ function initSwipes(){
   document.querySelectorAll('.swipe-wrap[data-swipe-job]').forEach(el=>{
     initSwipe(el,async()=>{
       const id=el.dataset.swipeJob
+      const job=D.jobs.find(j=>j.id===id)
+      const loc=D.locs.find(l=>l.id===job?.location_id)
+      if(!confirm('Delete job for '+(loc?.name||'this location')+'? This also deletes all invoices and reports for this job.'))return
       const{data:invs2}=await SB.from('invoices').select('id').eq('job_id',id)
       const invIds2=(invs2||[]).map(x=>x.id)
       if(invIds2.length)await SB.from('invoice_lines').delete().in('invoice_id',invIds2)
@@ -4145,7 +4222,7 @@ function initSwipes(){
       try{await SB.from('extinguisher_results').delete().eq('job_id',id)}catch(e){}
       await SB.from('jobs').delete().eq('id',id)
       audit('deleted','job',id,'jon',null,'Job deleted (swipe)')
-      await load();toast('Job deleted');rJobs();rJobs()
+      await load();toast('Job deleted');rJobs()
     })
   })
   document.querySelectorAll('.swipe-wrap[data-swipe-contact]').forEach(el=>{
@@ -6258,6 +6335,9 @@ async function handleExtScan(ev){
 
   ev.target.value=''
 
+  // auto-save immediately after scan
+  debouncedExtSave()
+
   // auto-advance after 1.5s — scan next or go to detail
   setTimeout(()=>{
     pop() // close scanner
@@ -7465,6 +7545,7 @@ async function openDryChemReport(jobId,sysId){
 function setDcCheck(i,val){
   window._dcCheckState[i]=window._dcCheckState[i]===val?'':val
   _applyDcCheckVisual(i)
+  debouncedReportSave(()=>_autoSaveOpenReport(),5000)
 }
 function _applyDcCheckVisual(i){
   const v=window._dcCheckState[i]||''
@@ -7735,6 +7816,8 @@ async function openSuppReport(jobId,sysId,preLocation){
 function setCheck(i,val){
   window._rptCheckState[i]=window._rptCheckState[i]===val?'':val
   _applyCheckVisual(i)
+  // auto-save report after check toggle
+  debouncedReportSave(()=>_autoSaveOpenReport(),5000)
 }
 function _applyCheckVisual(i){
   const v=window._rptCheckState[i]||''
@@ -8330,6 +8413,7 @@ function toggleCaCylOk(i){
 function setCaCheck(i,val){
   window._caCheckState[i]=window._caCheckState[i]===val?'':val
   _applyCaCheckVisual(i)
+  debouncedReportSave(()=>_autoSaveOpenReport(),5000)
 }
 function _applyCaCheckVisual(i){
   const v=window._caCheckState[i]||''
