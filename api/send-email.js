@@ -4,6 +4,9 @@
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end()
 
+  // EMAILS DISABLED — return success without sending
+  return res.status(200).json({ success: true, disabled: true, message: 'Emails temporarily disabled' })
+
   const { to, subject, html, invoiceNumber, customerName, attachments } = req.body
   if (!to || !subject || !html) return res.status(400).json({ error: 'Missing required fields' })
 
