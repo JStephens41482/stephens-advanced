@@ -2704,6 +2704,15 @@ async function openJob(id){
       <input type="file" id="jobPhotoInput" accept="image/*" capture="environment" style="display:none" onchange="handleJobPhoto(event)">
       <div id="jobPhotoPreview" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${jobPhotos.map((p,pi)=>`<div style="position:relative"><img src="${p.b64}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:1px solid var(--b1)"><button onclick="jobPhotos.splice(${pi},1);renderJobPhotos()" style="position:absolute;top:-4px;right:-4px;width:18px;height:18px;border-radius:50%;background:var(--bad);color:#fff;font-size:10px;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</button></div>`).join('')}</div>
     </div>
+
+    <!-- EXTINGUISHER REPORT PASTE -->
+    <div style="margin-top:12px;background:var(--c1);border:1.5px dashed var(--b1);border-radius:var(--r);padding:16px;text-align:center">
+      <div id="extReportPreview-${j.id}" style="margin-bottom:8px">${(()=>{const ep=j.ext_report_photos||[];return ep.length?ep.map((p,i)=>'<img src="'+p+'" style="width:100%;max-height:200px;object-fit:contain;border-radius:8px;margin-bottom:6px;border:1px solid var(--b1)">').join(''):'<div style="font-size:13px;color:var(--g2);margin-bottom:8px">No extinguisher report yet</div>'})()}</div>
+      <label style="display:inline-block;padding:12px 24px;background:var(--fire);color:#fff;font-size:14px;font-weight:800;border-radius:var(--rs);cursor:pointer">📋 Paste Extinguisher Report
+        <input type="file" accept="image/*" multiple style="position:absolute;opacity:0;width:0;height:0" onchange="pasteExtReport(event,'${j.id}')">
+      </label>
+      <div style="font-size:10px;color:var(--g2);margin-top:6px">Upload photos of your extinguisher report</div>
+    </div>
     </div>`
 
     // Customer signature collected at send time, not here
@@ -2768,6 +2777,34 @@ async function openJob(id){
   if(isActive){
     setTimeout(()=>{renderJobLines();initSig()},80)
   }
+}
+
+async function pasteExtReport(ev,jobId){
+  const files=Array.from(ev.target.files);if(!files.length)return
+  toast('Uploading report...')
+  const photos=[]
+  for(const file of files.slice(0,10)){
+    const b64=await resizePhoto(file,1400,0.85)
+    photos.push(b64)
+    // upload to storage
+    try{const blob=dataURItoBlob(b64);await uploadDocument(blob,'ext-report-'+Date.now()+'.jpg','report_pdf','job',jobId,{source:'ext_report_paste'})}catch(e){}
+  }
+  // save to job record
+  await SB.from('jobs').update({ext_report_photos:photos}).eq('id',jobId)
+  // also save as a report record so it shows in portal/email
+  const locId=D.jobs.find(j=>j.id===jobId)?.location_id
+  try{
+    const{data:ex}=await SB.from('reports').select('id').eq('job_id',jobId).eq('report_type','extinguisher').limit(1)
+    const rptData={pastedPhotos:photos,savedAt:new Date().toISOString()}
+    if(ex?.length){await SB.from('reports').update({report_data:rptData}).eq('id',ex[0].id)}
+    else{await SB.from('reports').insert({job_id:jobId,location_id:locId,report_type:'extinguisher',report_data:rptData})}
+  }catch(e){console.error('save ext report:',e)}
+  await load()
+  toast(photos.length+' page'+(photos.length>1?'s':'')+' uploaded ✓')
+  // refresh preview
+  const preview=$('extReportPreview-'+jobId)
+  if(preview)preview.innerHTML=photos.map(p=>'<img src="'+p+'" style="width:100%;max-height:200px;object-fit:contain;border-radius:8px;margin-bottom:6px;border:1px solid var(--b1)">').join('')
+  ev.target.value=''
 }
 
 function handleJobPhoto(ev){
@@ -2883,11 +2920,7 @@ async function updateJobChecklist(){
   // Invoice flag
   flags.push({label:'Build Invoice',done:hasAnyLines,action:null})
 
-  // Extinguisher report — if extinguisher line exists
-  if(hasExtLines){
-    const done=rpts.some(r=>r.report_type==='extinguisher')
-    flags.push({label:'Extinguisher Report',done,action:`openExtReport('${jid}')`})
-  }
+  // Extinguisher report — removed from checklist (use photo paste on job card instead)
 
   // Suppression reports — driven by actual systems on file, one flag per system
   if(hasSuppLines){
