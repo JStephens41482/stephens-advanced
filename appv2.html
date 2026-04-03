@@ -2706,12 +2706,13 @@ async function openJob(id){
     </div>
 
     <!-- EXTINGUISHER REPORT PASTE -->
-    <div style="margin-top:12px;background:var(--c1);border:1.5px dashed var(--b1);border-radius:var(--r);padding:16px;text-align:center">
-      <div id="extReportPreview-${j.id}" style="margin-bottom:8px">${(()=>{const ep=j.ext_report_photos||[];return ep.length?ep.map((p,i)=>'<img src="'+p+'" style="width:100%;max-height:200px;object-fit:contain;border-radius:8px;margin-bottom:6px;border:1px solid var(--b1)">').join(''):'<div style="font-size:13px;color:var(--g2);margin-bottom:8px">No extinguisher report yet</div>'})()}</div>
-      <label style="display:inline-block;padding:12px 24px;background:var(--fire);color:#fff;font-size:14px;font-weight:800;border-radius:var(--rs);cursor:pointer">📋 Paste Extinguisher Report
+    <div id="extPasteZone-${j.id}" style="margin-top:12px;background:var(--c1);border:1.5px dashed var(--b1);border-radius:var(--r);padding:16px;text-align:center" contenteditable="true" onpaste="handleExtPaste(event,'${j.id}')" onfocus="this.style.borderColor='var(--fire)'" onblur="this.style.borderColor='var(--b1)'" oninput="if(!this.querySelector('img'))this.textContent=''">
+      <div id="extReportPreview-${j.id}">${(()=>{const ep=j.ext_report_photos||[];return ep.length?ep.map((p,i)=>'<img src="'+p+'" style="width:100%;max-height:200px;object-fit:contain;border-radius:8px;margin-bottom:6px;border:1px solid var(--b1)">').join(''):'<div style="font-size:14px;color:var(--g2);padding:20px 0">Tap here and paste extinguisher report</div>'})()}</div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:6px">
+      <label style="flex:1;padding:10px;border-radius:var(--rs);background:var(--c2);border:1px solid var(--b1);color:var(--w2);font-size:12px;font-weight:700;cursor:pointer;text-align:center">📷 Or choose from photos
         <input type="file" accept="image/*" multiple style="position:absolute;opacity:0;width:0;height:0" onchange="pasteExtReport(event,'${j.id}')">
       </label>
-      <div style="font-size:10px;color:var(--g2);margin-top:6px">Upload photos of your extinguisher report</div>
     </div>
     </div>`
 
@@ -2777,6 +2778,25 @@ async function openJob(id){
   if(isActive){
     setTimeout(()=>{renderJobLines();initSig()},80)
   }
+}
+
+async function handleExtPaste(ev,jobId){
+  ev.preventDefault()
+  const items=ev.clipboardData?.items||[]
+  const imageFiles=[]
+  for(const item of items){
+    if(item.type.startsWith('image/')){
+      const file=item.getAsFile()
+      if(file)imageFiles.push(file)
+    }
+  }
+  if(!imageFiles.length){toast('No image in clipboard — copy an image first',false);return}
+  // fake an event object for pasteExtReport
+  const fakeEv={target:{files:imageFiles,value:''}}
+  await pasteExtReport(fakeEv,jobId)
+  // clear the contenteditable div of any pasted content
+  const zone=$('extPasteZone-'+jobId)
+  if(zone){const preview=$('extReportPreview-'+jobId);zone.innerHTML='';if(preview)zone.appendChild(preview)}
 }
 
 async function pasteExtReport(ev,jobId){
