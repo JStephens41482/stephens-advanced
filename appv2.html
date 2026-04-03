@@ -5584,13 +5584,12 @@ async function _confirmSendEmail(){
     html=html.replace('</div></div></div>',photoHtml+'</div></div></div>')
   }
 
-  // append prompt-pay discount notice to email if not already discounted
-  const ppRuleEmail=getPricingRule('prompt_pay_discount')
+  // append prompt-pay discount notice to every invoice email
   const hasDiscountLine=(d.ls||[]).some(l=>(l.description||'').toLowerCase().includes('discount'))
-  if(ppRuleEmail&&!hasDiscountLine){
+  if(!hasDiscountLine){
     const discountHtml=`<div style="margin-top:16px;padding:14px 18px;background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;text-align:center">
-      <div style="font-size:14px;font-weight:800;color:#92400e">💰 ${ppRuleEmail.percentage}% Prompt Pay Discount</div>
-      <div style="font-size:12px;color:#a16207;margin-top:4px">Pay within 24 hours of service and receive ${ppRuleEmail.percentage}% off your total. Use the Pay Now button above.</div>
+      <div style="font-size:14px;font-weight:800;color:#92400e">💰 10% Prompt Pay Discount</div>
+      <div style="font-size:12px;color:#a16207;margin-top:4px">Pay within 24 hours of service and receive 10% off your total. Use the Pay Now button above.</div>
     </div>`
     html=html.replace('</div></div></div>',discountHtml+'</div></div></div>')
   }
