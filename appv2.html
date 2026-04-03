@@ -3706,6 +3706,7 @@ async function openInvDetail(id){
         <button class="qa-btn ok2" style="flex:1;font-size:11px;min-width:60px" onclick="collectPayment('${id}','cash')">💵 Cash</button>
         <button class="qa-btn ok2" style="flex:1;font-size:11px;min-width:60px" onclick="collectPayment('${id}','card')">💳 Card</button>
         <button class="qa-btn" style="flex:1;font-size:11px;min-width:70px;background:rgba(124,132,151,.1);color:var(--g1);border-color:var(--g3)" onclick="collectPayment('${id}','undecided')">⏳ Undecided</button>
+        <button class="qa-btn" style="flex:1;font-size:11px;min-width:70px;background:rgba(16,185,129,.12);color:var(--ok);border-color:var(--ok)" onclick="chargeCardOnFile('${id}')">💳 Card on File</button>
         <button class="qa-btn" style="flex:1;font-size:11px;min-width:60px;background:rgba(99,102,241,.15);color:var(--info);border-color:var(--info)" onclick="openMazonFlow('${id}','${esc(loc.name||'')}',${+inv.total||0})">📋 Mazon</button>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
@@ -3848,6 +3849,63 @@ async function saveInvLines(invId){
     const el=$('inv-det-total');if(el)el.textContent=fmtD(newTotal)
   }catch(e){toast('Save failed',false);console.error(e)}
   if(btn){btn.textContent='💾 Save Changes';btn.disabled=false}
+}
+
+async function chargeCardOnFile(invId){
+  const inv=D.invs.find(i=>i.id===invId)||{}
+  const loc=D.locs.find(l=>l.id===inv.location_id)||{}
+  const total=+(inv.total)||0
+  if(!total){toast('No amount',false);return}
+
+  toast('Checking card on file...')
+
+  // find or create Square customer
+  try{
+    const custRes=await fetch('/api/square-customer',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:'create_or_find',name:loc.contact_name||loc.name,email:loc.contact_email||'',phone:loc.contact_phone||'',locationId:loc.id})
+    })
+    const custData=await custRes.json()
+    if(!custData.success){toast('Could not find customer',false);return}
+
+    // save square_customer_id to location
+    if(custData.customerId&&!loc.square_customer_id){
+      await SB.from('locations').update({square_customer_id:custData.customerId}).eq('id',loc.id)
+    }
+
+    if(custData.cards?.length){
+      // has a card on file — charge it
+      const card=custData.cards[0]
+      const last4=card.last_4||'****'
+      const brand=card.card_brand||'Card'
+      if(!confirm(`Charge ${brand} ending in ${last4} for $${total.toFixed(2)}?`))return
+
+      toast('Charging card...')
+      const chargeRes=await fetch('/api/charge-card',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({customerId:custData.customerId,cardId:card.id,amount:total,invoiceId:invId,invoiceNumber:inv.invoice_number})
+      })
+      const chargeData=await chargeRes.json()
+      if(chargeData.success){
+        await load()
+        toast('Charged $'+total.toFixed(2)+' ✓')
+        pop();openInvDetail(invId)
+      }else{
+        toast('Charge failed: '+(chargeData.error||'Unknown error'),false)
+      }
+    }else{
+      // no card on file — send checkout link that saves card
+      toast('No card on file — creating payment link...')
+      const linkRes=await fetch('/api/square-customer',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({action:'checkout_and_save_card',customerId:custData.customerId,amount:total,invoiceNumber:inv.invoice_number,customerName:loc.name,invoiceId:invId,email:loc.contact_email})
+      })
+      const linkData=await linkRes.json()
+      if(linkData.success&&linkData.paymentLink){
+        toast('Payment link sent — card will be saved for next time')
+        window.open(linkData.paymentLink)
+      }else{
+        toast('Could not create payment link',false)
+      }
+    }
+  }catch(e){console.error('card on file:',e);toast('Error: '+e.message,false)}
 }
 
 function collectPayment(id,method){
