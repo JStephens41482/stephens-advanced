@@ -5412,9 +5412,12 @@ async function sendInvEmail(invId){
   const inv=D.invs.find(x=>x.id===invId)||{}
   const loc=D.locs.find(x=>x.id===inv.location_id)||{}
   const ba=loc.billing_account_id?D.bas.find(b=>b.id===loc.billing_account_id):null
-  // gather all contact emails for this location
+  // ONLY use email from THIS location — never from a stale form field for a different location
   const locContacts=contactsForEntity('location',inv.location_id).filter(c=>c.email)
-  const manualTo=$('det-email-to')?.value?.trim()||$('inv-email-to')?.value?.trim()||''
+  const fieldEmail=$('det-email-to')?.value?.trim()||$('inv-email-to')?.value?.trim()||''
+  // verify the field email belongs to this location — reject stale emails from other invoices
+  const locEmails=[loc.contact_email,ba?.email,...locContacts.map(c=>c.email)].filter(Boolean).map(e=>e.toLowerCase())
+  const manualTo=fieldEmail&&(locEmails.includes(fieldEmail.toLowerCase())||!locEmails.length)?fieldEmail:''
   if(locContacts.length>1||locContacts.length===1&&manualTo){
     // show contact picker
     const primary=locContacts.find(c=>c.is_primary)||locContacts[0]
@@ -5630,7 +5633,13 @@ async function _confirmSendEmail(){
       attachments.push({filename:'Stephens-Advanced-'+rType+suffix+'.pdf',content:b64})
     }catch(e){console.error('PDF gen error:',e)}
   }
-  if(st){st.textContent='Sending...';st.style.color='var(--g1)'}
+  // HARD CONFIRM — show exactly who gets this email
+  if(!confirm('SEND EMAIL TO:\n\n'+d.to+'\n\nInvoice '+d.invNum+' for '+d.custName+'\n\nAre you sure?')){
+    if(st)st.textContent='Cancelled';if(btn){btn.innerHTML='✉️ Send Email';btn.style.pointerEvents=''}
+    return
+  }
+
+  if(st){st.textContent='Sending to '+d.to+'...';st.style.color='var(--g1)'}
 
   try{
     const res=await fetch('/api/send-email',{method:'POST',headers:{'Content-Type':'application/json'},
