@@ -4,6 +4,8 @@
     { "src": "/sitemap.xml", "dest": "/sitemap.xml" },
     { "src": "/robots.txt", "dest": "/robots.txt" },
     { "src": "/img/(.*)", "dest": "/img/$1" },
+    { "src": "/privacy", "dest": "/privacy.html" },
+    { "src": "/terms", "dest": "/terms.html" },
     { "src": "/apply", "dest": "/apply.html" },
     { "src": "/services/fire-extinguisher-inspection", "dest": "/services/fire-extinguisher-inspection.html" },
     { "src": "/services/kitchen-suppression-inspection", "dest": "/services/kitchen-suppression-inspection.html" },
