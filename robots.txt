@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /app
+Disallow: /portal
+Disallow: /api
+
+Sitemap: https://www.stephensadvanced.com/sitemap.xml

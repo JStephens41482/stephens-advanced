@@ -1,7 +1,12 @@
 {
   "routes": [
     { "src": "/api/(.*)", "dest": "/api/$1" },
+    { "src": "/sitemap.xml", "dest": "/api/sitemap" },
+    { "src": "/robots.txt", "dest": "/robots.txt" },
     { "src": "/apply", "dest": "/apply.html" },
+    { "src": "/services/(.*)", "dest": "/services/$1.html" },
+    { "src": "/systems/(.*)", "dest": "/systems/$1.html" },
+    { "src": "/areas/(.*)", "dest": "/areas/$1.html" },
     { "src": "/app(.*)", "dest": "/appv2.html" },
     { "src": "/portal(.*)", "dest": "/portal.html" },
     { "src": "/w9.pdf", "dest": "/w9.pdf" },
