@@ -18,6 +18,7 @@ module.exports = async function handler(req, res) {
     { loc: '/systems/buckeye-kitchen-mister', freq: 'monthly', priority: '0.7' },
     { loc: '/systems/kidde-whdr', freq: 'monthly', priority: '0.7' },
     { loc: '/systems/captive-aire-tank', freq: 'monthly', priority: '0.7' },
+    { loc: '/services/clean-agent-systems', freq: 'monthly', priority: '0.8' },
     { loc: '/systems/amerex', freq: 'monthly', priority: '0.7' },
     { loc: '/systems/protex-ii', freq: 'monthly', priority: '0.7' },
     // City pages
