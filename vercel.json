@@ -1,7 +1,7 @@
 {
   "routes": [
     { "src": "/api/(.*)", "dest": "/api/$1" },
-    { "src": "/sitemap.xml", "dest": "/api/sitemap" },
+    { "src": "/sitemap.xml", "dest": "/sitemap.xml" },
     { "src": "/robots.txt", "dest": "/robots.txt" },
     { "src": "/img/(.*)", "dest": "/img/$1" },
     { "src": "/apply", "dest": "/apply.html" },
