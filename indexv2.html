@@ -359,6 +359,11 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;color:#222;backgroun
         <div style="font-size:15px;font-weight:800;color:var(--dark)">I Manage Multiple Locations</div>
         <div style="font-size:12px;color:#888;margin-top:4px">Franchise group, management company, or multi-site</div>
       </button>
+      <button onclick="showExistingForm()" style="flex:1;max-width:260px;padding:20px;border:2px solid #eee;border-radius:var(--radius);background:#fff;cursor:pointer;transition:all .2s" id="pick-existing">
+        <div style="font-size:28px;margin-bottom:8px">&#128100;</div>
+        <div style="font-size:15px;font-weight:800;color:var(--dark)">I'm an Existing Customer</div>
+        <div style="font-size:12px;color:#888;margin-top:4px">Look up your account to schedule service or access your portal</div>
+      </button>
     </div>
 
     <!-- SINGLE LOCATION FORM (existing) -->
@@ -545,6 +550,19 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;color:#222;backgroun
         <div class="form-status" id="multi-status"></div>
       </form>
     </div><!-- end multi-form -->
+
+    <!-- EXISTING CUSTOMER FORM -->
+    <div id="existing-form" style="display:none">
+      <div class="form-card">
+        <div style="font-size:14px;color:#666;margin-bottom:16px">Enter your phone number and we'll text you a link to your portal where you can request service, view reports, and pay invoices.</div>
+        <div class="fg"><label>Phone Number *</label><input type="tel" id="exist-phone" placeholder="(214) 555-1234" required></div>
+        <button type="button" class="submit-btn" id="exist-btn" onclick="existingCustomerLookup()">Send Me My Portal Link</button>
+        <div class="form-status" id="exist-status"></div>
+        <div style="margin-top:16px;text-align:center;font-size:13px;color:#999">
+          Don't have an account yet? <button onclick="showSingleForm()" style="background:none;border:none;color:var(--fire);font-weight:700;cursor:pointer;font-size:13px">Request Service</button>
+        </div>
+      </div>
+    </div>
 
   </div>
 </section>
@@ -784,18 +802,58 @@ document.addEventListener('DOMContentLoaded',updatePricing)
 function showSingleForm(){
   document.getElementById('single-form').style.display='block'
   document.getElementById('multi-form').style.display='none'
+  document.getElementById('existing-form').style.display='none'
   document.getElementById('pick-single').style.borderColor='var(--fire)'
   document.getElementById('pick-single').style.background='rgba(240,90,40,.04)'
   document.getElementById('pick-multi').style.borderColor='#eee'
   document.getElementById('pick-multi').style.background='#fff'
+  document.getElementById('pick-existing').style.borderColor='#eee'
+  document.getElementById('pick-existing').style.background='#fff'
 }
 function showMultiForm(){
   document.getElementById('single-form').style.display='none'
   document.getElementById('multi-form').style.display='block'
+  document.getElementById('existing-form').style.display='none'
   document.getElementById('pick-multi').style.borderColor='var(--fire)'
   document.getElementById('pick-multi').style.background='rgba(240,90,40,.04)'
   document.getElementById('pick-single').style.borderColor='#eee'
   document.getElementById('pick-single').style.background='#fff'
+  document.getElementById('pick-existing').style.borderColor='#eee'
+  document.getElementById('pick-existing').style.background='#fff'
+}
+function showExistingForm(){
+  document.getElementById('single-form').style.display='none'
+  document.getElementById('multi-form').style.display='none'
+  document.getElementById('existing-form').style.display='block'
+  document.getElementById('pick-existing').style.borderColor='var(--fire)'
+  document.getElementById('pick-existing').style.background='rgba(240,90,40,.04)'
+  document.getElementById('pick-single').style.borderColor='#eee'
+  document.getElementById('pick-single').style.background='#fff'
+  document.getElementById('pick-multi').style.borderColor='#eee'
+  document.getElementById('pick-multi').style.background='#fff'
+}
+async function existingCustomerLookup(){
+  const phone=document.getElementById('exist-phone')?.value?.trim()
+  if(!phone){document.getElementById('exist-status').textContent='Enter your phone number';return}
+  const btn=document.getElementById('exist-btn')
+  const st=document.getElementById('exist-status')
+  btn.textContent='Looking up...';btn.disabled=true;st.textContent=''
+  try{
+    const res=await fetch('/api/portal-lookup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone})})
+    const data=await res.json()
+    if(data.success){
+      st.style.color='#10b981'
+      st.textContent='Check your texts — we just sent your portal link!'
+      btn.textContent='Sent ✓';btn.style.background='#10b981'
+    }else{
+      st.style.color='#888'
+      st.innerHTML='We couldn\'t find that number. <a href="tel:2149944799" style="color:var(--fire);font-weight:700">Call us at (214) 994-4799</a> or request service above.'
+      btn.textContent='Send Me My Portal Link';btn.disabled=false
+    }
+  }catch(e){
+    st.style.color='#ef4444';st.textContent='Something went wrong. Call (214) 994-4799.'
+    btn.textContent='Send Me My Portal Link';btn.disabled=false
+  }
 }
 
 // Multi-location: add location

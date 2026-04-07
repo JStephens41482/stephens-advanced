@@ -5836,7 +5836,8 @@ function rNewJob(){
 
 function nSrch(q){
   const dd=$('nDd');if(!dd)return;if(q.length<1){dd.classList.remove('vis');return}
-  const f=D.locs.filter(l=>l.name.toLowerCase().includes(q.toLowerCase())||(l.city||'').toLowerCase().includes(q.toLowerCase()))
+  const ql=q.toLowerCase()
+  const f=D.locs.filter(l=>l.name.toLowerCase().includes(ql)||(l.city||'').toLowerCase().includes(ql)||(l.address||'').toLowerCase().includes(ql)||(l.contact_name||'').toLowerCase().includes(ql))
   const canMk=q.length>=2&&!f.some(l=>l.name.toLowerCase()===q.toLowerCase())
   let h=''
   f.forEach(l=>{
