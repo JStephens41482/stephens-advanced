@@ -256,7 +256,10 @@ function renderTab(){
       h+=`<div class="card" style="border-color:#fed7aa;border-width:2px">
         <div class="card-t" style="color:var(--warn)">Outstanding Balance</div>
         <div style="font-size:28px;font-weight:900;color:var(--fire)">${fmt(totalOwed)}</div>
-        <div style="margin-top:12px">`
+        <div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;padding:10px;margin:12px 0 8px;text-align:center">
+          <div style="font-size:13px;font-weight:800;color:#92400e">💰 A 10% discount is applied when payment is received within 24 hours of service completion.</div>
+        </div>
+        <div style="margin-top:8px">`
       if(unpaidInvs.length===1){
         const ui=unpaidInvs[0],loc=locs.find(l=>l.id===ui.location_id)||{}
         h+=`<button onclick="portalPayNow('${ui.id}','${esc(ui.invoice_number||'')}','${esc(loc.name||'')}',${+ui.total||0},this)" style="width:100%;padding:14px;border-radius:var(--r);background:var(--fire);color:#fff;font-size:15px;font-weight:800;border:none;cursor:pointer;min-height:50px">💳 Pay Now — ${fmt(+ui.total)}</button>`
