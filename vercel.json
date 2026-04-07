@@ -4,6 +4,7 @@
     { "src": "/sitemap.xml", "dest": "/sitemap.xml" },
     { "src": "/robots.txt", "dest": "/robots.txt" },
     { "src": "/img/(.*)", "dest": "/img/$1" },
+    { "src": "/deadnumbers", "dest": "/deadnumbers.html" },
     { "src": "/privacy", "dest": "/privacy.html" },
     { "src": "/terms", "dest": "/terms.html" },
     { "src": "/apply", "dest": "/apply.html" },
