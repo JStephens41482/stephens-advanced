@@ -291,6 +291,10 @@ select{-webkit-appearance:none;appearance:none}
 </style>
 </head>
 <body>
+<div id="app-loading" style="position:fixed;inset:0;background:#0a0c10;display:flex;align-items:center;justify-content:center;z-index:9999;flex-direction:column;gap:12px">
+  <svg width="40" height="46" viewBox="0 0 32 38" fill="none"><path d="M16 2C16 2 6 10 6 20C6 26 10 30 16 30C22 30 26 26 26 20C26 10 16 2 16 2Z" fill="#f05a28"/><path d="M16 8C16 8 10 14 10 20C10 23 12 25 14 26C13 23 14 20 16 18C18 20 19 23 18 26C20 25 22 23 22 20C22 14 16 8 16 8Z" fill="#ff7847"/><ellipse cx="16" cy="30" rx="5" ry="6" fill="#3498db"/><ellipse cx="16" cy="29" rx="3" ry="3.5" fill="#5dade2"/></svg>
+  <div style="color:#f05a28;font-size:16px;font-weight:700">Loading...</div>
+</div>
 <div id="app">
   <div class="hdr">
     <div class="hdr-logo">
@@ -344,6 +348,23 @@ select{-webkit-appearance:none;appearance:none}
 </div>
 <input type="file" id="camInput" accept="image/*" capture="environment" style="display:none" onchange="handlePhoto(event)">
 <script>
+// ═══ DEBOUNCE & GUARD ═══
+function guardClick(btn,asyncFn){
+  if(btn.disabled||btn.dataset.guarding)return
+  btn.dataset.guarding='1';btn.style.opacity='0.5';btn.style.pointerEvents='none'
+  Promise.resolve(asyncFn()).finally(()=>{
+    delete btn.dataset.guarding;btn.style.opacity='';btn.style.pointerEvents=''
+  })
+}
+// Prevent double-tap on ALL buttons globally
+document.addEventListener('click',e=>{
+  const btn=e.target.closest('button,.btn-p,.btn-dim,.qa-btn,.nav-cta,.mode-card,.service-link')
+  if(btn&&!btn.dataset.noguard){
+    if(btn.dataset.lastClick&&Date.now()-parseInt(btn.dataset.lastClick)<400){e.preventDefault();e.stopPropagation();return}
+    btn.dataset.lastClick=Date.now()
+  }
+},true)
+
 const SB=supabase.createClient('https://motjasdokoxwiodwzyps.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1vdGphc2Rva294d2lvZHd6eXBzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzNDI2NTcsImV4cCI6MjA4ODkxODY1N30.IMf0plnDRhVgts9LjJr219Tax4J175iuWN1u6ZKTZ-I',{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}})
 document.getElementById('hdrDate').textContent=new Date().toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric'})
 
@@ -378,7 +399,11 @@ const OVS=['ov1','ov2','ov3','ov4']
 let stk=[]
 const _popTimers={}
 
+let _lastPush=0
 function push(html,opts={}){
+  // debounce rapid pushes (prevents 16 overlays from multi-tap)
+  if(Date.now()-_lastPush<300)return
+  _lastPush=Date.now()
   let slot=OVS.find(o=>!stk.includes(o))||OVS[OVS.length-1]
   // cancel any pending cleanup timer for this slot
   if(_popTimers[slot]){clearTimeout(_popTimers[slot]);delete _popTimers[slot]}
@@ -8619,15 +8644,17 @@ async function execChatAction(act){
 // STARTUP
 function startApp(){
   load().then(()=>{
+    // hide loading overlay
+    const lo=document.getElementById('app-loading');if(lo)lo.style.display='none'
     rCal()
     updateNotifBadge()
     generateNotifications()
-    // re-generate notifications every 30 minutes
     setInterval(()=>{generateNotifications()},30*60*1000)
     if(!D.locs.length&&!D.jobs.length){
       setTimeout(()=>load().then(rCal),1200)
     }
   }).catch(err=>{
+    const lo=document.getElementById('app-loading');if(lo)lo.style.display='none'
     document.getElementById('calC').innerHTML='<div style="padding:24px;color:#ef4444;font-size:13px;font-weight:600">Load error: '+err.message+'</div>'
     console.error('Startup load error:',err)
   })
