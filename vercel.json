@@ -3,6 +3,10 @@
     {
       "path": "/api/auto-reschedule",
       "schedule": "0 8 1 * *"
+    },
+    {
+      "path": "/api/morning-digest",
+      "schedule": "0 11 * * *"
     }
   ],
   "routes": [
