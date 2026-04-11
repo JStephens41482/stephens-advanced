@@ -21,6 +21,9 @@
     "url": "https://github.com/JStephens41482/stephens-advanced/issues"
   },
   "homepage": "https://github.com/JStephens41482/stephens-advanced#readme",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.0"
+  },
   "devDependencies": {
     "@playwright/test": "^1.59.1"
   }
