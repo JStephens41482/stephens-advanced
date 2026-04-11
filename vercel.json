@@ -1,4 +1,10 @@
 {
+  "crons": [
+    {
+      "path": "/api/auto-reschedule",
+      "schedule": "0 8 1 * *"
+    }
+  ],
   "routes": [
     { "src": "/api/(.*)", "dest": "/api/$1" },
     { "src": "/sitemap.xml", "dest": "/sitemap.xml" },
