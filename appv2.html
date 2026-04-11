@@ -1264,6 +1264,8 @@ function _fallbackTravelCharge(loc){
 
 // ─── Google Maps routing ───
 async function routeJobs(jobs){
+  // filter out test jobs and jobs with no real address
+  jobs=jobs.filter(j=>{const n=(j.location?.name||'').toUpperCase();const a=locAddr(j.location||{});return!n.includes('TEST')&&a.match(/\d/)})
   const stops=jobs.map(j=>{const l=j.location||{};return{job:j,address:locAddr(l)}}).filter(s=>s.address.length>5)
   if(!stops.length)return _fallbackRouteJobs(jobs)
   if(stops.length===1){
@@ -1281,9 +1283,12 @@ async function routeJobs(jobs){
       const route=data.routes[0],order=route.waypoint_order||[],legs=route.legs||[]
       const optimized=[]
       if(order.length){
-        order.forEach((idx,i)=>optimized.push({job:stops[idx].job,address:stops[idx].address,dist:Math.round((legs[i]?.distance?.value||0)/1609.34),duration:Math.round((legs[i]?.duration?.value||0)/60),durationText:legs[i]?.duration?.text||''}))
-        optimized.push({job:stops[stops.length-1].job,address:stops[stops.length-1].address,dist:Math.round((legs[legs.length-1]?.distance?.value||0)/1609.34),duration:Math.round((legs[legs.length-1]?.duration?.value||0)/60),durationText:legs[legs.length-1]?.duration?.text||''})
+        // legs[0] = origin→first waypoint, legs[1] = first→second, etc.
+        // order[i] maps waypoint index to stop index
+        const reordered=[...order.map(idx=>stops[idx]),stops[stops.length-1]]
+        reordered.forEach((s,i)=>optimized.push({job:s.job,address:s.address,dist:Math.round((legs[i]?.distance?.value||0)/1609.34),duration:Math.round((legs[i]?.duration?.value||0)/60),durationText:legs[i]?.duration?.text||''}))
       }else{
+        // no optimization — legs map 1:1 with stops
         stops.forEach((s,i)=>optimized.push({job:s.job,address:s.address,dist:Math.round((legs[i]?.distance?.value||0)/1609.34),duration:Math.round((legs[i]?.duration?.value||0)/60),durationText:legs[i]?.duration?.text||''}))
       }
       return optimized
@@ -1925,8 +1930,11 @@ function rTechs(){
   const unassigned=D.jobs.filter(j=>!j.assigned_to&&j.status==='scheduled')
   if(unassigned.length){
     h+=`<div style="background:var(--warns);border:1.5px solid var(--warn);border-radius:var(--r);padding:12px;margin-top:12px">
-      <div style="font-size:12px;font-weight:800;color:var(--warn)">${unassigned.length} Unassigned Job${unassigned.length>1?'s':''}</div>
-      <div style="font-size:11px;color:var(--w2);margin-top:4px">These jobs haven't been assigned to a technician yet.</div>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div><div style="font-size:12px;font-weight:800;color:var(--warn)">${unassigned.length} Unassigned Job${unassigned.length>1?'s':''}</div>
+        <div style="font-size:11px;color:var(--w2);margin-top:4px">Not assigned to a technician yet.</div></div>
+        <button style="padding:8px 14px;border-radius:var(--rs);background:var(--warn);color:#000;font-size:11px;font-weight:800;border:none;cursor:pointer;white-space:nowrap" onclick="bulkAssignToMe()">Assign All to Me</button>
+      </div>
     </div>`
   }
 
@@ -3211,6 +3219,18 @@ async function addToTodaySchedule(jobId){
   pop();openJob(jobId)
 }
 
+async function bulkAssignToMe(){
+  const myId=D.techs?.find(t=>t.name?.toLowerCase().includes('jon'))?.id||D.techs?.[0]?.id
+  const unassigned=D.jobs.filter(j=>!j.assigned_to&&j.status==='scheduled')
+  if(!unassigned.length){toast('No unassigned jobs');return}
+  if(!confirm(`Assign ${unassigned.length} jobs to ${myId?'you':'first tech'}?`))return
+  toast('Assigning...')
+  for(const j of unassigned){
+    try{await SB.from('jobs').update({assigned_to:myId||null}).eq('id',j.id)}catch(e){}
+  }
+  await load();toast(`${unassigned.length} jobs assigned ✓`);rTechs()
+}
+
 async function assignJob(jobId,techId){
   await SB.from('jobs').update({assigned_to:techId||null}).eq('id',jobId)
   await load()
@@ -3268,7 +3288,7 @@ async function openCust(id){
   // Contacts section
   const locContacts=contactsForEntity('location',id)
   h+=`<div class="ds"><div class="ds-t" style="display:flex;justify-content:space-between;align-items:center">
-    <span>Contacts · ${locContacts.length}</span>
+    <span>Contacts · ${locContacts.length||(l.contact_name?1:0)}</span>
     <button style="font-size:11px;font-weight:700;color:var(--fire);background:none;border:none;cursor:pointer" onclick="openAddContact('${l.id}')">+ Add Contact</button>
   </div>`
   if(locContacts.length){
