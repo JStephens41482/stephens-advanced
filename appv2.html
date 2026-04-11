@@ -716,14 +716,60 @@ async function syncJobToCalendar(jobId,locationId,date,time){
   const loc=D.locs?.find(l=>l.id===locationId)||{}
   const t2=time||'09:00'
   const startDt=new Date(date+'T'+t2+':00')
-  const endDt=new Date(startDt.getTime()+90*60*1000) // 1.5 hours
+  const endDt=new Date(startDt.getTime()+2*60*60*1000) // 2 hours
+  const addr=[loc.address,loc.city,loc.state||'TX',loc.zip].filter(Boolean).join(', ')
+  // Internal calendar event
   await SB.from('calendar_events').insert({
     title:loc.name||'Job',event_type:'job',
     start_time:startDt.toISOString(),end_time:endDt.toISOString(),
     location_id:locationId,job_id:jobId,
-    location_text:[loc.address,loc.city].filter(Boolean).join(', '),
-    color:'#3b82f6'
+    location_text:addr,color:'#3b82f6'
   })
+  // Google Calendar sync
+  try{
+    const j=D.jobs?.find(x=>x.id===jobId)||{}
+    const scope=(j.scope||[]).join(', ')||'inspection'
+    const eqSummary=[]
+    if(loc.suppression_systems?.length)eqSummary.push(loc.suppression_systems.length+' system'+(loc.suppression_systems.length>1?'s':''))
+    if(loc.extinguishers?.length)eqSummary.push(loc.extinguishers.length+' extinguisher'+(loc.extinguishers.length>1?'s':''))
+    const res=await fetch('/api/calendar-sync',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        action:'create',job_id:jobId,
+        summary:(loc.name||'Job')+' — '+scope,
+        location:addr,
+        start_time:startDt.toISOString(),
+        end_time:endDt.toISOString(),
+        description:scope+(eqSummary.length?'. '+eqSummary.join(', '):'')+(j.notes?'. Notes: '+j.notes:'')
+      })
+    })
+    const data=await res.json()
+    if(data.success&&data.eventId){
+      await SB.from('jobs').update({gcal_event_id:data.eventId}).eq('id',jobId)
+    }
+  }catch(e){console.error('gcal sync:',e)}
+}
+
+async function syncJobToGcalUpdate(jobId,date,time){
+  const j=D.jobs?.find(x=>x.id===jobId)||{}
+  if(!j.gcal_event_id)return
+  const loc=D.locs?.find(l=>l.id===j.location_id)||j.location||{}
+  const t2=time||j.scheduled_time||'09:00'
+  const startDt=new Date(date+'T'+t2+':00')
+  const endDt=new Date(startDt.getTime()+2*60*60*1000)
+  try{
+    await fetch('/api/calendar-sync',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:'update',gcal_event_id:j.gcal_event_id,
+        summary:(loc.name||'Job')+' — '+(j.scope||[]).join(', '),
+        start_time:startDt.toISOString(),end_time:endDt.toISOString()
+      })
+    })
+  }catch(e){console.error('gcal update:',e)}
+}
+
+async function deleteJobGcalEvent(jobId){
+  const j=D.jobs?.find(x=>x.id===jobId)||{}
+  if(!j.gcal_event_id)return
+  try{await fetch('/api/calendar-sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'delete',gcal_event_id:j.gcal_event_id})})}catch(e){}
 }
 
 // ═══ NOTIFICATIONS ENGINE ═══
@@ -2592,6 +2638,7 @@ async function confirmResched(id){
   }
   await load()
   audit('rescheduled','job',id,'jon',{old_date:oldDate,new_date:nd,new_time:nt},'Job rescheduled to '+newDateFmt)
+  syncJobToGcalUpdate(id,nd,nt)
   setLoad('reschedBtn',false)
   pop()
   toast('Rescheduled to '+newDateFmt)
@@ -3941,7 +3988,7 @@ async function chargeCardOnFile(invId){
 
   // find or create Square customer
   try{
-    const custRes=await fetch('/api/square-customer',{method:'POST',headers:{'Content-Type':'application/json'},
+    const custRes=await fetch('/api/square',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({action:'create_or_find',name:loc.contact_name||loc.name,email:loc.contact_email||'',phone:loc.contact_phone||'',locationId:loc.id})
     })
     const custData=await custRes.json()
@@ -3960,8 +4007,8 @@ async function chargeCardOnFile(invId){
       if(!confirm(`Charge ${brand} ending in ${last4} for $${total.toFixed(2)}?`))return
 
       toast('Charging card...')
-      const chargeRes=await fetch('/api/charge-card',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({customerId:custData.customerId,cardId:card.id,amount:total,invoiceId:invId,invoiceNumber:inv.invoice_number})
+      const chargeRes=await fetch('/api/square',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({action:'charge_card',customerId:custData.customerId,cardId:card.id,amount:total,invoiceId:invId,invoiceNumber:inv.invoice_number})
       })
       const chargeData=await chargeRes.json()
       if(chargeData.success){
@@ -3974,7 +4021,7 @@ async function chargeCardOnFile(invId){
     }else{
       // no card on file — send checkout link that saves card
       toast('No card on file — creating payment link...')
-      const linkRes=await fetch('/api/square-customer',{method:'POST',headers:{'Content-Type':'application/json'},
+      const linkRes=await fetch('/api/square',{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({action:'checkout_and_save_card',customerId:custData.customerId,amount:total,invoiceNumber:inv.invoice_number,customerName:loc.name,invoiceId:invId,email:loc.contact_email})
       })
       const linkData=await linkRes.json()
@@ -4364,6 +4411,7 @@ function initSwipes(){
       if(invIds2.length)await SB.from('invoices').delete().in('id',invIds2)
       try{await SB.from('reports').delete().eq('job_id',id)}catch(e){}
       try{await SB.from('extinguisher_results').delete().eq('job_id',id)}catch(e){}
+      deleteJobGcalEvent(id)
       await SB.from('jobs').delete().eq('id',id)
       audit('deleted','job',id,'jon',null,'Job deleted (swipe)')
       await load();toast('Job deleted');rJobs()
@@ -5999,6 +6047,7 @@ async function delJob(id){
     await SB.from('reports').delete().eq('job_id',id)
     await SB.from('extinguisher_results').delete().eq('job_id',id)
   }catch(e){console.error('delJob cascade:',e)}
+  deleteJobGcalEvent(id)
   const{error}=await SB.from('jobs').delete().eq('id',id)
   if(error){toast('Error deleting job',false);return}
   audit('deleted','job',id,'jon',null,'Job deleted')

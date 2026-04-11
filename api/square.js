@@ -123,9 +123,38 @@ module.exports = async function handler(req, res) {
       })
     }
 
+    // Charge a saved card on file
+    if (action === 'charge_card') {
+      const { customerId, cardId, amount, invoiceId, invoiceNumber } = req.body
+      if (!customerId || !cardId || !amount) return res.status(400).json({ error: 'Missing customerId, cardId, or amount' })
+      const amountCents = Math.round(amount * 100)
+      const payRes = await fetch(`${baseUrl}/v2/payments`, {
+        method: 'POST', headers,
+        body: JSON.stringify({
+          idempotency_key: `charge-${invoiceId || Date.now()}-${Date.now()}`,
+          source_id: cardId,
+          amount_money: { amount: amountCents, currency: 'USD' },
+          customer_id: customerId,
+          location_id: process.env.SQUARE_LOCATION_ID,
+          note: `Invoice ${invoiceNumber || ''} — Stephens Advanced`,
+          autocomplete: true
+        })
+      })
+      const payData = await payRes.json()
+      if (!payRes.ok) return res.status(500).json({ error: payData.errors?.[0]?.detail || 'Charge failed' })
+      // Mark invoice paid in Supabase
+      if (invoiceId) {
+        const { createClient } = require('@supabase/supabase-js')
+        const sb = createClient('https://motjasdokoxwiodwzyps.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1vdGphc2Rva294d2lvZHd6eXBzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzNDI2NTcsImV4cCI6MjA4ODkxODY1N30.IMf0plnDRhVgts9LjJr219Tax4J175iuWN1u6ZKTZ-I')
+        await sb.from('invoices').update({ status: 'paid', payment_method: 'card_on_file', payment_note: 'Square Card on File', paid_at: new Date().toISOString() }).eq('id', invoiceId)
+        try { await sb.from('audit_log').insert({ action: 'paid', entity_type: 'invoice', entity_id: invoiceId, actor: 'system', summary: 'Charged card on file — $' + amount.toFixed(2) }) } catch (e) {}
+      }
+      return res.json({ success: true, paymentId: payData.payment?.id, receiptUrl: payData.payment?.receipt_url })
+    }
+
     return res.status(400).json({ error: 'Unknown action' })
   } catch (e) {
-    console.error('square-customer error:', e)
+    console.error('square error:', e)
     return res.status(500).json({ error: e.message })
   }
 }
