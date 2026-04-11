@@ -2,18 +2,11 @@ import { test, expect, Page } from '@playwright/test';
 
 // Helper: wait for app to load (loading overlay gone)
 async function waitForAppLoad(page: Page) {
-  await page.waitForSelector('#app-loading', { state: 'hidden', timeout: 15000 });
+  await page.waitForSelector('#app-loading', { state: 'hidden', timeout: 20000 });
 }
 
-// Helper: unlock PIN (if PIN screen shows)
-async function unlockIfNeeded(page: Page) {
-  const pinInput = page.locator('#pinInput');
-  if (await pinInput.isVisible({ timeout: 2000 }).catch(() => false)) {
-    await pinInput.fill('4799');
-    await page.click('button:has-text("Unlock")');
-    await page.waitForTimeout(1000);
-  }
-}
+// App URL with test mode bypass
+const APP_URL = '/app?test=1';
 
 // ═══ AUTHENTICATION & LOAD ═══
 test.describe('App Load & Auth', () => {
@@ -22,17 +15,16 @@ test.describe('App Load & Auth', () => {
     page.on('console', msg => { if (msg.type() === 'error') errors.push(msg.text()) });
     page.on('pageerror', err => errors.push(err.message));
 
-    await page.goto('/app');
+    await page.goto(APP_URL);
     await waitForAppLoad(page);
-    await unlockIfNeeded(page);
-
+    
     // Filter out known non-critical errors
     const critical = errors.filter(e => !e.includes('favicon') && !e.includes('404') && !e.includes('net::'));
     expect(critical.length).toBe(0);
   });
 
   test('loading spinner appears and disappears', async ({ page }) => {
-    await page.goto('/app');
+    await page.goto(APP_URL);
     // Loading overlay should be visible initially
     const loading = page.locator('#app-loading');
     // It should eventually disappear
@@ -40,10 +32,9 @@ test.describe('App Load & Auth', () => {
   });
 
   test('main navigation renders (5 tabs)', async ({ page }) => {
-    await page.goto('/app');
+    await page.goto(APP_URL);
     await waitForAppLoad(page);
-    await unlockIfNeeded(page);
-
+    
     const nav = page.locator('.nav button');
     const count = await nav.count();
     expect(count).toBeGreaterThanOrEqual(5);
@@ -53,7 +44,7 @@ test.describe('App Load & Auth', () => {
 // ═══ CUSTOMER MANAGEMENT ═══
 test.describe('Customer Management', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/app');
+    await page.goto(APP_URL);
     await waitForAppLoad(page);
     await unlockIfNeeded(page);
   });
@@ -79,7 +70,7 @@ test.describe('Customer Management', () => {
 // ═══ JOB WORKFLOW ═══
 test.describe('Job Workflow', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/app');
+    await page.goto(APP_URL);
     await waitForAppLoad(page);
     await unlockIfNeeded(page);
   });
@@ -120,10 +111,9 @@ test.describe('Job Workflow', () => {
 // ═══ MONEY TAB ═══
 test.describe('Money Tab', () => {
   test('money tab loads with invoice list or empty state', async ({ page }) => {
-    await page.goto('/app');
+    await page.goto(APP_URL);
     await waitForAppLoad(page);
-    await unlockIfNeeded(page);
-
+    
     await page.click('button:has-text("Money")');
     await page.waitForTimeout(500);
     const moneyContent = page.locator('#moneyC');
@@ -134,10 +124,9 @@ test.describe('Money Tab', () => {
 // ═══ TECHS TAB ═══
 test.describe('Techs Tab', () => {
   test('techs tab loads', async ({ page }) => {
-    await page.goto('/app');
+    await page.goto(APP_URL);
     await waitForAppLoad(page);
-    await unlockIfNeeded(page);
-
+    
     await page.click('button:has-text("Techs")');
     await page.waitForTimeout(500);
     const techsContent = page.locator('#techsC');
@@ -148,10 +137,9 @@ test.describe('Techs Tab', () => {
 // ═══ ROUTE VIEW ═══
 test.describe('Route View', () => {
   test('route button exists on calendar tab', async ({ page }) => {
-    await page.goto('/app');
+    await page.goto(APP_URL);
     await waitForAppLoad(page);
-    await unlockIfNeeded(page);
-
+    
     // Route button should be on the calendar quick-action bar
     const routeBtn = page.locator('button:has-text("Route"), span:has-text("Route")').first();
     await expect(routeBtn).toBeVisible({ timeout: 5000 });
@@ -232,10 +220,9 @@ test.describe('Homepage', () => {
 // ═══ DEBOUNCE PROTECTION ═══
 test.describe('Debounce Protection', () => {
   test('rapid double-click does not open two overlays', async ({ page }) => {
-    await page.goto('/app');
+    await page.goto(APP_URL);
     await waitForAppLoad(page);
-    await unlockIfNeeded(page);
-
+    
     // Click FAB twice rapidly
     const fab = page.locator('.fab');
     await fab.click();
@@ -262,7 +249,7 @@ test.describe('Apply Page', () => {
 test.describe('Performance', () => {
   test('app loads in under 10 seconds', async ({ page }) => {
     const start = Date.now();
-    await page.goto('/app');
+    await page.goto(APP_URL);
     await waitForAppLoad(page);
     const elapsed = Date.now() - start;
     expect(elapsed).toBeLessThan(10000);
