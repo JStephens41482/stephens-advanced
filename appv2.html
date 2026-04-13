@@ -63,6 +63,39 @@
   );
   alter table service_requests enable row level security;
   create policy "allow all" on service_requests for all using (true) with check (true);
+
+  -- ═══ INVOICE DOCUMENT ATTACHMENTS (Mission: mission-briefing-invoice-attachments) ═══
+  -- Run these in Supabase if not already applied:
+
+  -- 1. po_number column on invoices (if Commander Data's deploy hasn't run yet)
+  alter table invoices add column if not exists po_number text;
+
+  -- 2. invoice_attachments table
+  create table if not exists invoice_attachments (
+    id uuid primary key default gen_random_uuid(),
+    invoice_id uuid not null references invoices(id) on delete cascade,
+    file_name text not null,
+    file_path text not null,
+    file_type text not null,
+    file_size integer,
+    label text check (label in ('work_order','po','compliance','photo','other')),
+    uploaded_at timestamptz not null default now()
+  );
+  create index if not exists idx_invoice_attachments_invoice_id on invoice_attachments(invoice_id);
+  alter table invoice_attachments enable row level security;
+  create policy "allow all" on invoice_attachments for all using (true) with check (true);
+
+  -- 3. Storage bucket: create 'invoice-attachments' bucket in Supabase Storage dashboard
+  --    - Public: false
+  --    - File size limit: 10MB
+  --    - Allowed MIME: image/jpeg, image/png, image/heic, application/pdf
+  --    Storage bucket policies (run in SQL editor):
+  --    insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+  --    values ('invoice-attachments','invoice-attachments',false,10485760,
+  --      array['image/jpeg','image/png','image/heic','application/pdf'])
+  --    on conflict (id) do nothing;
+  --    create policy "allow all on invoice-attachments" on storage.objects for all
+  --      using (bucket_id='invoice-attachments') with check (bucket_id='invoice-attachments');
 -->
 <!DOCTYPE html>
 <html lang="en">
@@ -3788,6 +3821,7 @@ async function openInvDetail(id){
     h+=`<div class="ds"><div class="ds-t">Customer</div>
       <div class="ds-row"><div class="ds-lbl">Name</div><div class="ds-val" style="color:var(--fire);cursor:pointer" onclick="openCust('${loc.id}')">${esc(loc.name||'—')} ›</div></div>
       ${loc.address?`<div class="ds-row"><div class="ds-lbl">Address</div><div class="ds-val">${esc([loc.address,loc.city].filter(Boolean).join(', '))}</div></div>`:''}
+      <div class="ds-row"><div class="ds-lbl">PO / Ref #</div><div class="ds-val"><input id="inv-po-${id}" value="${esc(inv.po_number||'')}" placeholder="Vendor PO or reference" onchange="saveInvPoNumber('${id}',this.value)" style="text-align:right;background:transparent;border:none;border-bottom:1px dashed var(--b1);color:var(--w);font-size:13px;font-weight:600;padding:4px 0;width:100%;max-width:220px"></div></div>
     </div>`
   }
 
@@ -3843,6 +3877,18 @@ async function openInvDetail(id){
       </div>`
     }
   }
+
+  // ═══ DOCUMENTS — vendor POs, work orders, compliance photos ═══
+  const detailAtts=await loadInvoiceAttachments(id)
+  h+=`<div class="ds"><div class="ds-t" style="display:flex;justify-content:space-between;align-items:center">
+    <span>Documents<span id="detail-docs-count">${detailAtts.length?' · '+detailAtts.length:''}</span></span>
+    <div style="display:flex;gap:6px">
+      <button onclick="triggerInvAttachCamera('${id}',()=>rerenderDetailDocs('${id}'))" style="font-size:10px;font-weight:700;color:var(--fire);background:rgba(240,90,40,.08);border:1px solid var(--fire);padding:5px 9px;border-radius:6px;cursor:pointer">📷 Photo</button>
+      <button onclick="triggerInvAttachUpload('${id}',()=>rerenderDetailDocs('${id}'))" style="font-size:10px;font-weight:700;color:var(--w2);background:var(--c1);border:1px solid var(--b1);padding:5px 9px;border-radius:6px;cursor:pointer">+ Upload</button>
+    </div>
+  </div>
+  <div id="detail-docs-list">${renderAttachmentList(detailAtts,id,'detail')}</div>
+  </div>`
 
   if(!isPaid){
     h+=`<div style="padding:16px 0;display:flex;flex-direction:column;gap:12px">
@@ -5611,6 +5657,19 @@ async function _showEmailPreview(invId,to,custName,invNum){
     h+=`<div style="font-size:11px;color:var(--g1);padding:8px 0;text-align:center">No reports to attach.</div>`
   }
 
+  // ═══ DOCUMENTS (vendor work orders, POs, photos, etc.) ═══
+  const atts=await loadInvoiceAttachments(invId)
+  h+=`<div style="background:var(--c2);border-radius:var(--r);padding:16px;margin-bottom:16px" id="review-docs-section">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <div style="font-size:11px;color:var(--g1)">DOCUMENTS<span id="review-docs-count">${atts.length?` · ${atts.length}`:''}</span></div>
+      <div style="display:flex;gap:6px">
+        <button onclick="triggerInvAttachCamera('${invId}',()=>rerenderReviewDocs('${invId}'))" style="font-size:11px;font-weight:700;color:var(--fire);background:rgba(240,90,40,.08);border:1px solid var(--fire);padding:6px 10px;border-radius:8px;cursor:pointer">📷 Photo</button>
+        <button onclick="triggerInvAttachUpload('${invId}',()=>rerenderReviewDocs('${invId}'))" style="font-size:11px;font-weight:700;color:var(--w2);background:var(--c1);border:1px solid var(--b1);padding:6px 10px;border-radius:8px;cursor:pointer">+ Upload</button>
+      </div>
+    </div>
+    <div id="review-docs-list">${renderAttachmentList(atts,invId,'review')}</div>
+  </div>`
+
   // customer signature
   h+=`<div style="border:1.5px solid var(--b1);border-radius:var(--r);padding:14px;margin-bottom:16px;background:var(--c2)">
     <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--g1);margin-bottom:8px">Customer Signature</div>
@@ -6048,7 +6107,245 @@ function toggleDelConfirm(id){
   if(el.classList.contains('vis'))el.scrollIntoView({behavior:'smooth',block:'nearest'})
 }
 
+// ═══ INVOICE DOCUMENT ATTACHMENTS ═══
+// Upload path convention: invoice-attachments/{invoice_id}/{uuid}.{ext}
+// Max 2048px on longest edge for images, JPEG 80% quality before upload.
+// PDFs uploaded as-is. HEIC converted to JPEG by the canvas step (mobile Safari decodes HEIC natively when drawn).
+
+const INV_ATTACH_BUCKET='invoice-attachments'
+const INV_ATTACH_MAX_BYTES=10*1024*1024 // 10 MB
+const INV_ATTACH_LABELS=[
+  {v:'work_order',l:'Work Order'},
+  {v:'po',l:'Purchase Order'},
+  {v:'compliance',l:'Compliance'},
+  {v:'photo',l:'Photo'},
+  {v:'other',l:'Other'}
+]
+
+function _attachUuid(){
+  const arr=new Uint8Array(16);crypto.getRandomValues(arr)
+  return Array.from(arr,b=>b.toString(16).padStart(2,'0')).join('')
+}
+
+function _attachExt(type,name){
+  if(type==='application/pdf')return 'pdf'
+  if(type==='image/png')return 'png'
+  if(type==='image/heic')return 'jpg' // converted
+  if(name){const m=name.match(/\.([a-z0-9]+)$/i);if(m)return m[1].toLowerCase()}
+  return 'jpg'
+}
+
+// compress an image File to JPEG blob, max 2048px longest edge, quality 0.8
+async function _compressImage(file){
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader()
+    reader.onload=e=>{
+      const img=new Image()
+      img.onload=()=>{
+        const max=2048
+        let w=img.width,h=img.height
+        if(w>max||h>max){
+          if(w>h){h=Math.round(h*(max/w));w=max}
+          else{w=Math.round(w*(max/h));h=max}
+        }
+        const canvas=document.createElement('canvas')
+        canvas.width=w;canvas.height=h
+        canvas.getContext('2d').drawImage(img,0,0,w,h)
+        canvas.toBlob(b=>b?resolve(b):reject(new Error('compress failed')),'image/jpeg',0.8)
+      }
+      img.onerror=()=>reject(new Error('image load failed'))
+      img.src=e.target.result
+    }
+    reader.onerror=()=>reject(new Error('file read failed'))
+    reader.readAsDataURL(file)
+  })
+}
+
+async function uploadInvoiceAttachment(invoiceId,file,label){
+  if(!invoiceId||!file)return{error:'Missing invoice or file'}
+  const isImg=(file.type||'').startsWith('image/')
+  const isPdf=file.type==='application/pdf'
+  if(!isImg&&!isPdf)return{error:'Unsupported file type'}
+  let uploadBlob=file
+  let uploadType=file.type||(isPdf?'application/pdf':'image/jpeg')
+  if(isImg){
+    try{uploadBlob=await _compressImage(file);uploadType='image/jpeg'}
+    catch(e){console.error('compress:',e);uploadBlob=file}
+  }
+  if(uploadBlob.size>INV_ATTACH_MAX_BYTES)return{error:'File exceeds 10MB'}
+  const ext=_attachExt(uploadType,file.name||'')
+  const path=`${invoiceId}/${_attachUuid()}.${ext}`
+  const{error:upErr}=await SB.storage.from(INV_ATTACH_BUCKET).upload(path,uploadBlob,{contentType:uploadType,upsert:false})
+  if(upErr){console.error('storage upload:',upErr);return{error:upErr.message||'Upload failed'}}
+  const{data:row,error:dbErr}=await SB.from('invoice_attachments').insert({
+    invoice_id:invoiceId,
+    file_name:file.name||`attachment.${ext}`,
+    file_path:path,
+    file_type:uploadType,
+    file_size:uploadBlob.size,
+    label:label||null
+  }).select().single()
+  if(dbErr){
+    console.error('attachment db insert:',dbErr)
+    try{await SB.storage.from(INV_ATTACH_BUCKET).remove([path])}catch(e){}
+    return{error:dbErr.message||'Database insert failed'}
+  }
+  return{data:row}
+}
+
+async function loadInvoiceAttachments(invoiceId){
+  if(!invoiceId)return[]
+  const{data,error}=await SB.from('invoice_attachments').select('*').eq('invoice_id',invoiceId).order('uploaded_at')
+  if(error){console.error('load attachments:',error);return[]}
+  return data||[]
+}
+
+async function invoiceAttachmentUrl(path,expiresIn){
+  if(!path)return''
+  const{data,error}=await SB.storage.from(INV_ATTACH_BUCKET).createSignedUrl(path,expiresIn||3600)
+  if(error){console.error('signed url:',error);return''}
+  return data?.signedUrl||''
+}
+
+async function deleteInvoiceAttachment(attachmentId){
+  const{data:row}=await SB.from('invoice_attachments').select('id,file_path').eq('id',attachmentId).single()
+  if(!row)return{error:'Not found'}
+  try{await SB.storage.from(INV_ATTACH_BUCKET).remove([row.file_path])}catch(e){console.error('storage remove:',e)}
+  const{error}=await SB.from('invoice_attachments').delete().eq('id',attachmentId)
+  if(error)return{error:error.message}
+  return{ok:true}
+}
+
+async function updateInvoiceAttachmentLabel(attachmentId,label){
+  const{error}=await SB.from('invoice_attachments').update({label:label||null}).eq('id',attachmentId)
+  return error?{error:error.message}:{ok:true}
+}
+
+async function saveInvPoNumber(invoiceId,val){
+  const{error}=await SB.from('invoices').update({po_number:(val||'').trim()||null}).eq('id',invoiceId)
+  if(error){toast('Could not save PO #',false);return}
+  // update local cache so it persists on re-open
+  const inv=D.invs.find(x=>x.id===invoiceId);if(inv)inv.po_number=(val||'').trim()||null
+  toast('PO # saved ✓')
+}
+
+async function openInvAttachment(attachmentId){
+  const{data:row}=await SB.from('invoice_attachments').select('file_path,file_type,file_name').eq('id',attachmentId).single()
+  if(!row){toast('Attachment not found',false);return}
+  const url=await invoiceAttachmentUrl(row.file_path,600)
+  if(url)window.open(url,'_blank')
+  else toast('Could not open file',false)
+}
+
+function triggerInvAttachUpload(invoiceId,onDone){
+  // create a hidden file input, trigger it, handle the upload
+  const inp=document.createElement('input')
+  inp.type='file'
+  inp.accept='image/jpeg,image/png,image/heic,application/pdf'
+  inp.style.display='none'
+  inp.onchange=async e=>{
+    const file=e.target.files?.[0]
+    if(!file){document.body.removeChild(inp);return}
+    toast('Uploading…')
+    const res=await uploadInvoiceAttachment(invoiceId,file,null)
+    document.body.removeChild(inp)
+    if(res.error){toast('Upload failed: '+res.error,false);return}
+    toast('Attachment added ✓')
+    if(onDone)onDone(res.data)
+  }
+  document.body.appendChild(inp)
+  inp.click()
+}
+
+function triggerInvAttachCamera(invoiceId,onDone){
+  // mobile camera capture
+  const inp=document.createElement('input')
+  inp.type='file'
+  inp.accept='image/*'
+  inp.capture='environment'
+  inp.style.display='none'
+  inp.onchange=async e=>{
+    const file=e.target.files?.[0]
+    if(!file){document.body.removeChild(inp);return}
+    toast('Uploading photo…')
+    const res=await uploadInvoiceAttachment(invoiceId,file,'photo')
+    document.body.removeChild(inp)
+    if(res.error){toast('Upload failed: '+res.error,false);return}
+    toast('Photo added ✓')
+    if(onDone)onDone(res.data)
+  }
+  document.body.appendChild(inp)
+  inp.click()
+}
+
+function _attachIcon(type){
+  if(!type)return '📄'
+  if(type==='application/pdf')return '📄'
+  if(type.startsWith('image/'))return '🖼️'
+  return '📎'
+}
+
+function _attachLabelName(v){
+  const f=INV_ATTACH_LABELS.find(x=>x.v===v)
+  return f?f.l:'Unlabeled'
+}
+
+function renderAttachmentList(atts,invoiceId,ctx){
+  if(!atts||!atts.length){
+    return `<div style="font-size:11px;color:var(--g2);text-align:center;padding:16px 0">No documents attached</div>`
+  }
+  const selOpts=INV_ATTACH_LABELS.map(l=>`<option value="${l.v}">${l.l}</option>`).join('')
+  return atts.map(a=>{
+    const icon=_attachIcon(a.file_type)
+    const sizeKb=a.file_size?Math.round(a.file_size/1024):0
+    return`<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--b1)">
+      <span style="font-size:22px;flex-shrink:0">${icon}</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:700;color:var(--w);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.file_name||'Attachment')}</div>
+        <div style="font-size:10px;color:var(--g1)">${sizeKb?sizeKb+' KB · ':''}${new Date(a.uploaded_at).toLocaleDateString('en-US',{month:'short',day:'numeric'})}</div>
+        <select onchange="updateInvoiceAttachmentLabel('${a.id}',this.value).then(()=>toast('Label updated'))" style="margin-top:6px;font-size:11px;background:var(--c1);color:var(--w);border:1px solid var(--b1);border-radius:6px;padding:4px 8px">
+          <option value="">— Label —</option>
+          ${INV_ATTACH_LABELS.map(l=>`<option value="${l.v}"${a.label===l.v?' selected':''}>${l.l}</option>`).join('')}
+        </select>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
+        <button onclick="openInvAttachment('${a.id}')" style="font-size:10px;font-weight:700;color:var(--info);background:rgba(99,102,241,.12);border:1px solid var(--info);padding:5px 9px;border-radius:6px;cursor:pointer;white-space:nowrap">View</button>
+        <button onclick="confirmDeleteInvAttachment('${a.id}','${invoiceId}','${ctx}')" style="font-size:10px;font-weight:700;color:var(--bad);background:rgba(239,68,68,.1);border:1px solid var(--bad);padding:5px 9px;border-radius:6px;cursor:pointer">Delete</button>
+      </div>
+    </div>`
+  }).join('')
+}
+
+async function confirmDeleteInvAttachment(attachmentId,invoiceId,ctx){
+  if(!confirm('Delete this document? This cannot be undone.'))return
+  const res=await deleteInvoiceAttachment(attachmentId)
+  if(res.error){toast('Delete failed: '+res.error,false);return}
+  toast('Attachment deleted')
+  if(ctx==='review')rerenderReviewDocs(invoiceId)
+  else if(ctx==='detail')rerenderDetailDocs(invoiceId)
+}
+
+async function rerenderReviewDocs(invoiceId){
+  const atts=await loadInvoiceAttachments(invoiceId)
+  const list=$('review-docs-list')
+  if(list)list.innerHTML=renderAttachmentList(atts,invoiceId,'review')
+  const cnt=$('review-docs-count');if(cnt)cnt.textContent=atts.length?' · '+atts.length:''
+}
+
+async function rerenderDetailDocs(invoiceId){
+  const atts=await loadInvoiceAttachments(invoiceId)
+  const list=$('detail-docs-list')
+  if(list)list.innerHTML=renderAttachmentList(atts,invoiceId,'detail')
+  const cnt=$('detail-docs-count');if(cnt)cnt.textContent=atts.length?' · '+atts.length:''
+}
+
 async function delInvoice(id){
+  // remove any attached files from storage first
+  try{
+    const{data:atts}=await SB.from('invoice_attachments').select('file_path').eq('invoice_id',id)
+    const paths=(atts||[]).map(a=>a.file_path).filter(Boolean)
+    if(paths.length)await SB.storage.from(INV_ATTACH_BUCKET).remove(paths)
+  }catch(e){console.error('delInvoice storage cleanup:',e)}
   await SB.from('invoice_lines').delete().eq('invoice_id',id)
   const{error}=await SB.from('invoices').delete().eq('id',id)
   if(error){toast('Error deleting invoice',false);return}
