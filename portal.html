@@ -648,6 +648,26 @@ async function toggleInvDetail(elId){
     }
   }
 
+  // fetch customer-uploaded documents (vendor POs, work orders, photos)
+  const{data:atts}=await SB.from('invoice_attachments').select('id,file_name,file_path,file_type,file_size,label,uploaded_at').eq('invoice_id',invId).order('uploaded_at')
+  if(atts&&atts.length){
+    ih+=`<div style="font-size:10px;font-weight:800;color:#999;text-transform:uppercase;letter-spacing:1px;margin:12px 0 8px">Documents · ${atts.length}</div>`
+    atts.forEach(a=>{
+      const icon=(a.file_type||'').startsWith('image/')?'🖼️':'📄'
+      const labelName=a.label==='work_order'?'Work Order':a.label==='po'?'Purchase Order':a.label==='compliance'?'Compliance':a.label==='photo'?'Photo':'Document'
+      const sizeKb=a.file_size?Math.round(a.file_size/1024)+' KB':''
+      const dt=a.uploaded_at?new Date(a.uploaded_at).toLocaleDateString('en-US',{month:'short',day:'numeric'}):''
+      ih+=`<div style="display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid #f5f5f5">
+        <span style="font-size:18px">${icon}</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:600;color:#333;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.file_name||labelName)}</div>
+          <div style="font-size:10px;color:#999">${labelName}${sizeKb?' · '+sizeKb:''}${dt?' · '+dt:''}</div>
+        </div>
+        <button onclick="viewPortalAttachment('${a.file_path}')" style="font-size:11px;font-weight:700;color:var(--fire);background:none;border:1px solid var(--fire);border-radius:6px;padding:5px 10px;cursor:pointer">View</button>
+      </div>`
+    })
+  }
+
   // Paid badge for paid invoices
   if(inv.status==='paid'){
     ih+=`<div style="background:#d1fae5;border:1px solid #10b981;border-radius:var(--r);padding:14px;text-align:center;margin-top:12px">
@@ -672,6 +692,15 @@ async function toggleInvDetail(elId){
 
   if(!ih)ih=`<div style="font-size:12px;color:#ccc;padding:8px 0">No details available</div>`
   linesWrap.innerHTML=ih
+}
+
+async function viewPortalAttachment(filePath){
+  if(!filePath){alert('File not available');return}
+  try{
+    const{data,error}=await SB.storage.from('invoice-attachments').createSignedUrl(filePath,600)
+    if(error||!data?.signedUrl){alert('Could not generate link. Contact Stephens Advanced at (214) 994-4799.');return}
+    window.open(data.signedUrl,'_blank')
+  }catch(e){console.error('portal attachment:',e);alert('Error opening document')}
 }
 
 async function viewReport(rptId){

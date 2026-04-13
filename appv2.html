@@ -5678,9 +5678,11 @@ async function _showEmailPreview(invId,to,custName,invNum){
   </div>`
 
   // store data for the send action
-  window._pendingEmail={invId,to,custName:custName||loc.name||'',invNum:inv.invoice_number||invNum,inv,ls,total,loc,rpts}
+  window._pendingEmail={invId,to,custName:custName||loc.name||'',invNum:inv.invoice_number||invNum,inv,ls,total,loc,rpts,atts}
 
-  h+=`<button id="confirmSendBtn" onclick="_confirmSendEmail()" style="width:100%;padding:16px;border-radius:var(--r);background:var(--fire);color:#fff;font-size:16px;font-weight:800;border:none;cursor:pointer;min-height:54px;margin-bottom:8px">✉️ Send Invoice${rpts.length?' + '+rpts.length+' Report'+(rpts.length>1?'s':''):''}</button>`
+  const totalAttachCount=rpts.length+atts.length
+  const sendLabel=totalAttachCount?'✉️ Send Invoice + '+totalAttachCount+' Attachment'+(totalAttachCount>1?'s':''):'✉️ Send Invoice'
+  h+=`<button id="confirmSendBtn" onclick="_confirmSendEmail()" style="width:100%;padding:16px;border-radius:var(--r);background:var(--fire);color:#fff;font-size:16px;font-weight:800;border:none;cursor:pointer;min-height:54px;margin-bottom:8px">${sendLabel}</button>`
   h+=`<div id="confirmSendStatus" style="text-align:center;font-size:12px;color:var(--g1);min-height:16px;margin-bottom:8px"></div>`
   h+=`<button class="btn-dim" onclick="pop()">← Back</button>`
   h+=`</div>`
@@ -5724,12 +5726,18 @@ async function _confirmSendEmail(){
     if(payData.success&&payData.paymentLink)payUrl=payData.paymentLink
   }catch(e){console.error('payment link:',e)}
 
+  // fetch customer-uploaded documents so they can be listed in the email body
+  let docsMeta=[]
+  try{docsMeta=await loadInvoiceAttachments(d.invId)}catch(e){console.error('load docs:',e)}
+
   let html=buildInvoiceEmailHtml({
     invNum:d.invNum,custName:d.custName,
     addr:[d.loc.address,d.loc.city,d.loc.state,d.loc.zip].filter(Boolean).join(', '),
     date:d.inv.date?new Date(d.inv.date).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):'',
     dueDate:d.inv.due_date?new Date(d.inv.due_date).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):'',
-    lines:d.ls,total:d.total,portalUrl,payUrl
+    lines:d.ls,total:d.total,portalUrl,payUrl,
+    poNumber:d.inv.po_number||'',
+    docs:docsMeta,rpts:d.rpts
   })
 
   // append job photos to email if any exist
@@ -5787,6 +5795,21 @@ async function _confirmSendEmail(){
       attachments.push({filename:'Stephens-Advanced-'+rType+suffix+'.pdf',content:b64})
     }catch(e){console.error('PDF gen error:',e)}
   }
+
+  // attach customer-uploaded documents (vendor POs, work orders, photos)
+  if(docsMeta.length&&st){st.textContent='Attaching '+docsMeta.length+' document'+(docsMeta.length>1?'s':'')+'...';st.style.color='var(--g1)'}
+  for(const a of docsMeta){
+    try{
+      const{data:blob,error:dlErr}=await SB.storage.from(INV_ATTACH_BUCKET).download(a.file_path)
+      if(dlErr||!blob){console.error('doc download:',dlErr);continue}
+      const buf=await blob.arrayBuffer()
+      const b64=btoa(new Uint8Array(buf).reduce((s,b)=>s+String.fromCharCode(b),''))
+      // sanitize filename for email attachment
+      const safeName=(a.file_name||'attachment').replace(/[^\w.\-]+/g,'_')
+      attachments.push({filename:safeName,content:b64})
+    }catch(e){console.error('doc attach:',e)}
+  }
+
   // HARD CONFIRM — show exactly who gets this email
   if(!confirm('SEND EMAIL TO:\n\n'+d.to+'\n\nInvoice '+d.invNum+' for '+d.custName+'\n\nAre you sure?')){
     if(st)st.textContent='Cancelled';if(btn){btn.innerHTML='✉️ Send Email';btn.style.pointerEvents=''}
@@ -5846,7 +5869,7 @@ async function getOrCreatePortalToken(locId,baId){
   return token
 }
 
-function buildInvoiceEmailHtml({invNum,custName,addr,date,dueDate,lines,total,portalUrl,payUrl}){
+function buildInvoiceEmailHtml({invNum,custName,addr,date,dueDate,lines,total,portalUrl,payUrl,poNumber,docs,rpts}){
   const lineRows=lines.map(l=>{const isTrv=(l.description||'').startsWith('Travel —');return`
     <tr>
       <td style="padding:10px 0;border-bottom:1px solid #f0f0f0;font-size:14px;color:${isTrv?'#f59e0b':'#333'}">${isTrv?'🚗 ':''}${l.description||''}${l.quantity>1?' ×'+l.quantity:''}</td>
@@ -5868,7 +5891,7 @@ function buildInvoiceEmailHtml({invNum,custName,addr,date,dueDate,lines,total,po
     <tr><td style="padding:28px 32px">
       <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#999;margin-bottom:6px">Invoice</div>
       <div style="font-size:28px;font-weight:900;color:#111;margin-bottom:4px">${invNum}</div>
-      <div style="font-size:13px;color:#888">${date}${dueDate?' &nbsp;·&nbsp; Due '+dueDate:''}</div>
+      <div style="font-size:13px;color:#888">${date}${dueDate?' &nbsp;·&nbsp; Due '+dueDate:''}${poNumber?' &nbsp;·&nbsp; PO '+poNumber:''}</div>
       <div style="margin-top:20px;padding:14px 16px;background:#fafafa;border-radius:8px">
         <div style="font-size:13px;font-weight:700;color:#111">${custName}</div>
         ${addr?`<div style="font-size:12px;color:#888;margin-top:2px">${addr}</div>`:''}
@@ -5888,9 +5911,22 @@ function buildInvoiceEmailHtml({invNum,custName,addr,date,dueDate,lines,total,po
         To pay by check, make payable to <strong>Stephens Advanced LLC</strong> and give to the technician at the time of service.<br>
         Questions? Reply to this email or call <strong>(214) 994-4799</strong>.
       </div>
+      ${(docs&&docs.length)||(rpts&&rpts.length)?`<div style="margin-top:24px;padding:16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px">
+        <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:#64748b;margin-bottom:10px">📎 Attached to this Email</div>
+        ${rpts&&rpts.length?rpts.map(r=>{
+          const name=r.report_type==='extinguisher'?'Extinguisher Report':r.report_type==='dry_chemical'?'Dry Chemical / Paint Booth Report':r.report_type==='clean_agent'?'Clean Agent Report':'Kitchen Hood Inspection Report'
+          const sysLoc=r.report_data?.sysLocation||''
+          return`<div style="display:flex;align-items:center;gap:10px;padding:6px 0;font-size:13px;color:#334155"><span style="font-size:16px">📄</span><span>${name}${sysLoc?' — '+sysLoc:''}</span></div>`
+        }).join(''):''}
+        ${docs&&docs.length?docs.map(a=>{
+          const labelName=a.label==='work_order'?'Work Order':a.label==='po'?'Purchase Order':a.label==='compliance'?'Compliance':a.label==='photo'?'Photo':a.label==='other'?'Document':'Document'
+          const icon=(a.file_type||'').startsWith('image/')?'🖼️':'📄'
+          return`<div style="display:flex;align-items:center;gap:10px;padding:6px 0;font-size:13px;color:#334155"><span style="font-size:16px">${icon}</span><span>${labelName}: ${(a.file_name||'Attachment').replace(/[<>]/g,'')}</span></div>`
+        }).join(''):''}
+      </div>`:''}
       ${portalUrl?`<div style="margin-top:16px;text-align:center">
         <a href="${portalUrl}" style="display:inline-block;padding:12px 28px;background:#1a1a2e;color:#fff;text-decoration:none;border-radius:8px;font-size:13px;font-weight:700;letter-spacing:.3px">View Customer Portal</a>
-        <div style="font-size:11px;color:#aaa;margin-top:6px">Equipment, service history & upcoming inspections</div>
+        <div style="font-size:11px;color:#aaa;margin-top:6px">Equipment, service history, invoices & attached documents</div>
       </div>`:''}
     </td></tr>
     <tr><td style="padding:20px 32px;background:#fafafa;font-size:11px;color:#aaa;text-align:center;border-top:1px solid #eee">
