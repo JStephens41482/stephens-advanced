@@ -146,6 +146,7 @@ function gtag(){dataLayer.push(arguments);}
 gtag('js', new Date());
 gtag('config', 'G-JH63B98JLB');
 </script>
+<script src="/js/ga-conv.js"></script>
 </head>
 <body>
 
@@ -175,7 +176,7 @@ gtag('config', 'G-JH63B98JLB');
     <h1>Fire Suppression <span>&amp; Safety</span> Expertise</h1>
     <p>Licensed inspections, installations, and service for kitchen hood suppression systems, fire extinguishers, clean agent systems, and emergency lighting across the Dallas-Fort Worth metroplex.</p>
     <div class="hero-btns">
-      <a href="tel:2149944799" class="btn-primary">Call (214) 994-4799</a>
+      <a href="tel:2149944799" class="btn-primary" onclick="return gtag_report_phone_tap()">Call (214) 994-4799</a>
       <a href="#request" class="btn-secondary">Request Service</a>
     </div>
     <div class="hero-stats">
@@ -326,7 +327,7 @@ gtag('config', 'G-JH63B98JLB');
     <div class="section-label">Trade Partners</div>
     <div class="section-title-w">Let's Talk</div>
     <p style="font-size:16px;color:rgba(255,255,255,.6);max-width:500px;margin:0 auto 32px;line-height:1.6">For contractor partnerships, subcontract work, system design, and trade inquiries — call Jon directly. The plan builder for multi-system bids is coming soon.</p>
-    <a href="tel:2149944799" style="font-size:clamp(28px,4vw,44px);font-weight:900;color:#fff;text-decoration:none;display:block;margin-bottom:16px">(214) 994-4799</a>
+    <a href="tel:2149944799" style="font-size:clamp(28px,4vw,44px);font-weight:900;color:#fff;text-decoration:none;display:block;margin-bottom:16px" onclick="return gtag_report_phone_tap()">(214) 994-4799</a>
     <p style="font-size:14px;color:rgba(255,255,255,.4)">Jon Stephens — Owner / Licensed Technician</p>
   </div>
 </section>
@@ -543,7 +544,7 @@ gtag('config', 'G-JH63B98JLB');
 <section class="cta" id="contact">
   <h2>Ready to Get Started?</h2>
   <p>Call us today. We'll get you scheduled.</p>
-  <a href="tel:2149944799" class="cta-phone">(214) 994-4799</a>
+  <a href="tel:2149944799" class="cta-phone" onclick="return gtag_report_phone_tap()">(214) 994-4799</a>
   <div class="cta-row">
     <a href="#request" class="btn-primary" style="background:#fff;color:var(--fire)">Request Service</a>
     <a href="/portal" class="btn-secondary" style="border-color:rgba(255,255,255,.4)">Customer Portal</a>
@@ -556,7 +557,7 @@ gtag('config', 'G-JH63B98JLB');
     <div>
       <div class="footer-brand">Stephens <span>Advanced</span> LLC</div>
       <p>Fire Suppression &amp; Safety<br>Euless, Texas</p>
-      <p style="margin-top:12px"><a href="tel:2149944799" style="color:var(--fire);text-decoration:none;font-weight:700">(214) 994-4799</a></p>
+      <p style="margin-top:12px"><a href="tel:2149944799" style="color:var(--fire);text-decoration:none;font-weight:700" onclick="return gtag_report_phone_tap()">(214) 994-4799</a></p>
     </div>
     <div>
       <h4>Services</h4>
@@ -731,7 +732,7 @@ async function submitServiceRequest(e){
               <p style="margin:8px 0"><b>Type:</b> ${type}</p>
               <p style="margin:8px 0"><b>Business:</b> ${business}</p>
               <p style="margin:8px 0"><b>Contact:</b> ${name}</p>
-              <p style="margin:8px 0"><b>Phone:</b> <a href="tel:${phone}">${phone}</a></p>
+              <p style="margin:8px 0"><b>Phone:</b> <a href="tel:${phone}" onclick="return gtag_report_phone_tap()">${phone}</a></p>
               ${email?'<p style="margin:8px 0"><b>Email:</b> '+email+'</p>':''}
               <p style="margin:8px 0"><b>Address:</b> ${address}, ${city}, ${state} ${zip}</p>
               <p style="margin:8px 0"><b>Systems:</b> ${sysCount} | <b>Extinguishers:</b> ${extCount}</p>

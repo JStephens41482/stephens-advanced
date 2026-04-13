@@ -130,6 +130,7 @@ function gtag(){dataLayer.push(arguments);}
 gtag('js', new Date());
 gtag('config', 'G-JH63B98JLB');
 </script>
+<script src="/js/ga-conv.js"></script>
 </head>
 <body>
 
@@ -145,7 +146,7 @@ gtag('config', 'G-JH63B98JLB');
       <a href="/#edge">Our Edge</a>
       <a href="/buy-extinguishers">Shop</a>
       <a href="/portal">Portal</a>
-      <a href="tel:2149944799" class="nav-cta">Call (214) 994-4799</a>
+      <a href="tel:2149944799" class="nav-cta" onclick="return gtag_report_phone_tap()">Call (214) 994-4799</a>
     </div>
     <button class="nav-menu-btn" onclick="document.querySelector('.nav-links').style.display=document.querySelector('.nav-links').style.display==='flex'?'none':'flex'">&#9776;</button>
   </div>
@@ -262,7 +263,7 @@ gtag('config', 'G-JH63B98JLB');
 <!-- FOOTER -->
 <footer class="footer">
   Stephens Advanced LLC · Licensed Fire Protection Contractor · DFW Texas<br>
-  <a href="tel:2149944799">(214) 994-4799</a> · <a href="mailto:jonathan@stephensadvanced.com">jonathan@stephensadvanced.com</a> · <a href="/">Home</a> · <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a>
+  <a href="tel:2149944799" onclick="return gtag_report_phone_tap()">(214) 994-4799</a> · <a href="mailto:jonathan@stephensadvanced.com">jonathan@stephensadvanced.com</a> · <a href="/">Home</a> · <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a>
 </footer>
 
 <!-- STICKY CART -->
@@ -412,6 +413,7 @@ function toggleAddress(val){
 
 async function submitOrder(e){
   e.preventDefault()
+  if(typeof gtag_report_conversion==='function')gtag_report_conversion()
   const btn = $('payBtn'), errEl = $('payErr')
   btn.disabled = true; btn.textContent = 'Creating payment link…'; errEl.textContent = ''
   const form = e.target
@@ -497,7 +499,7 @@ function toggleComingSoon(){
   <div class="cs-body">
     <p>We're building an AI assistant that can schedule service, answer questions, and take orders directly from this window.</p>
     <p>In the meantime, reach us directly:</p>
-    <a href="tel:2149944799" class="cs-cta">📞 Call (214) 994-4799</a>
+    <a href="tel:2149944799" class="cs-cta" onclick="return gtag_report_phone_tap()">📞 Call (214) 994-4799</a>
     <a href="mailto:jonathan@stephensadvanced.com" class="cs-cta cs-cta-alt">✉️ Email Jonathan</a>
   </div>
 </div>

@@ -87,6 +87,7 @@ function gtag(){dataLayer.push(arguments);}
 gtag('js', new Date());
 gtag('config', 'G-JH63B98JLB');
 </script>
+<script src="/js/ga-conv.js"></script>
 </head>
 <body>
 <div class="wrap">
@@ -390,6 +391,7 @@ function scoreTest() {
 
 async function submitApp(e) {
   e.preventDefault();
+  if (typeof gtag_report_conversion === 'function') gtag_report_conversion();
   const btn = document.getElementById('appSubmitBtn');
   const st = document.getElementById('appStatus');
   btn.disabled = true;
