@@ -33,8 +33,15 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;color:#222;backgroun
 .hero p{font-size:clamp(15px,1.6vw,17px);color:rgba(255,255,255,.6);line-height:1.6;max-width:640px;margin:0 auto}
 .hero-note{margin-top:20px;font-size:12px;color:rgba(255,255,255,.4);font-weight:600}
 
+/* JUMP NAV */
+.jump-nav{position:sticky;top:72px;z-index:80;background:rgba(255,255,255,.96);backdrop-filter:blur(8px);border-bottom:1px solid #eee}
+.jump-inner{max-width:1200px;margin:0 auto;padding:12px 24px;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
+.jump-inner::-webkit-scrollbar{display:none}
+.jump-inner a{flex-shrink:0;padding:8px 16px;background:#f4f5f8;color:#555;font-size:13px;font-weight:800;text-decoration:none;border-radius:9999px;transition:all .15s;border:1px solid transparent;white-space:nowrap}
+.jump-inner a:hover{background:rgba(240,90,40,.1);color:var(--fire);border-color:var(--fire)}
+
 /* CATEGORIES */
-.cat-section{padding:56px 24px 24px;max-width:1200px;margin:0 auto}
+.cat-section{padding:56px 24px 24px;max-width:1200px;margin:0 auto;scroll-margin-top:140px}
 .cat-head{margin-bottom:24px;padding-bottom:16px;border-bottom:2px solid #eee}
 .cat-label{display:inline-block;padding:5px 12px;border-radius:9999px;background:rgba(240,90,40,.08);color:var(--fire);font-size:10px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px}
 .cat-title{font-size:clamp(22px,3vw,32px);font-weight:900;color:var(--dark);letter-spacing:-.5px}
@@ -147,8 +154,20 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;color:#222;backgroun
   <div class="hero-note">All units include wall mounting bracket. Inspection tags available on request.</div>
 </section>
 
+<nav class="jump-nav">
+  <div class="jump-inner">
+    <a href="#sec-abc">ABC</a>
+    <a href="#sec-co2">CO₂</a>
+    <a href="#sec-k">Class K</a>
+    <a href="#sec-halo">Halotron</a>
+    <a href="#sec-d">Class D</a>
+    <a href="#sec-wm">Water Mist</a>
+    <a href="#sec-wheel">Wheeled</a>
+  </div>
+</nav>
+
 <!-- PRODUCT SECTIONS -->
-<section class="cat-section">
+<section class="cat-section" id="sec-abc">
   <div class="cat-head">
     <div class="cat-label">ABC Dry Chemical</div>
     <div class="cat-title">Multi-Purpose Extinguishers</div>
@@ -157,7 +176,7 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;color:#222;backgroun
   <div class="prod-grid" id="grid-abc"></div>
 </section>
 
-<section class="cat-section">
+<section class="cat-section" id="sec-co2">
   <div class="cat-head">
     <div class="cat-label">CO₂ Carbon Dioxide</div>
     <div class="cat-title">Clean, No-Residue Extinguishers</div>
@@ -166,7 +185,7 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;color:#222;backgroun
   <div class="prod-grid" id="grid-co2"></div>
 </section>
 
-<section class="cat-section">
+<section class="cat-section" id="sec-k">
   <div class="cat-head">
     <div class="cat-label">Class K Wet Chemical</div>
     <div class="cat-title">Commercial Kitchen Extinguishers</div>
@@ -175,7 +194,7 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;color:#222;backgroun
   <div class="prod-grid" id="grid-k"></div>
 </section>
 
-<section class="cat-section">
+<section class="cat-section" id="sec-halo">
   <div class="cat-head">
     <div class="cat-label">Halotron Clean Agent</div>
     <div class="cat-title">Electronics & Data Center Extinguishers</div>
@@ -184,13 +203,31 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;color:#222;backgroun
   <div class="prod-grid" id="grid-halo"></div>
 </section>
 
-<section class="cat-section">
+<section class="cat-section" id="sec-d">
   <div class="cat-head">
     <div class="cat-label">Class D</div>
     <div class="cat-title">Combustible Metal Extinguishers</div>
     <div class="cat-sub">Sodium chloride agent for magnesium, titanium, sodium, and other combustible metal fires.</div>
   </div>
   <div class="prod-grid" id="grid-d"></div>
+</section>
+
+<section class="cat-section" id="sec-wm">
+  <div class="cat-head">
+    <div class="cat-label">Water Mist</div>
+    <div class="cat-title">De-Ionized Water Mist Extinguishers</div>
+    <div class="cat-sub">Ultra-fine mist of de-ionized water — safe on Class A and C fires. Preferred for data centers, museums, healthcare, and sensitive environments where residue is unacceptable.</div>
+  </div>
+  <div class="prod-grid" id="grid-wm"></div>
+</section>
+
+<section class="cat-section" id="sec-wheel">
+  <div class="cat-head">
+    <div class="cat-label">Wheeled Units</div>
+    <div class="cat-title">Heavy Industrial Wheeled Extinguishers</div>
+    <div class="cat-sub">High-capacity units on semi-pneumatic wheels with extended hose. Built for warehouses, manufacturing floors, fuel yards, and large-hazard commercial sites.</div>
+  </div>
+  <div class="prod-grid" id="grid-wheel"></div>
 </section>
 
 <!-- INFO SECTION -->
@@ -273,14 +310,17 @@ const CATALOG = [
   {cat:'abc',id:'abc-5',img:'/img/ext/abc-5.png',name:'5 lb Rechargeable ABC Dry Chemical Fire Extinguisher',rating:'3-A:40-B:C',desc:'The standard workhorse for offices, retail, and shops.',price:102.50},
   {cat:'abc',id:'abc-10',img:'/img/ext/abc-10.png',name:'10 lb Rechargeable ABC Dry Chemical Fire Extinguisher',rating:'4-A:80-B:C',desc:'Heavy-duty protection for warehouses and industrial spaces.',price:141.50},
   {cat:'abc',id:'abc-20',img:'/img/ext/abc-20.png',name:'20 lb Rechargeable ABC Dry Chemical Fire Extinguisher',rating:'10-A:120-B:C',desc:'Large-capacity unit for high-hazard commercial areas.',price:219.00},
-  {cat:'abc',id:'abc-30',img:'/img/ext/abc-30.png',name:'30 lb Heavy-Duty Wheeled ABC Dry Chemical Fire Extinguisher',rating:'10-A:160-B:C',desc:'Wheeled heavy-duty unit for manufacturing, fuel handling, and industrial fire hazards.',price:595.00},
+  {cat:'abc',id:'abc-30',img:'/img/ext/abc-30.png',name:'30 lb Heavy-Duty ABC Dry Chemical Fire Extinguisher',rating:'20-A:120-B:C',desc:'High-capacity industrial unit for manufacturing, fuel handling, and large commercial facilities.',price:595.00},
   {cat:'co2',id:'co2-5',img:'/img/ext/co2-5.png',name:'5 lb CO₂ Fire Extinguisher (Aluminum)',rating:'5-B:C',desc:'Lightweight, residue-free — protect electronics and equipment.',price:345.00},
   {cat:'co2',id:'co2-10',img:'/img/ext/co2-10.png',name:'10 lb CO₂ Fire Extinguisher (Aluminum)',rating:'10-B:C',desc:'For larger electrical and server room applications.',price:495.00},
   {cat:'co2',id:'co2-20',img:'/img/ext/co2-20.png',name:'20 lb CO₂ Fire Extinguisher (Steel)',rating:'10-B:C',desc:'Heavy-duty clean extinguishing for labs and industrial plants.',price:649.00},
   {cat:'k',id:'k-6',img:'/img/ext/class-k.png',name:'6 Liter Class K Wet Chemical Fire Extinguisher',rating:'1-A:K',desc:'Required for commercial kitchens with fryers or open flame.',price:325.00},
   {cat:'halo',id:'halo-5',img:'/img/ext/halotron-5.png',name:'5 lb Halotron I Clean Agent Fire Extinguisher',rating:'5-B:C',desc:'Non-conductive clean agent for sensitive electronics.',price:895.00},
   {cat:'halo',id:'halo-11',img:'/img/ext/halotron-11.png',name:'11 lb Halotron I Clean Agent Fire Extinguisher',rating:'1-A:10-B:C',desc:'Extended coverage for server rooms and telecom facilities.',price:1795.00},
+  {cat:'halo',id:'halo-15.5',img:'/img/ext/halotron-15.5.png',name:'15.5 lb Halotron I Clean Agent Fire Extinguisher',rating:'2-A:10-B:C',desc:'Maximum clean agent coverage for large data centers and critical equipment rooms.',price:2495.00},
   {cat:'d',id:'d-30',img:'/img/ext/class-d.png',name:'30 lb Class D Sodium Chloride Fire Extinguisher',rating:'Class D',desc:'Specialized agent for combustible metal fires.',price:1395.00},
+  {cat:'wm',id:'wm-2.5',img:'/img/ext/water-mist-2.5.png',name:'2.5 Gallon Water Mist Fire Extinguisher',rating:'2-A:C',desc:'De-ionized water mist — safe on electronics, art, and healthcare environments.',price:695.00},
+  {cat:'wheel',id:'wheel-50',img:'/img/ext/wheeled-50.png',name:'50 lb Wheeled ABC Dry Chemical Fire Extinguisher',rating:'20-A:160-B:C',desc:'Heavy industrial wheeled unit with 25-ft hose — warehouses, fuel depots, manufacturing.',price:4195.00},
 ]
 
 
@@ -289,7 +329,7 @@ const money = n => '$'+n.toLocaleString('en-US',{minimumFractionDigits:2,maximum
 const $ = id => document.getElementById(id)
 
 function renderGrids(){
-  const cats = {abc:'grid-abc',co2:'grid-co2',k:'grid-k',halo:'grid-halo',d:'grid-d'}
+  const cats = {abc:'grid-abc',co2:'grid-co2',k:'grid-k',halo:'grid-halo',d:'grid-d',wm:'grid-wm',wheel:'grid-wheel'}
   Object.keys(cats).forEach(c=>{
     const g = $(cats[c]); if(!g) return
     g.innerHTML = CATALOG.filter(p=>p.cat===c).map(p=>`
