@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Buy Fire Extinguishers | Stephens Advanced LLC | DFW</title>
+<meta name="description" content="Buy commercial-grade fire extinguishers from Stephens Advanced. ABC dry chemical, CO2, Class K, Halotron, and Class D units. Pickup, DFW delivery, or nationwide shipping.">
+<link rel="canonical" href="https://www.stephensadvanced.com/buy-extinguishers">
+<link rel="icon" href="/FaviconLogo - Copy (2).png">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--fire:#f05a28;--dark:#1a1a2e;--darker:#0d0f14;--white:#f0f1f4;--gray:#888;--radius:12px}
+body{font-family:'Inter',system-ui,-apple-system,sans-serif;color:#222;background:#fff;-webkit-font-smoothing:antialiased;padding-bottom:96px}
+
+/* NAV — match indexv2.html */
+.nav{position:fixed;top:0;left:0;right:0;z-index:100;background:rgba(13,15,20,.97);backdrop-filter:blur(12px);border-bottom:1px solid rgba(255,255,255,.06)}
+.nav-inner{max-width:1200px;margin:0 auto;padding:0 24px;height:72px;display:flex;align-items:center;justify-content:space-between}
+.nav-logo{display:flex;align-items:center;gap:10px;text-decoration:none}
+.nav-brand{font-size:18px;font-weight:900;color:#fff;letter-spacing:-.5px}
+.nav-brand span{color:var(--fire)}
+.nav-links{display:flex;align-items:center;gap:32px}
+.nav-links a{color:rgba(255,255,255,.7);text-decoration:none;font-size:14px;font-weight:600;transition:color .2s}
+.nav-links a:hover{color:#fff}
+.nav-cta{display:inline-flex;align-items:center;gap:6px;padding:10px 24px;background:var(--fire);color:#fff;border-radius:9999px;font-size:13px;font-weight:800;text-decoration:none}
+.nav-menu-btn{display:none;background:none;border:none;color:#fff;font-size:28px;cursor:pointer}
+
+/* HERO */
+.hero{background:linear-gradient(135deg,var(--darker) 0%,#1a1020 50%,#0d1a2e 100%);padding:128px 24px 56px;text-align:center}
+.hero-badge{display:inline-block;padding:6px 16px;border-radius:9999px;background:rgba(240,90,40,.12);color:var(--fire);font-size:12px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:20px}
+.hero h1{font-size:clamp(32px,5vw,52px);font-weight:900;color:#fff;line-height:1.1;margin-bottom:16px;letter-spacing:-1px}
+.hero h1 span{color:var(--fire)}
+.hero p{font-size:clamp(15px,1.6vw,17px);color:rgba(255,255,255,.6);line-height:1.6;max-width:640px;margin:0 auto}
+.hero-note{margin-top:20px;font-size:12px;color:rgba(255,255,255,.4);font-weight:600}
+
+/* CATEGORIES */
+.cat-section{padding:56px 24px 24px;max-width:1200px;margin:0 auto}
+.cat-head{margin-bottom:24px;padding-bottom:16px;border-bottom:2px solid #eee}
+.cat-label{display:inline-block;padding:5px 12px;border-radius:9999px;background:rgba(240,90,40,.08);color:var(--fire);font-size:10px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px}
+.cat-title{font-size:clamp(22px,3vw,32px);font-weight:900;color:var(--dark);letter-spacing:-.5px}
+.cat-sub{font-size:14px;color:#888;margin-top:4px}
+
+.prod-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:20px}
+.prod-card{background:#fff;border:1px solid #eee;border-radius:var(--radius);overflow:hidden;transition:transform .2s,box-shadow .2s;display:flex;flex-direction:column}
+.prod-card:hover{transform:translateY(-3px);box-shadow:0 12px 32px rgba(0,0,0,.08)}
+.prod-img{height:160px;background:linear-gradient(135deg,var(--darker),#1a1020);display:flex;align-items:center;justify-content:center;position:relative}
+.prod-img svg{width:64px;height:96px}
+.prod-rating{position:absolute;top:10px;right:10px;background:rgba(0,0,0,.6);color:#fff;font-size:10px;font-weight:800;padding:4px 10px;border-radius:9999px;letter-spacing:.5px}
+.prod-body{padding:20px;display:flex;flex-direction:column;flex:1}
+.prod-name{font-size:15px;font-weight:800;color:var(--dark);line-height:1.3;margin-bottom:6px}
+.prod-desc{font-size:12px;color:#888;line-height:1.5;margin-bottom:14px;flex:1}
+.prod-foot{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.prod-price{font-size:22px;font-weight:900;color:var(--fire);letter-spacing:-.5px}
+.qty-ctl{display:flex;align-items:center;gap:6px;border:2px solid #eee;border-radius:9999px;padding:4px}
+.qty-btn{width:26px;height:26px;border-radius:50%;border:none;background:#f4f4f6;color:var(--dark);font-size:16px;font-weight:900;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s}
+.qty-btn:hover{background:var(--fire);color:#fff}
+.qty-n{min-width:20px;text-align:center;font-size:14px;font-weight:800;color:var(--dark)}
+
+/* INFO SECTION */
+.info{background:var(--darker);padding:80px 24px;margin-top:60px}
+.info-grid{max-width:1200px;margin:0 auto;display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+.info-card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:var(--radius);padding:28px}
+.info-card-icon{font-size:32px;margin-bottom:12px}
+.info-card h3{font-size:16px;font-weight:800;color:#fff;margin-bottom:10px}
+.info-card p{font-size:13px;color:rgba(255,255,255,.55);line-height:1.6}
+
+/* STICKY CART */
+.cart-bar{position:fixed;left:0;right:0;bottom:0;z-index:90;background:rgba(13,15,20,.98);backdrop-filter:blur(12px);border-top:1px solid rgba(255,255,255,.08);padding:14px 24px;transform:translateY(110%);transition:transform .3s ease}
+.cart-bar.open{transform:translateY(0)}
+.cart-inner{max-width:1200px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:16px}
+.cart-info{color:#fff;font-size:14px;font-weight:700}
+.cart-info b{color:var(--fire);font-size:18px;letter-spacing:-.5px}
+.cart-info span{display:block;font-size:11px;font-weight:500;color:rgba(255,255,255,.5);margin-top:2px}
+.cart-btn{padding:14px 28px;background:var(--fire);color:#fff;border:none;border-radius:9999px;font-size:15px;font-weight:800;cursor:pointer;transition:all .2s}
+.cart-btn:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(240,90,40,.4)}
+.cart-btn:disabled{opacity:.6;cursor:not-allowed;transform:none;box-shadow:none}
+
+/* CHECKOUT MODAL */
+.modal{display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.7);backdrop-filter:blur(6px);align-items:flex-start;justify-content:center;overflow-y:auto;padding:40px 16px}
+.modal.open{display:flex}
+.modal-inner{background:#fff;max-width:560px;width:100%;border-radius:16px;padding:32px;margin:20px auto;position:relative}
+.modal-close{position:absolute;top:16px;right:16px;width:32px;height:32px;border-radius:50%;border:none;background:#f4f4f6;color:#222;font-size:18px;font-weight:900;cursor:pointer}
+.modal h2{font-size:22px;font-weight:900;color:var(--dark);margin-bottom:6px;letter-spacing:-.5px}
+.modal-sub{font-size:13px;color:#888;margin-bottom:20px}
+.summary{background:#f8f8fa;border-radius:var(--radius);padding:16px;margin-bottom:20px;max-height:180px;overflow-y:auto}
+.sum-row{display:flex;justify-content:space-between;font-size:13px;padding:4px 0;color:#444}
+.sum-row b{color:var(--dark);font-weight:700}
+.sum-tot{display:flex;justify-content:space-between;font-size:16px;font-weight:900;color:var(--dark);padding-top:10px;margin-top:10px;border-top:1px solid #e4e4e8}
+.sum-tot b{color:var(--fire);font-size:20px}
+.fg{margin-bottom:14px}
+.fg-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.fg label{display:block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#999;margin-bottom:6px}
+.fg input,.fg select,.fg textarea{width:100%;padding:12px 14px;border:2px solid #eee;border-radius:10px;font-size:14px;font-family:inherit;color:#222;background:#fff;transition:border-color .15s}
+.fg input:focus,.fg select:focus,.fg textarea:focus{outline:none;border-color:var(--fire)}
+.fg textarea{resize:vertical;min-height:60px}
+.pay-btn{width:100%;padding:16px;margin-top:8px;background:var(--fire);color:#fff;border:none;border-radius:9999px;font-size:16px;font-weight:800;cursor:pointer;transition:all .2s}
+.pay-btn:hover{transform:translateY(-1px);box-shadow:0 8px 24px rgba(240,90,40,.4)}
+.pay-btn:disabled{opacity:.6;cursor:not-allowed;transform:none;box-shadow:none}
+.pay-note{text-align:center;font-size:11px;color:#999;margin-top:10px}
+.pay-err{font-size:13px;color:#d64545;text-align:center;margin-top:10px;min-height:18px}
+
+/* SUCCESS BANNER */
+.success{display:none;background:#10b981;color:#fff;padding:16px 24px;text-align:center;font-size:14px;font-weight:700;margin-top:72px}
+.success.open{display:block}
+
+/* FOOTER */
+.footer{background:var(--darker);padding:40px 24px 24px;color:rgba(255,255,255,.5);text-align:center;font-size:12px;line-height:1.7}
+.footer a{color:var(--fire);text-decoration:none}
+
+@media(max-width:768px){
+  .nav-links{display:none}
+  .nav-menu-btn{display:block}
+  .info-grid{grid-template-columns:1fr}
+  .fg-row{grid-template-columns:1fr}
+  .prod-grid{grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}
+}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="/" class="nav-logo">
+      <svg width="32" height="38" viewBox="0 0 32 38" fill="none"><path d="M16 2C16 2 6 10 6 20C6 26 10 30 16 30C22 30 26 26 26 20C26 10 16 2 16 2Z" fill="#f05a28"/><path d="M16 8C16 8 10 14 10 20C10 23 12 25 14 26C13 23 14 20 16 18C18 20 19 23 18 26C20 25 22 23 22 20C22 14 16 8 16 8Z" fill="#ff7847"/><ellipse cx="16" cy="30" rx="5" ry="6" fill="#3498db"/><ellipse cx="16" cy="29" rx="3" ry="3.5" fill="#5dade2"/></svg>
+      <div class="nav-brand">Stephens <span>Advanced</span></div>
+    </a>
+    <div class="nav-links">
+      <a href="/#services">Services</a>
+      <a href="/#edge">Our Edge</a>
+      <a href="/buy-extinguishers">Shop</a>
+      <a href="/portal">Portal</a>
+      <a href="tel:2149944799" class="nav-cta">Call (214) 994-4799</a>
+    </div>
+    <button class="nav-menu-btn" onclick="document.querySelector('.nav-links').style.display=document.querySelector('.nav-links').style.display==='flex'?'none':'flex'">&#9776;</button>
+  </div>
+</nav>
+
+<!-- SUCCESS BANNER (shown after Square redirect) -->
+<div class="success" id="successBanner">✓ Payment received — we'll email you shortly with fulfillment details. Thank you!</div>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-badge">Fire Extinguisher Store</div>
+  <h1>Commercial-Grade <span>Fire Extinguishers</span></h1>
+  <p>Ready-to-deploy extinguishers for businesses, kitchens, shops, and fleets. Pickup in DFW, local delivery, or shipped nationwide.</p>
+  <div class="hero-note">All units include wall mounting bracket. Inspection tags available on request.</div>
+</section>
+
+<!-- PRODUCT SECTIONS -->
+<section class="cat-section">
+  <div class="cat-head">
+    <div class="cat-label">ABC Dry Chemical</div>
+    <div class="cat-title">Multi-Purpose Extinguishers</div>
+    <div class="cat-sub">Class A, B, and C fires. The most versatile choice for offices, retail, warehouses, and vehicles.</div>
+  </div>
+  <div class="prod-grid" id="grid-abc"></div>
+</section>
+
+<section class="cat-section">
+  <div class="cat-head">
+    <div class="cat-label">CO₂ Carbon Dioxide</div>
+    <div class="cat-title">Clean, No-Residue Extinguishers</div>
+    <div class="cat-sub">Class B and C fires. Leaves no mess — ideal for electrical rooms, server rooms, and labs.</div>
+  </div>
+  <div class="prod-grid" id="grid-co2"></div>
+</section>
+
+<section class="cat-section">
+  <div class="cat-head">
+    <div class="cat-label">Class K Wet Chemical</div>
+    <div class="cat-title">Commercial Kitchen Extinguishers</div>
+    <div class="cat-sub">Cooking oil and grease fires. Required by code in every commercial kitchen with fryers or open-flame cooking.</div>
+  </div>
+  <div class="prod-grid" id="grid-k"></div>
+</section>
+
+<section class="cat-section">
+  <div class="cat-head">
+    <div class="cat-label">Halotron Clean Agent</div>
+    <div class="cat-title">Electronics & Data Center Extinguishers</div>
+    <div class="cat-sub">Non-conductive, residue-free agent safe for sensitive electronics, telecom, and data equipment.</div>
+  </div>
+  <div class="prod-grid" id="grid-halo"></div>
+</section>
+
+<section class="cat-section">
+  <div class="cat-head">
+    <div class="cat-label">Class D</div>
+    <div class="cat-title">Combustible Metal Extinguishers</div>
+    <div class="cat-sub">Sodium chloride agent for magnesium, titanium, sodium, and other combustible metal fires.</div>
+  </div>
+  <div class="prod-grid" id="grid-d"></div>
+</section>
+
+<!-- INFO SECTION -->
+<section class="info">
+  <div class="info-grid">
+    <div class="info-card">
+      <div class="info-card-icon">🎯</div>
+      <h3>Need Help Choosing?</h3>
+      <p>Not sure which extinguisher you need? Call us at (214) 994-4799 and we'll walk you through NFPA 10 requirements for your facility — free, no obligation.</p>
+    </div>
+    <div class="info-card">
+      <div class="info-card-icon">🚚</div>
+      <h3>DFW Delivery & Installation</h3>
+      <p>We deliver and install extinguishers across the Dallas-Fort Worth metroplex. Wall-mounted, signed, and tagged per code on request.</p>
+    </div>
+    <div class="info-card">
+      <div class="info-card-icon">📦</div>
+      <h3>Volume & Commercial Orders</h3>
+      <p>Ordering 10+ units or outfitting a new facility? Contact us for volume pricing and project quotes tailored to your build-out timeline.</p>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer class="footer">
+  Stephens Advanced LLC · Licensed Fire Protection Contractor · DFW Texas<br>
+  <a href="tel:2149944799">(214) 994-4799</a> · <a href="mailto:jonathan@stephensadvanced.com">jonathan@stephensadvanced.com</a> · <a href="/">Home</a> · <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a>
+</footer>
+
+<!-- STICKY CART -->
+<div class="cart-bar" id="cartBar">
+  <div class="cart-inner">
+    <div class="cart-info">
+      <b id="cartCount">0 items</b>
+      <span id="cartTotal">$0.00</span>
+    </div>
+    <button class="cart-btn" id="cartBtn" onclick="openCheckout()">Checkout ›</button>
+  </div>
+</div>
+
+<!-- CHECKOUT MODAL -->
+<div class="modal" id="modal">
+  <div class="modal-inner">
+    <button class="modal-close" onclick="closeCheckout()">✕</button>
+    <h2>Checkout</h2>
+    <div class="modal-sub">Your info, then pay securely via Square.</div>
+    <div class="summary" id="summary"></div>
+    <form id="checkoutForm" onsubmit="return submitOrder(event)">
+      <div class="fg-row">
+        <div class="fg"><label>First name *</label><input required name="firstName"></div>
+        <div class="fg"><label>Last name *</label><input required name="lastName"></div>
+      </div>
+      <div class="fg"><label>Company (optional)</label><input name="company"></div>
+      <div class="fg-row">
+        <div class="fg"><label>Email *</label><input required type="email" name="email"></div>
+        <div class="fg"><label>Phone *</label><input required type="tel" name="phone"></div>
+      </div>
+      <div class="fg">
+        <label>Delivery preference *</label>
+        <select required name="delivery" onchange="toggleAddress(this.value)">
+          <option value="">Select…</option>
+          <option value="pickup">Pickup in Euless, TX</option>
+          <option value="delivery-dfw">DFW Local Delivery</option>
+          <option value="ship">Ship Nationwide</option>
+        </select>
+      </div>
+      <div class="fg" id="addrFg" style="display:none"><label>Delivery / shipping address *</label><input name="address" placeholder="Street, City, State, ZIP"></div>
+      <div class="fg"><label>Order notes (optional)</label><textarea name="notes" placeholder="Anything we should know? Mounting, install, signage…"></textarea></div>
+      <button type="submit" class="pay-btn" id="payBtn">Pay with Square ›</button>
+      <div class="pay-note">You'll be redirected to Square to complete payment securely.</div>
+      <div class="pay-err" id="payErr"></div>
+    </form>
+  </div>
+</div>
+
+<script>
+// PRODUCT CATALOG — hardcoded, prices final
+const CATALOG = [
+  {cat:'abc',id:'abc-2.5',name:'2.5 lb Rechargeable ABC Dry Chemical Fire Extinguisher',rating:'1-A:10-B:C',desc:'Compact unit for vehicles, boats, and small workspaces.',price:79.00},
+  {cat:'abc',id:'abc-5',name:'5 lb Rechargeable ABC Dry Chemical Fire Extinguisher',rating:'3-A:40-B:C',desc:'The standard workhorse for offices, retail, and shops.',price:102.50},
+  {cat:'abc',id:'abc-10',name:'10 lb Rechargeable ABC Dry Chemical Fire Extinguisher',rating:'4-A:80-B:C',desc:'Heavy-duty protection for warehouses and industrial spaces.',price:141.50},
+  {cat:'abc',id:'abc-20',name:'20 lb Rechargeable ABC Dry Chemical Fire Extinguisher',rating:'10-A:120-B:C',desc:'Large-capacity unit for high-hazard commercial areas.',price:219.00},
+  {cat:'abc',id:'abc-30',name:'30 lb Rechargeable ABC Dry Chemical Fire Extinguisher',rating:'10-A:160-B:C',desc:'Maximum coverage for manufacturing and fuel-handling sites.',price:329.00},
+  {cat:'co2',id:'co2-5',name:'5 lb CO₂ Fire Extinguisher (Aluminum)',rating:'5-B:C',desc:'Lightweight, residue-free — protect electronics and equipment.',price:345.00},
+  {cat:'co2',id:'co2-10',name:'10 lb CO₂ Fire Extinguisher (Aluminum)',rating:'10-B:C',desc:'For larger electrical and server room applications.',price:495.00},
+  {cat:'co2',id:'co2-20',name:'20 lb CO₂ Fire Extinguisher (Steel)',rating:'10-B:C',desc:'Heavy-duty clean extinguishing for labs and industrial plants.',price:649.00},
+  {cat:'k',id:'k-6',name:'6 Liter Class K Wet Chemical Fire Extinguisher',rating:'1-A:K',desc:'Required for commercial kitchens with fryers or open flame.',price:325.00},
+  {cat:'halo',id:'halo-5',name:'5 lb Halotron I Clean Agent Fire Extinguisher',rating:'5-B:C',desc:'Non-conductive clean agent for sensitive electronics.',price:895.00},
+  {cat:'halo',id:'halo-11',name:'11 lb Halotron I Clean Agent Fire Extinguisher',rating:'1-A:10-B:C',desc:'Extended coverage for server rooms and telecom facilities.',price:1795.00},
+  {cat:'d',id:'d-30',name:'30 lb Class D Sodium Chloride Fire Extinguisher',rating:'Class D',desc:'Specialized agent for combustible metal fires.',price:1395.00},
+]
+
+// Placeholder SVG icon — tall red cylinder extinguisher
+const EXT_SVG = `<svg viewBox="0 0 64 96" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect x="22" y="6" width="20" height="6" rx="2" fill="#2a2a35"/>
+  <rect x="28" y="2" width="8" height="6" rx="1" fill="#1a1a25"/>
+  <path d="M20 18 L44 18 L46 28 L46 82 Q46 88 40 88 L24 88 Q18 88 18 82 L18 28 Z" fill="#f05a28"/>
+  <path d="M20 18 L44 18 L46 28 L46 44 L18 44 L18 28 Z" fill="#d44a1a"/>
+  <rect x="22" y="50" width="20" height="14" rx="1" fill="#fff" opacity="0.92"/>
+  <rect x="24" y="52" width="16" height="3" fill="#f05a28"/>
+  <rect x="24" y="57" width="12" height="1.5" fill="#888"/>
+  <rect x="24" y="60" width="14" height="1.5" fill="#888"/>
+  <circle cx="32" cy="30" r="3" fill="#fff" opacity="0.8"/>
+  <rect x="30" y="10" width="4" height="10" fill="#444"/>
+</svg>`
+
+const CART = {} // id -> qty
+const money = n => '$'+n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})
+const $ = id => document.getElementById(id)
+
+function renderGrids(){
+  const cats = {abc:'grid-abc',co2:'grid-co2',k:'grid-k',halo:'grid-halo',d:'grid-d'}
+  Object.keys(cats).forEach(c=>{
+    const g = $(cats[c]); if(!g) return
+    g.innerHTML = CATALOG.filter(p=>p.cat===c).map(p=>`
+      <div class="prod-card">
+        <div class="prod-img">${EXT_SVG}<span class="prod-rating">${p.rating}</span></div>
+        <div class="prod-body">
+          <div class="prod-name">${p.name}</div>
+          <div class="prod-desc">${p.desc}</div>
+          <div class="prod-foot">
+            <div class="prod-price">${money(p.price)}</div>
+            <div class="qty-ctl">
+              <button type="button" class="qty-btn" onclick="setQty('${p.id}',-1)">−</button>
+              <div class="qty-n" id="qty-${p.id}">0</div>
+              <button type="button" class="qty-btn" onclick="setQty('${p.id}',1)">+</button>
+            </div>
+          </div>
+        </div>
+      </div>`).join('')
+  })
+}
+
+function setQty(id, delta){
+  CART[id] = Math.max(0, (CART[id]||0) + delta)
+  if(CART[id]===0) delete CART[id]
+  const el = $('qty-'+id); if(el) el.textContent = CART[id]||0
+  updateCart()
+}
+
+function cartItems(){
+  return Object.keys(CART).map(id=>{
+    const p = CATALOG.find(x=>x.id===id)
+    return {id,name:p.name,qty:CART[id],price:p.price,lineTotal:+(p.price*CART[id]).toFixed(2)}
+  })
+}
+
+function cartTotal(){
+  return +cartItems().reduce((s,i)=>s+i.lineTotal,0).toFixed(2)
+}
+
+function cartCount(){
+  return cartItems().reduce((s,i)=>s+i.qty,0)
+}
+
+function updateCart(){
+  const n = cartCount(), t = cartTotal()
+  $('cartCount').textContent = n+' item'+(n===1?'':'s')
+  $('cartTotal').textContent = money(t)
+  const bar = $('cartBar')
+  if(n>0) bar.classList.add('open'); else bar.classList.remove('open')
+  $('cartBtn').disabled = n===0
+}
+
+function openCheckout(){
+  if(cartCount()===0) return
+  const items = cartItems()
+  const sumHtml = items.map(i=>`<div class="sum-row"><b>${i.qty}× ${i.name}</b><span>${money(i.lineTotal)}</span></div>`).join('') +
+    `<div class="sum-tot"><span>Total</span><b>${money(cartTotal())}</b></div>`
+  $('summary').innerHTML = sumHtml
+  $('modal').classList.add('open')
+  $('payErr').textContent = ''
+}
+
+function closeCheckout(){
+  $('modal').classList.remove('open')
+}
+
+function toggleAddress(val){
+  $('addrFg').style.display = (val==='delivery-dfw'||val==='ship') ? 'block' : 'none'
+  const addrInput = document.querySelector('input[name="address"]')
+  if(addrInput) addrInput.required = (val==='delivery-dfw'||val==='ship')
+}
+
+async function submitOrder(e){
+  e.preventDefault()
+  const btn = $('payBtn'), errEl = $('payErr')
+  btn.disabled = true; btn.textContent = 'Creating payment link…'; errEl.textContent = ''
+  const form = e.target
+  const f = Object.fromEntries(new FormData(form))
+  const items = cartItems()
+  const total = cartTotal()
+  const payload = {
+    type:'store-order',
+    customer:{
+      firstName:f.firstName.trim(),
+      lastName:f.lastName.trim(),
+      company:(f.company||'').trim(),
+      email:f.email.trim(),
+      phone:f.phone.trim()
+    },
+    delivery:f.delivery,
+    address:(f.address||'').trim(),
+    notes:(f.notes||'').trim(),
+    items,
+    total
+  }
+  try{
+    const r = await fetch('/api/create-payment-link',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(payload)
+    })
+    const data = await r.json()
+    if(!r.ok||!data.paymentUrl) throw new Error(data.error||'Could not create payment link')
+    window.location.href = data.paymentUrl
+  }catch(err){
+    console.error(err)
+    // Fallback — mailto with order details so the order isn't lost
+    const body = encodeURIComponent(
+      `NEW EXTINGUISHER ORDER\n\n`+
+      `Customer: ${payload.customer.firstName} ${payload.customer.lastName}\n`+
+      (payload.customer.company?`Company: ${payload.customer.company}\n`:'')+
+      `Email: ${payload.customer.email}\n`+
+      `Phone: ${payload.customer.phone}\n`+
+      `Delivery: ${payload.delivery}\n`+
+      (payload.address?`Address: ${payload.address}\n`:'')+
+      (payload.notes?`Notes: ${payload.notes}\n`:'')+
+      `\nITEMS:\n`+
+      items.map(i=>`  ${i.qty}× ${i.name} @ ${money(i.price)} = ${money(i.lineTotal)}`).join('\n')+
+      `\n\nTOTAL: ${money(total)}`
+    )
+    errEl.innerHTML = `Payment link unavailable. <a href="mailto:jonathan@stephensadvanced.com?subject=Extinguisher Order&body=${body}" style="color:var(--fire);font-weight:800">Email order instead ›</a>`
+    btn.disabled = false; btn.textContent = 'Pay with Square ›'
+  }
+  return false
+}
+
+// INIT
+renderGrids()
+updateCart()
+if(new URLSearchParams(location.search).get('success')==='1'){
+  $('successBanner').classList.add('open')
+}
+</script>
+</body>
+</html>

@@ -18,6 +18,8 @@
     { "src": "/privacy", "dest": "/privacy.html" },
     { "src": "/terms", "dest": "/terms.html" },
     { "src": "/apply", "dest": "/apply.html" },
+    { "src": "/buy-extinguishers", "dest": "/buy-extinguishers.html" },
+    { "src": "/store/extinguishers", "dest": "/buy-extinguishers.html" },
     { "src": "/services/fire-extinguisher-inspection", "dest": "/services/fire-extinguisher-inspection.html" },
     { "src": "/services/kitchen-suppression-inspection", "dest": "/services/kitchen-suppression-inspection.html" },
     { "src": "/services/hydrostatic-testing", "dest": "/services/hydrostatic-testing.html" },
