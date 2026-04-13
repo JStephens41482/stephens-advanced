@@ -1273,6 +1273,18 @@ function openNav(loc){
   if(addr.length<5){toast('No address on file',false);return}
   window.open('https://www.google.com/maps/dir/?api=1&destination='+encodeURIComponent(addr))
 }
+// Resolve a job ID → location and open nav. Use this from HTML onclicks to
+// avoid having to JSON.stringify an address object into an attribute string.
+function openNavForJob(jobId){
+  const j=D.jobs.find(x=>x.id===jobId);if(!j){toast('Job not found',false);return}
+  const l=D.locs.find(x=>x.id===(j.location_id||j.location?.id))||j.location||{}
+  openNav(l)
+}
+// Same but for a location ID (used by customer detail).
+function openNavForLoc(locId){
+  const l=D.locs.find(x=>x.id===locId);if(!l){toast('Location not found',false);return}
+  openNav(l)
+}
 
 // ─── Fallback routing (Haversine) ───
 function _fallbackRouteJobs(jobs){
@@ -1400,6 +1412,8 @@ function startNav(jobId){
   const l=D.locs.find(x=>x.id===(j.location_id||j.location?.id))||j.location||{}
   const a=locAddr(l)
   if(!a||a.length<5){toast('No address on file',false);return}
+  // Stash on window so the overlay buttons can read it without stringifying through HTML
+  window._navLoc=l
   const phone=l.contact_phone||''
   const contactName=l.contact_name||'there'
   const msg=`Hi${contactName!=='there'?' '+contactName.split(' ')[0]:''}, this is Jon from Stephens Advanced. I'm heading to your location now.`
@@ -1412,7 +1426,7 @@ function startNav(jobId){
       <textarea id="nav-msg" style="min-height:80px;font-size:14px">${esc(msg)}</textarea>
       <button class="btn-p" style="margin-top:8px" id="navSmsBtn" onclick="sendNavSms('${esc(phone)}')">📱 Send Text & Navigate</button>
     </div>`:`<div style="font-size:12px;color:var(--g2);margin-bottom:12px">No phone number on file</div>`}
-    <button class="btn-dim" onclick="pop();openNav(${JSON.stringify({address:l.address,city:l.city,state:l.state,zip:l.zip})})">🗺 Just Navigate — No Text</button>
+    <button class="btn-dim" onclick="pop();openNav(window._navLoc)">🗺 Just Navigate — No Text</button>
   </div>`)
 }
 
@@ -1423,10 +1437,7 @@ async function sendNavSms(phone){
     await fetch('/api/send-sms',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to:phone,body:msg})})
     toast('Text sent ✓')
   }catch(e){toast('Text failed — navigating anyway',false)}
-  // get the location from the nav overlay context
-  const navTitle=document.querySelector('.ov-title')?.textContent||''
-  const locName=navTitle.replace('Navigate to ','')
-  const loc=D.locs.find(l=>l.name===locName)||{}
+  const loc=window._navLoc||{}
   pop();openNav(loc)
 }
 
@@ -1471,7 +1482,7 @@ async function openRouteView(){
           <span style="font-size:10px;color:var(--g1)">${r.dist} mi · ${r.durationText||r.duration+' min'}</span>
         </div>
         <div style="display:flex;gap:6px;margin-top:8px">
-          ${a?`<button class="qa-btn" style="font-size:11px;padding:8px 10px" onclick="openNav(${JSON.stringify({address:l.address,city:l.city,state:l.state,zip:l.zip})})">🗺 Nav</button>`:''}
+          ${a?`<button class="qa-btn" style="font-size:11px;padding:8px 10px" onclick="openNavForJob('${j.id}')">🗺 Nav</button>`:''}
           <button class="qa-btn pri" style="font-size:11px;padding:8px 10px" onclick="pop();openJob('${j.id}')">Open Job →</button>
           <button class="qa-btn" style="font-size:11px;padding:8px 10px;background:var(--infos);color:var(--info);border-color:var(--info)" onclick="pop();openChat();$('chatInput').value='Remove ${esc(l.name)} from my route and suggest a replacement';$('chatInput').focus()">💬 AI</button>
         </div>
@@ -3356,7 +3367,7 @@ async function openCust(id){
   if(l.notes)h+=`<div class="ds-row"><div class="ds-lbl">Notes</div><div class="ds-val">${esc(l.notes)}</div></div>`
   h+=`</div>
   <div class="qa">
-    ${a?`<button class="qa-btn" onclick="openNav(${JSON.stringify({address:l.address,city:l.city,state:l.state,zip:l.zip})})">🗺 Navigate</button>`:''}
+    ${a?`<button class="qa-btn" onclick="openNavForLoc('${l.id}')">🗺 Navigate</button>`:''}
     ${l.contact_phone?`<button class="qa-btn" onclick="window.open('tel:${l.contact_phone}')">📞 Call</button>`:''}
     <button class="qa-btn pri" onclick="newJobForLoc('${l.id}')">+ New Job</button>
   </div>`
