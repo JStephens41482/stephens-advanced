@@ -204,7 +204,22 @@ WHAT YOU DON'T DO:
 - If you don't know, say "I'd want Jon to answer that one, want me to have him call you?"`
 
 // ═══ HANDLER ═══
+// DISABLED 2026-04-13 — chat widget is off the site until Twilio A2P is approved,
+// the bot is connected to Google Calendar for real availability, it creates jobs
+// in Supabase, and it stops making confirmations it can't fulfill. Until then we
+// short-circuit with a static "coming soon" reply and burn zero Claude tokens.
+// Re-enable by removing this block and restoring the original handler body.
 module.exports = async function handler(req, res) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' })
+  return res.status(200).json({
+    reply: "Thanks for reaching out! Our live chat is coming soon. In the meantime, please call (214) 994-4799 or email jonathan@stephensadvanced.com and we'll get right back to you.",
+    disabled: true
+  })
+}
+
+// ═══ ORIGINAL HANDLER — kept as a dead function, not exported. Swap module.exports above to re-enable. ═══
+// eslint-disable-next-line no-unused-vars
+async function _disabledHandler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' })
 
   const claudeKey = process.env.CLAUDE_KEY

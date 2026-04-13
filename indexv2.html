@@ -1014,10 +1014,16 @@ async function submitMultiRequest(e){
     btn.disabled=false;btn.textContent='Submit All Locations'
   }
 }
-// ═══ CHAT WIDGET ═══
+// ═══ CHAT WIDGET — DISABLED 2026-04-13 ═══
+// The live AI chat is off until: Twilio A2P 10DLC is approved, the bot is wired to
+// Google Calendar for real availability, it creates jobs in Supabase on booking, and
+// it stops confirming appointments it can't actually schedule. Functions below are
+// kept intact (unused) so re-enabling is a one-line swap on the Coming Soon popover.
+// eslint-disable-next-line no-unused-vars
 let _schMsgs=[],_schOpen=false,_schLastSend=0
 
-function toggleChat(){
+// eslint-disable-next-line no-unused-vars
+function _disabledToggleChat(){
   _schOpen=!_schOpen
   const p=document.getElementById('schPanel')
   const b=document.getElementById('schBtn')
@@ -1035,6 +1041,7 @@ function toggleChat(){
   }
 }
 
+// eslint-disable-next-line no-unused-vars
 function renderSchChat(){
   const el=document.getElementById('schMsgs')
   if(!el)return
@@ -1049,7 +1056,8 @@ function renderSchChat(){
 
 function escH(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>')}
 
-async function sendSchMsg(){
+// eslint-disable-next-line no-unused-vars
+async function _disabledSendSchMsg(){
   const input=document.getElementById('schInput')
   const msg=input?.value?.trim()
   if(!msg)return
@@ -1060,31 +1068,28 @@ async function sendSchMsg(){
   _schMsgs.push({role:'user',content:msg})
   renderSchChat()
 
-  // show typing indicator
-  const typing=document.createElement('div')
-  typing.id='schTyping'
-  typing.style.cssText='display:flex;justify-content:flex-start;margin-bottom:8px'
-  typing.innerHTML='<div style="padding:10px 14px;border-radius:16px 16px 16px 4px;background:#1e1e2e;color:#888;font-size:14px">typing...</div>'
-  document.getElementById('schMsgs')?.appendChild(typing)
-  document.getElementById('schMsgs').scrollTop=document.getElementById('schMsgs').scrollHeight
-
   try{
     const res=await fetch('/api/scheduler-chat',{
       method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({messages:_schMsgs})
     })
     const data=await res.json()
-    const t=document.getElementById('schTyping');if(t)t.remove()
     if(data.reply){
       _schMsgs.push({role:'assistant',content:data.reply})
     }else if(data.error){
       _schMsgs.push({role:'assistant',content:'Sorry, something went wrong. You can call us at (214) 994-4799.'})
     }
   }catch(e){
-    const t=document.getElementById('schTyping');if(t)t.remove()
     _schMsgs.push({role:'assistant',content:'Sorry, I\'m having trouble connecting. Call us at (214) 994-4799.'})
   }
   renderSchChat()
+}
+
+// ═══ COMING SOON POPOVER — replaces active chat until v2 is ready ═══
+function toggleComingSoon(){
+  const p=document.getElementById('csPanel')
+  if(!p)return
+  p.classList.toggle('open')
 }
 
 // ═══ ADDRESS AUTOCOMPLETE (light theme) ═══
@@ -1139,31 +1144,61 @@ document.addEventListener('DOMContentLoaded',()=>{
 })
 </script>
 
-<!-- Chat Button -->
-<button id="schBtn" onclick="toggleChat()" style="position:fixed;bottom:24px;right:24px;width:56px;height:56px;border-radius:50%;background:#f05a28;border:none;color:#fff;font-size:24px;cursor:pointer;z-index:1000;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 20px rgba(240,90,40,.4);transition:transform .15s">💬</button>
+<!-- Chat Widget — DISABLED (Coming Soon preview). Original live chat button + panel
+     left in the JS above (renamed to _disabledToggleChat / _disabledSendSchMsg) so
+     re-enable is a one-line swap. -->
+<button id="csBtn" onclick="toggleComingSoon()" aria-label="Live chat coming soon" title="Live Chat — Coming Soon">
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+  <span class="cs-badge">SOON</span>
+</button>
 
-<!-- Chat Panel -->
-<div id="schPanel" style="display:none;position:fixed;bottom:0;right:0;width:380px;height:520px;background:#111118;border-radius:16px 16px 0 0;z-index:1001;flex-direction:column;box-shadow:0 -4px 40px rgba(0,0,0,.5);border:1px solid #222">
-  <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid #222">
-    <div style="display:flex;align-items:center;gap:10px">
-      <div style="width:8px;height:8px;border-radius:50%;background:#10b981"></div>
-      <span style="font-size:15px;font-weight:700;color:#fff">Chat with us</span>
+<div id="csPanel">
+  <div class="cs-head">
+    <div class="cs-head-icon">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
     </div>
-    <button onclick="toggleChat()" style="background:none;border:none;color:#888;font-size:20px;cursor:pointer;padding:4px 8px">✕</button>
+    <div>
+      <div class="cs-title">Live Chat <span class="cs-pill">Coming Soon</span></div>
+      <div class="cs-sub">AI scheduler preview</div>
+    </div>
+    <button onclick="toggleComingSoon()" class="cs-close" aria-label="Close">✕</button>
   </div>
-  <div id="schMsgs" style="flex:1;overflow-y:auto;padding:16px;-webkit-overflow-scrolling:touch"></div>
-  <div style="padding:12px 16px;border-top:1px solid #222;display:flex;gap:8px;padding-bottom:max(12px,env(safe-area-inset-bottom))">
-    <input id="schInput" type="text" placeholder="Type a message..." onkeydown="if(event.key==='Enter')sendSchMsg()" style="flex:1;padding:10px 14px;border-radius:24px;border:1px solid #333;background:#1a1a2e;color:#fff;font-size:14px;outline:none">
-    <button onclick="sendSchMsg()" style="width:40px;height:40px;border-radius:50%;background:#f05a28;border:none;color:#fff;font-size:16px;cursor:pointer;flex-shrink:0">→</button>
+  <div class="cs-body">
+    <p>We're building an AI assistant that can schedule service, answer questions, and take orders directly from this window.</p>
+    <p>In the meantime, reach us directly:</p>
+    <a href="tel:2149944799" class="cs-cta">📞 Call (214) 994-4799</a>
+    <a href="mailto:jonathan@stephensadvanced.com" class="cs-cta cs-cta-alt">✉️ Email Jonathan</a>
   </div>
 </div>
 
 <style>
-@media(max-width:480px){
-  #schPanel{width:100vw!important;height:100dvh!important;border-radius:0!important;border:none!important}
+#csBtn{position:fixed;bottom:24px;right:24px;width:60px;height:60px;border-radius:50%;background:linear-gradient(135deg,#f05a28,#d44a1a);border:none;color:#fff;cursor:pointer;z-index:1000;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 24px rgba(240,90,40,.45);transition:transform .18s,box-shadow .18s;animation:csPulse 2.4s ease-in-out infinite}
+#csBtn:hover{transform:translateY(-2px) scale(1.05);box-shadow:0 8px 28px rgba(240,90,40,.55)}
+#csBtn:active{transform:scale(.94)}
+.cs-badge{position:absolute;top:-4px;right:-6px;background:#1a1a2e;color:#f05a28;font-size:8.5px;font-weight:900;letter-spacing:.6px;padding:3px 6px;border-radius:9999px;border:1.5px solid #f05a28;box-shadow:0 2px 6px rgba(0,0,0,.35)}
+@keyframes csPulse{
+  0%,100%{box-shadow:0 6px 24px rgba(240,90,40,.45),0 0 0 0 rgba(240,90,40,.5)}
+  50%{box-shadow:0 6px 24px rgba(240,90,40,.5),0 0 0 10px rgba(240,90,40,0)}
 }
-#schBtn:active{transform:scale(.9)}
-#schInput::placeholder{color:#555}
+#csPanel{position:fixed;bottom:96px;right:24px;width:320px;max-width:calc(100vw - 48px);background:#0d0f14;border:1px solid rgba(240,90,40,.25);border-radius:16px;z-index:1001;box-shadow:0 20px 60px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.04);opacity:0;transform:translateY(12px) scale(.96);pointer-events:none;transition:opacity .22s ease,transform .22s ease;overflow:hidden}
+#csPanel.open{opacity:1;transform:translateY(0) scale(1);pointer-events:auto}
+.cs-head{display:flex;align-items:center;gap:12px;padding:16px;border-bottom:1px solid rgba(255,255,255,.06);background:linear-gradient(135deg,rgba(240,90,40,.08),transparent)}
+.cs-head-icon{width:36px;height:36px;border-radius:50%;background:rgba(240,90,40,.15);color:#f05a28;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.cs-title{font-size:14px;font-weight:800;color:#fff;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.cs-pill{font-size:9px;font-weight:900;letter-spacing:.6px;padding:2px 7px;border-radius:9999px;background:rgba(240,90,40,.18);color:#f05a28;border:1px solid rgba(240,90,40,.4);text-transform:uppercase}
+.cs-sub{font-size:11px;color:rgba(255,255,255,.4);margin-top:2px}
+.cs-close{margin-left:auto;background:none;border:none;color:rgba(255,255,255,.5);font-size:18px;cursor:pointer;padding:4px 8px;line-height:1}
+.cs-close:hover{color:#fff}
+.cs-body{padding:16px}
+.cs-body p{font-size:13px;color:rgba(255,255,255,.7);line-height:1.55;margin-bottom:10px}
+.cs-cta{display:block;padding:12px 16px;margin-top:8px;background:#f05a28;color:#fff;text-decoration:none;text-align:center;border-radius:10px;font-size:13px;font-weight:800;transition:transform .12s,background .12s}
+.cs-cta:hover{transform:translateY(-1px);background:#d44a1a}
+.cs-cta-alt{background:transparent;border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.85)}
+.cs-cta-alt:hover{background:rgba(255,255,255,.06);border-color:rgba(240,90,40,.5)}
+@media(max-width:480px){
+  #csPanel{width:calc(100vw - 32px);right:16px;bottom:92px}
+  #csBtn{right:16px;bottom:16px}
+}
 </style>
 </body>
 </html>
