@@ -579,9 +579,33 @@ document.addEventListener('touchend',e=>{
 document.getElementById('invOv').addEventListener('click',function(e){if(e.target===this)this.classList.remove('open')})
 
 async function load(){
+  // ═══ LAZY LOAD — PHASE 1 ═══
+  // Trim the startup payload so the app stays fast as the DB grows.
+  // - Jobs: active OR scheduled in the last 30d OR tied to an unpaid invoice
+  // - Calendar events: last 7 days + future
+  // - Locations: slim projection (no child table arrays) — full details fetched
+  //   on demand via ensureLocationDetail() when a user opens a specific location
+  const jobCutoff=new Date(Date.now()-30*86400000).toISOString().split('T')[0]
+  const calCutoff=new Date(Date.now()-7*86400000).toISOString()
+
+  // Step 1: pull job IDs of unpaid invoices so we can include those jobs even
+  // if they're old/completed. "Unpaid" = status not in (paid, void, record).
+  // One cheap query, tiny payload.
+  let unpaidJobIds=[]
+  try{
+    const{data:up}=await SB.from('invoices').select('job_id').not('status','in','("paid","void","record")').not('job_id','is',null)
+    unpaidJobIds=Array.from(new Set((up||[]).map(x=>x.job_id).filter(Boolean)))
+  }catch(e){console.error('unpaid job ids:',e)}
+
+  // Step 2: build the main jobs query with the OR filter
+  let jobsQuery=SB.from('jobs').select('*,location:locations(*)').order('updated_at',{ascending:false})
+  const orParts=[`status.neq.completed`,`scheduled_date.gte.${jobCutoff}`]
+  if(unpaidJobIds.length)orParts.push(`id.in.(${unpaidJobIds.join(',')})`)
+  jobsQuery=jobsQuery.or(orParts.join(','))
+
   const[j,l,i,b,r,ci,td2,mz,bq,tk,sr,pt,ce,ct,cl2,rch,pr,nf]=await Promise.all([
-    SB.from('jobs').select('*,location:locations(*)').order('updated_at',{ascending:false}),
-    SB.from('locations').select('*,extinguishers(id,type,size,serial_number,location_in_building,manufacture_date,last_internal,last_hydro),suppression_systems(id,system_type,category,tank_count,nozzle_count,fusible_link_count),emergency_lights(id,fixture_count),billing_account:billing_accounts(*)').order('name'),
+    jobsQuery,
+    SB.from('locations').select('id,name,address,city,state,zip,contact_name,contact_phone,contact_email,is_brycer_jurisdiction,brycer_ahj_name,billing_account_id,parent_billing_id,notes,ext_count:extinguishers(count),sys_count:suppression_systems(count),el_info:emergency_lights(fixture_count),billing_account:billing_accounts(*)').order('name'),
     SB.from('invoices').select('*').order('date',{ascending:false}).limit(100),
     SB.from('billing_accounts').select('*').order('name'),
     SB.from('rate_card').select('key,price'),
@@ -592,7 +616,7 @@ async function load(){
     SB.from('techs').select('*').order('name'),
     SB.from('service_requests').select('*').eq('status','pending').order('created_at',{ascending:false}),
     SB.from('portal_tokens').select('*').order('created_at',{ascending:false}),
-    SB.from('calendar_events').select('*').order('start_time'),
+    SB.from('calendar_events').select('*').gte('start_time',calCutoff).order('start_time'),
     SB.from('contacts').select('*').order('name'),
     SB.from('contact_links').select('*,contact:contacts(*)').order('created_at'),
     SB.from('rate_card_history').select('*').is('expired_date',null).order('key'),
@@ -637,6 +661,48 @@ async function load(){
 
 function contactsForEntity(entityType,entityId){
   return (D.contactLinks||[]).filter(cl=>cl.entity_type===entityType&&cl.entity_id===entityId).map(cl=>cl.contact||D.contacts?.find(c=>c.id===cl.contact_id)).filter(Boolean)
+}
+
+// ═══ ON-DEMAND LOCATION DETAIL (Phase 1 lazy-load) ═══
+// The main load() uses a slim locations projection (no child table arrays).
+// Screens that need the full picture — extinguishers, suppression systems,
+// emergency lights — call this to hydrate a specific location on demand and
+// merge it back into D.locs so subsequent D.locs.find() calls see the detail.
+async function ensureLocationDetail(locId){
+  if(!locId)return null
+  const idx=D.locs.findIndex(l=>l.id===locId)
+  const cached=idx>=0?D.locs[idx]:null
+  // Detailed if extinguishers/suppression_systems are real arrays of row objects
+  // (slim projection uses ext_count/sys_count/el_info aliases instead)
+  if(cached&&Array.isArray(cached.extinguishers)&&Array.isArray(cached.suppression_systems))return cached
+  try{
+    const{data,error}=await SB.from('locations')
+      .select('*,extinguishers(id,type,size,serial_number,location_in_building,manufacture_date,last_internal,last_hydro),suppression_systems(id,system_type,category,tank_count,nozzle_count,fusible_link_count),emergency_lights(id,fixture_count),billing_account:billing_accounts(*)')
+      .eq('id',locId).single()
+    if(error||!data)return cached
+    // Preserve slim count aliases so client list cards keep rendering
+    if(cached){
+      data.ext_count=cached.ext_count||[{count:(data.extinguishers||[]).length}]
+      data.sys_count=cached.sys_count||[{count:(data.suppression_systems||[]).length}]
+      data.el_info=cached.el_info||data.emergency_lights||[]
+    }
+    if(idx>=0)D.locs[idx]=data
+    else D.locs.push(data)
+    return data
+  }catch(e){console.error('ensureLocationDetail:',e);return cached}
+}
+
+// ═══ ON-DEMAND LOCATION SEARCH (used by scheduling / customer pickers) ═══
+async function searchLocations(q,limit=10){
+  const query=(q||'').trim()
+  if(query.length<2)return[]
+  try{
+    const{data}=await SB.from('locations')
+      .select('id,name,address,city,state,zip,contact_name,contact_phone')
+      .or(`name.ilike.%${query}%,address.ilike.%${query}%,city.ilike.%${query}%`)
+      .order('name').limit(limit)
+    return data||[]
+  }catch(e){console.error('searchLocations:',e);return[]}
 }
 
 function getRate(key){
@@ -2714,7 +2780,9 @@ async function openJob(id){
   await load()
   const j=D.jobs.find(x=>x.id===id);if(!j)return
   extR={}
-  // use full location from D.locs (includes suppression_systems, extinguishers, etc.)
+  // Hydrate full location (extinguishers, suppression systems, e-lights) on demand
+  await ensureLocationDetail(j.location_id||j.location?.id)
+  // use full location from D.locs (now includes suppression_systems, extinguishers, etc.)
   const l=D.locs.find(x=>x.id===(j.location_id||j.location?.id))||j.location||{},sc=j.scope||[],rc=D.rc,a=[l.address,l.city,l.state,l.zip].filter(Boolean).join(', ')
   const locInvs=D.invs.filter(i=>i.location_id===l.id).slice(0,3)
   const statC={scheduled:'var(--info)',active:'var(--ok)',completed:'var(--g1)'}[j.status]||'var(--g1)'
@@ -3390,6 +3458,8 @@ function clrSig(){if(sigCtx){const c=$('sigC');sigCtx.clearRect(0,0,c.width,c.he
 
 // CLIENT DETAIL
 async function openCust(id){
+  // Hydrate location detail on demand (child tables not in the slim startup load)
+  await ensureLocationDetail(id)
   const l=D.locs.find(x=>x.id===id);if(!l)return
   const locJobs=D.jobs.filter(j=>j.location_id===id||j.location?.id===id)
   const locInvs=D.invs.filter(i=>i.location_id===id)
@@ -4462,14 +4532,23 @@ function rCust(){
 }
 function cHtml(ls){
   if(!ls.length)return`<div class="ey"><div class="ey-i">👤</div><div class="ey-t">No clients yet. Tap + Add to create one.</div></div>`
+  // Slim projection surfaces counts via ext_count[0].count / sys_count[0].count.
+  // After ensureLocationDetail runs for a location, the real arrays are also present.
+  const extN=l=>Array.isArray(l.extinguishers)?l.extinguishers.length:(l.ext_count?.[0]?.count||0)
+  const sysN=l=>Array.isArray(l.suppression_systems)?l.suppression_systems.length:(l.sys_count?.[0]?.count||0)
+  const elN=l=>{
+    if(Array.isArray(l.emergency_lights)&&l.emergency_lights[0]?.fixture_count)return l.emergency_lights[0].fixture_count
+    if(Array.isArray(l.el_info)&&l.el_info[0]?.fixture_count)return l.el_info[0].fixture_count
+    return 0
+  }
   return ls.map(l=>`<div class="cc" onclick="openCust('${l.id}')">
     <div class="cc-l">
       <div class="cc-nm">${esc(l.name)}</div>
       <div class="cc-addr">${esc([l.address,l.city].filter(Boolean).join(', '))||'No address'}</div>
       <div class="cc-meta">
-        <span><b>${l.extinguishers?.length||0}</b> ext</span>
-        <span><b>${l.suppression_systems?.length||0}</b> sys</span>
-        ${l.emergency_lights?.[0]?.fixture_count?`<span><b>${l.emergency_lights[0].fixture_count}</b> lights</span>`:''}
+        <span><b>${extN(l)}</b> ext</span>
+        <span><b>${sysN(l)}</b> sys</span>
+        ${elN(l)?`<span><b>${elN(l)}</b> lights</span>`:''}
         ${l.is_brycer_jurisdiction?'<span class="cc-bry">BRYCER</span>':''}
       </div>
     </div><div class="cc-arr">›</div>
