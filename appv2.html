@@ -954,7 +954,7 @@ function _isBrycerCity(city){
   return BRYCER_CITIES.some(bc=>c.includes(bc)||bc.includes(c))
 }
 const $=id=>document.getElementById(id)
-const fmt=n=>'$'+Math.round(n||0).toLocaleString()
+const fmt=n=>'$'+(+n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})
 // normalize description for fuzzy matching — strip punctuation/spaces/case
 const norm=s=>(s||'').toLowerCase().replace(/[^a-z0-9]/g,'')
 // known standard catalog keys — custom items outside this set get saved for reuse
@@ -1483,7 +1483,7 @@ async function openRouteView(){
         </div>
         <div style="display:flex;gap:6px;margin-top:8px">
           ${a?`<button class="qa-btn" style="font-size:11px;padding:8px 10px" onclick="openNavForJob('${j.id}')">🗺 Nav</button>`:''}
-          <button class="qa-btn pri" style="font-size:11px;padding:8px 10px" onclick="pop();openJob('${j.id}')">Open Job →</button>
+          <button class="qa-btn pri" style="font-size:11px;padding:8px 10px" onclick="openJob('${j.id}')">Open Job →</button>
           <button class="qa-btn" style="font-size:11px;padding:8px 10px;background:var(--infos);color:var(--info);border-color:var(--info)" onclick="pop();openChat();$('chatInput').value='Remove ${esc(l.name)} from my route and suggest a replacement';$('chatInput').focus()">💬 AI</button>
         </div>
       </div>
@@ -2234,7 +2234,7 @@ function jCard(j,isOv=false){
     <div class="jc-r1"><div class="jc-nm"><span style="color:var(--fire);text-decoration:underline;text-decoration-color:rgba(240,90,40,.3);text-underline-offset:2px;cursor:pointer" onclick="event.stopPropagation();openCust('${j.location_id||l.id}')">${esc(l.name||'Unknown')} ›</span></div><div class="jc-tm"><span style="cursor:pointer;color:var(--info);text-decoration:underline;text-decoration-color:rgba(99,102,241,.3);text-underline-offset:2px" onclick="event.stopPropagation();reschedJob('${j.id}')">${ds?(ds+(j.scheduled_time?' '+j.scheduled_time.slice(0,5):'')):'Unscheduled'}</span></div></div>
     <div class="jc-addr">${esc(a)||'No address'}</div>
     <div class="jc-tags">${sc.includes('suppression')?'<span class="tg ts">Suppression</span>':''}${sc.includes('extinguishers')?'<span class="tg te">Ext</span>':''}${sc.includes('elights')?'<span class="tg tl">E-Lights</span>':''}${sc.includes('hydro')?'<span class="tg th">Hydro</span>':''}${isOv?'<span class="tg to2">Overdue</span>':''}${l.is_brycer_jurisdiction?'<span class="tg tb">Brycer</span>':''}${j.assigned_to?(()=>{const tk2=D.techs?.find(x=>x.id===j.assigned_to);return tk2?'<span class="tg" style="background:'+tk2.color+'22;color:'+tk2.color+'">'+esc(tk2.name.split(' ')[0])+'</span>':''})():''}</div>
-    <div class="jc-val">${v?fmt(v):'<span style="color:var(--g2);font-size:12px">Add equipment to estimate</span>'}</div>
+    <div class="jc-val">${v?fmt(v):(j.status==='completed'?'<span style="color:var(--g2);font-size:12px">Completed</span>':'<span style="color:var(--g2);font-size:12px">Add equipment to estimate</span>')}</div>
     <div class="jc-btns">
       <button class="jb jb-n" onclick="event.stopPropagation();startNav('${j.id}')">🗺 Nav</button>
       <button class="jb jb-g" onclick="event.stopPropagation();openJob('${j.id}')">Open Job →</button>
@@ -2793,7 +2793,7 @@ async function openJob(id){
         ${D.techs.filter(t2=>t2.active).map(t2=>`<option value="${t2.id}"${j.assigned_to===t2.id?' selected':''}>${esc(t2.name)}</option>`).join('')}
       </select>
     </div>`:''}
-    ${j.scheduled_date!==td()?`<button style="width:100%;padding:10px;margin-top:8px;border-radius:var(--rs);background:var(--infos);border:1px solid var(--info);color:var(--info);font-size:12px;font-weight:800;cursor:pointer" onclick="addToTodaySchedule('${j.id}')">📅 Add to Today's Schedule</button>`:'<div style="font-size:11px;color:var(--ok);font-weight:700;margin-top:8px;text-align:center">✓ On today\'s schedule</div>'}
+    ${j.status==='completed'?'':(j.scheduled_date!==td()?`<button style="width:100%;padding:10px;margin-top:8px;border-radius:var(--rs);background:var(--infos);border:1px solid var(--info);color:var(--info);font-size:12px;font-weight:800;cursor:pointer" onclick="addToTodaySchedule('${j.id}')">📅 Add to Today's Schedule</button>`:'<div style="font-size:11px;color:var(--ok);font-weight:700;margin-top:8px;text-align:center">✓ On today\'s schedule</div>')}
   </div>
 
   <!-- LOCATION -->
@@ -3214,7 +3214,9 @@ async function compJ(id){
     unit_price:+(l2.price)||0,
     total:(+(l2.qty)||1)*(+(l2.price)||0)
   }))
-  if(!lines.length){toast('Add at least one line item',false);setLoad('compBtn',false,'✓ Complete Job — Generate Invoice');return}
+  if(!lines.length){toast('Add at least one line item before completing the job',false);setLoad('compBtn',false,'✓ Complete Job — Generate Invoice');const wo=$('wo-lines');if(wo){wo.style.transition='transform .15s';wo.style.transform='translateX(-6px)';setTimeout(()=>{wo.style.transform='translateX(6px)';setTimeout(()=>wo.style.transform='',150)},150)}return}
+  const workOrderTotal=lines.reduce((s,l2)=>s+(+l2.total||0),0)
+  if(workOrderTotal<=0){toast('Work order total is $0 — check your line item prices',false);setLoad('compBtn',false,'✓ Complete Job — Generate Invoice');return}
 
   // auto-add travel charge if over 50 miles
   const travel=await calcTravelCharge(l)
@@ -3979,6 +3981,9 @@ async function openInvDetail(id){
     </div></div>`
   }
   push(h)
+  // Tag the overlay slot with the invoice ID so send-email flows can refresh
+  // the status badge in place when the user navigates back (fixes stale DRAFT bug)
+  const _topSlot=stk[stk.length-1];if(_topSlot){const _el=document.getElementById(_topSlot);if(_el)_el.dataset.invId=id}
   setTimeout(()=>renderInvLines(isPaid),60)
 }
 
@@ -5597,6 +5602,14 @@ function showInv(d){
 }
 
 async function sendInvEmail(invId){
+  // Bug #1/#2 fix: if launched from the post-completion invOv modal, close it
+  // and push the invoice detail screen first so Back from Review lands on the
+  // invoice, not on the Jobs list.
+  const _invOv=$('invOv')
+  if(_invOv&&_invOv.classList.contains('open')){
+    _invOv.classList.remove('open')
+    await openInvDetail(invId)
+  }
   const inv=D.invs.find(x=>x.id===invId)||{}
   const loc=D.locs.find(x=>x.id===inv.location_id)||{}
   const ba=loc.billing_account_id?D.bas.find(b=>b.id===loc.billing_account_id):null
@@ -5874,24 +5887,49 @@ async function _confirmSendEmail(){
       await SB.from('invoices').update({status:'sent'}).eq('id',d.invId)
       audit('sent','invoice',d.invId,'jon',{to:d.to},'Invoice '+d.invNum+' sent to '+d.to)
       await load()
-      if(st){st.textContent='✓ Sent to '+d.to;st.style.color='var(--ok)'}
+      // Bug #6 fix: refresh the status badge on any invoice detail overlay
+      // currently in the stack so it no longer shows stale "DRAFT" text.
+      try{
+        OVS.forEach(slotId=>{
+          const el=document.getElementById(slotId)
+          if(!el||el.dataset.invId!==d.invId)return
+          el.querySelectorAll('.badge').forEach(b=>{
+            if(b.classList.contains('bdraft')){
+              b.classList.remove('bdraft');b.classList.add('bsent');b.textContent='sent'
+            }
+          })
+        })
+      }catch(e){console.error('badge refresh:',e)}
+      if(st){st.innerHTML='✓ Sent to '+esc(d.to);st.style.color='var(--ok)'}
       if(btn){
         btn.innerHTML='✓ Sent';btn.style.background='var(--ok)';btn.style.pointerEvents='none'
-        // show Job Done button
-        const doneBtn=document.createElement('button')
-        doneBtn.style.cssText='width:100%;padding:16px;border-radius:var(--r);background:var(--ok);color:#fff;font-size:16px;font-weight:900;border:none;cursor:pointer;margin-top:12px;min-height:54px'
-        doneBtn.textContent='✓ Job Done — Close Out'
-        doneBtn.onclick=async()=>{
-          doneBtn.textContent='Closing...';doneBtn.disabled=true
-          await SB.from('jobs').update({status:'completed',completed_at:new Date().toISOString()}).eq('id',d.inv.job_id)
-          try{await SB.from('calendar_events').update({color:'#9ca3af'}).eq('job_id',d.inv.job_id)}catch(e){}
-          audit('completed','job',d.inv.job_id,'jon',{status:'completed'},'Job completed after invoice sent')
-          await load()
-          toast('Job closed out ✓')
-          popAll()
-          rCal()
+        // Bug #7 fix: clear next-step buttons after sending
+        const btnRow=document.createElement('div')
+        btnRow.style.cssText='display:flex;flex-direction:column;gap:8px;margin-top:12px'
+        // Primary: return to the (now fresh) invoice detail
+        const backBtn=document.createElement('button')
+        backBtn.style.cssText='width:100%;padding:16px;border-radius:var(--r);background:var(--info);color:#fff;font-size:15px;font-weight:800;border:none;cursor:pointer;min-height:54px'
+        backBtn.textContent='← Back to Invoice'
+        backBtn.onclick=()=>pop()
+        btnRow.appendChild(backBtn)
+        // Secondary: close out the job entirely and return to calendar
+        if(d.inv.job_id){
+          const doneBtn=document.createElement('button')
+          doneBtn.style.cssText='width:100%;padding:14px;border-radius:var(--r);background:var(--ok);color:#fff;font-size:14px;font-weight:800;border:none;cursor:pointer;min-height:48px'
+          doneBtn.textContent='✓ Close Job & Return to Calendar'
+          doneBtn.onclick=async()=>{
+            doneBtn.textContent='Closing...';doneBtn.disabled=true
+            await SB.from('jobs').update({status:'completed',completed_at:new Date().toISOString()}).eq('id',d.inv.job_id)
+            try{await SB.from('calendar_events').update({color:'#9ca3af'}).eq('job_id',d.inv.job_id)}catch(e){}
+            audit('completed','job',d.inv.job_id,'jon',{status:'completed'},'Job completed after invoice sent')
+            await load()
+            toast('Job closed out ✓')
+            popAll()
+            rCal()
+          }
+          btnRow.appendChild(doneBtn)
         }
-        btn.parentElement.appendChild(doneBtn)
+        btn.parentElement.appendChild(btnRow)
       }
       toast('Invoice emailed with '+attachments.length+' report'+(attachments.length!==1?'s':''))
     }else{throw new Error(data.error||'Send failed')}
