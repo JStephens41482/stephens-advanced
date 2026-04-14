@@ -699,8 +699,11 @@ function updatePricing(){
   document.getElementById('pricing-total').textContent='$'+total.toFixed(2)
 }
 
+let _submittingRequest=false
 async function submitServiceRequest(e){
   e.preventDefault()
+  if(_submittingRequest)return
+  _submittingRequest=true
   if(typeof gtag_report_conversion==='function')gtag_report_conversion()
   const btn=document.getElementById('req-submit')
   const st=document.getElementById('req-status')
@@ -805,12 +808,13 @@ async function submitServiceRequest(e){
     btn.textContent='Submitted!'
     document.getElementById('serviceForm').reset()
     updatePricing()
-    setTimeout(()=>{btn.disabled=false;btn.textContent='Submit Service Request'},5000)
+    setTimeout(()=>{btn.disabled=false;btn.textContent='Submit Service Request';_submittingRequest=false},5000)
   }catch(err){
     console.error('submit error:',err)
     st.textContent='Error submitting. Please call (214) 994-4799 instead.'
     st.style.color='#ef4444'
     btn.disabled=false;btn.textContent='Submit Service Request'
+    _submittingRequest=false
   }
 }
 
@@ -851,9 +855,12 @@ function showExistingForm(){
   document.getElementById('pick-multi').style.borderColor='#eee'
   document.getElementById('pick-multi').style.background='#fff'
 }
+let _lookingUpPortal=false
 async function existingCustomerLookup(){
+  if(_lookingUpPortal)return
   const phone=document.getElementById('exist-phone')?.value?.trim()
   if(!phone){document.getElementById('exist-status').textContent='Enter your phone number';return}
+  _lookingUpPortal=true
   const btn=document.getElementById('exist-btn')
   const st=document.getElementById('exist-status')
   btn.textContent='Looking up...';btn.disabled=true;st.textContent=''
@@ -868,10 +875,12 @@ async function existingCustomerLookup(){
       st.style.color='#888'
       st.innerHTML='We couldn\'t find that number. <a href="tel:2149944799" style="color:var(--fire);font-weight:700" onclick="return gtag_report_phone_tap()">Call us at (214) 994-4799</a> or request service above.'
       btn.textContent='Send Me My Portal Link';btn.disabled=false
+      _lookingUpPortal=false
     }
   }catch(e){
     st.style.color='#ef4444';st.textContent='Something went wrong. Call (214) 994-4799.'
     btn.textContent='Send Me My Portal Link';btn.disabled=false
+    _lookingUpPortal=false
   }
 }
 
@@ -915,8 +924,11 @@ function addMultiLocation(){
 }
 
 // Multi-location submit
+let _submittingMulti=false
 async function submitMultiRequest(e){
   e.preventDefault()
+  if(_submittingMulti)return
+  _submittingMulti=true
   if(typeof gtag_report_conversion==='function')gtag_report_conversion()
   const btn=document.getElementById('multi-submit')
   const st=document.getElementById('multi-status')
@@ -1017,12 +1029,13 @@ async function submitMultiRequest(e){
     }
     st.style.color='#10b981'
     btn.textContent='Submitted!'
-    setTimeout(()=>{btn.disabled=false;btn.textContent='Submit All Locations'},5000)
+    setTimeout(()=>{btn.disabled=false;btn.textContent='Submit All Locations';_submittingMulti=false},5000)
   }catch(err){
     console.error('multi submit:',err)
     st.textContent='Error: '+err.message+'. Call (214) 994-4799.'
     st.style.color='#ef4444'
     btn.disabled=false;btn.textContent='Submit All Locations'
+    _submittingMulti=false
   }
 }
 // ═══ CHAT WIDGET — DISABLED 2026-04-13 ═══

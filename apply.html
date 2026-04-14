@@ -389,8 +389,11 @@ function scoreTest() {
   }
 }
 
+let _submittingApp = false;
 async function submitApp(e) {
   e.preventDefault();
+  if (_submittingApp) return;
+  _submittingApp = true;
   if (typeof gtag_report_conversion === 'function') gtag_report_conversion();
   const btn = document.getElementById('appSubmitBtn');
   const st = document.getElementById('appStatus');
@@ -424,6 +427,7 @@ async function submitApp(e) {
     st.textContent = 'Error submitting. Call (214) 994-4799 directly.';
     btn.disabled = false;
     btn.textContent = 'Submit Application';
+    _submittingApp = false;
   }
 }
 

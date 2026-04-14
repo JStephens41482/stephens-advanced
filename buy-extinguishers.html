@@ -411,8 +411,11 @@ function toggleAddress(val){
   if(addrInput) addrInput.required = (val==='delivery-dfw'||val==='ship')
 }
 
+let _submittingOrder = false
 async function submitOrder(e){
   e.preventDefault()
+  if(_submittingOrder) return false
+  _submittingOrder = true
   if(typeof gtag_report_conversion==='function')gtag_report_conversion()
   const btn = $('payBtn'), errEl = $('payErr')
   btn.disabled = true; btn.textContent = 'Creating payment link…'; errEl.textContent = ''
@@ -462,6 +465,7 @@ async function submitOrder(e){
     )
     errEl.innerHTML = `Payment link unavailable. <a href="mailto:jonathan@stephensadvanced.com?subject=Extinguisher Order&body=${body}" style="color:var(--fire);font-weight:800">Email order instead ›</a>`
     btn.disabled = false; btn.textContent = 'Pay with Square ›'
+    _submittingOrder = false
   }
   return false
 }
