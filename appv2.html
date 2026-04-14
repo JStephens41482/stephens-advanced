@@ -2765,6 +2765,7 @@ async function openJob(id){
     {label:'Custom item...',value:'CUSTOM'},
   ]
   const partsOpts=PARTS.map(p=>`<option value="${esc(p.value)}">${esc(p.label)}</option>`).join('')
+  window._jobPartsList=PARTS
 
   let h=`<div class="ov-hdr">
     <button class="ov-back" onclick="pop()">‹</button>
@@ -2814,11 +2815,11 @@ async function openJob(id){
       <span id="wo-total" style="font-size:13px;font-weight:800;color:var(--ok)">$0</span>
     </div>
 
-    <!-- QUICK ADD DROPDOWN -->
+    <!-- QUICK ADD (custom picker — native select was dismissing on scroll) -->
     <div style="margin-bottom:12px">
-      <select id="parts-dd" style="background:var(--c2);border-color:var(--fire);color:var(--fire);font-weight:700" onchange="addPartLine(this)">
-        ${partsOpts}
-      </select>
+      <button type="button" id="parts-dd-btn" onclick="openPartsPicker('job')" style="width:100%;min-height:44px;background:var(--c2);border:1.5px solid var(--fire);color:var(--fire);font-weight:700;border-radius:var(--rs);padding:10px 14px;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:space-between">
+        <span>+ Quick Add Item</span><span style="font-size:16px">▾</span>
+      </button>
     </div>
 
     <!-- LINE ITEMS -->
@@ -3180,9 +3181,55 @@ async function updateJobChecklist(){
   })
 }
 
+// Custom parts picker — replaces native <select> which was dismissing on mobile scroll
+function openPartsPicker(ctx,invId){
+  const parts=(ctx==='inv'?window._invPartsList:window._jobPartsList)||[]
+  const items=parts.filter(p=>p.value!=='')
+  const custom=items.find(p=>p.value==='CUSTOM')
+  const real=items.filter(p=>p.value!=='CUSTOM')
+  let h=`<div class="ov-hdr"><button class="ov-back" onclick="pop()">‹</button><div class="ov-title">Quick Add</div></div>
+    <div class="ov-body" style="padding:0">
+      <input id="picker-search" placeholder="Search items…" oninput="filterPartsPicker(this.value)" style="position:sticky;top:0;z-index:5;width:100%;padding:14px 16px;background:var(--c1);border:none;border-bottom:1px solid var(--b1);color:var(--w);font-size:14px;margin:0;border-radius:0">
+      <div id="picker-list">`
+  real.forEach(p=>{
+    // Extract price from value format "Desc|qty|price"
+    const pieces=(p.value||'').split('|')
+    const price=pieces[2]?'$'+parseFloat(pieces[2]).toFixed(2):''
+    h+=`<button class="picker-item" data-val="${esc(p.value)}" data-label="${esc(p.label.toLowerCase())}" onclick="_pickPart('${ctx}','${invId||''}',this.dataset.val)" style="width:100%;padding:14px 18px;text-align:left;background:transparent;border:none;border-bottom:1px solid var(--b1);color:var(--w);font-size:14px;cursor:pointer;min-height:52px;display:flex;justify-content:space-between;align-items:center;gap:10px">
+        <span style="flex:1;min-width:0">${esc(p.label)}</span>
+        ${price?`<span style="font-size:12px;font-weight:800;color:var(--ok);flex-shrink:0">${price}</span>`:''}
+      </button>`
+  })
+  if(custom){
+    h+=`<button class="picker-item" data-val="CUSTOM" data-label="custom item" onclick="_pickPart('${ctx}','${invId||''}','CUSTOM')" style="width:100%;padding:16px 18px;text-align:left;background:var(--infos);border:none;border-bottom:1px solid var(--b1);color:var(--info);font-size:14px;font-weight:800;cursor:pointer;min-height:52px">
+      + ${esc(custom.label)}
+    </button>`
+  }
+  h+=`</div></div>`
+  push(h)
+}
+
+function filterPartsPicker(q){
+  const list=document.getElementById('picker-list');if(!list)return
+  const ql=(q||'').toLowerCase().trim()
+  list.querySelectorAll('.picker-item').forEach(el=>{
+    const lbl=el.dataset.label||''
+    el.style.display=(!ql||lbl.includes(ql))?'flex':'none'
+  })
+}
+
+function _pickPart(ctx,invId,val){
+  pop()
+  // tiny delay so the overlay animation can start before we mutate the form
+  setTimeout(()=>{
+    if(ctx==='inv')addInvLine({value:val},invId)
+    else addPartLine({value:val})
+  },60)
+}
+
 function addPartLine(sel){
   const v=sel.value;if(!v)return
-  sel.value='' // reset dropdown
+  if(sel.value!==undefined&&'value' in sel&&sel.tagName)sel.value='' // reset dropdown if it's a real element
   if(v==='CUSTOM'){
     jobLines.push({desc:'',qty:1,price:0,id:'jl'+Date.now()})
     renderJobLines()
@@ -3843,6 +3890,7 @@ async function openInvDetail(id){
     {label:'Custom item...',value:'CUSTOM'},
   ]
   const partsOpts=PARTS.map(p=>`<option value="${esc(p.value)}">${esc(p.label)}</option>`).join('')
+  window._invPartsList=PARTS
 
   let h=`<div class="ov-hdr">
     <button class="ov-back" onclick="pop()">‹</button>
@@ -3881,9 +3929,9 @@ async function openInvDetail(id){
   </div>`
   if(!isPaid){
     h+=`<div style="margin-bottom:10px">
-      <select id="inv-parts-dd" style="background:var(--c2);border-color:var(--fire);color:var(--fire);font-weight:700" onchange="addInvLine(this,'${id}')">
-        ${partsOpts}
-      </select>
+      <button type="button" onclick="openPartsPicker('inv','${id}')" style="width:100%;min-height:44px;background:var(--c2);border:1.5px solid var(--fire);color:var(--fire);font-weight:700;border-radius:var(--rs);padding:10px 14px;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:space-between">
+        <span>+ Quick Add Item</span><span style="font-size:16px">▾</span>
+      </button>
     </div>`
   }
   h+=`<div id="inv-det-lines"></div>`
@@ -4055,7 +4103,7 @@ function ilDel(i){
 
 function addInvLine(sel,invId){
   const v=sel.value;if(!v)return
-  sel.value=''
+  if(sel.tagName)sel.value=''
   if(v==='CUSTOM'){
     invLines.push({desc:'',qty:1,price:0})
     renderInvLines(false)
