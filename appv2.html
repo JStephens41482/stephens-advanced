@@ -605,7 +605,7 @@ async function load(){
 
   const[j,l,i,b,r,ci,td2,mz,bq,tk,sr,pt,ce,ct,cl2,rch,pr,nf]=await Promise.all([
     jobsQuery,
-    SB.from('locations').select('id,name,address,city,state,zip,contact_name,contact_phone,contact_email,is_brycer_jurisdiction,brycer_ahj_name,billing_account_id,parent_billing_id,notes,ext_count:extinguishers(count),sys_count:suppression_systems(count),el_info:emergency_lights(fixture_count),billing_account:billing_accounts(*)').order('name'),
+    SB.from('locations').select('*,extinguishers(id,type,size,serial_number,location_in_building,manufacture_date,last_internal,last_hydro),suppression_systems(id,system_type,category,tank_count,nozzle_count,fusible_link_count),emergency_lights(id,fixture_count),billing_account:billing_accounts(*)').order('name'),
     SB.from('invoices').select('*').order('date',{ascending:false}).limit(100),
     SB.from('billing_accounts').select('*').order('name'),
     SB.from('rate_card').select('key,price'),
