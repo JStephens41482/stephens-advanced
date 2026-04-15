@@ -113,7 +113,31 @@
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 select,option{color-scheme:dark}
-:root{--bg:#0d0f14;--c1:#151820;--c2:#1c1f2a;--c3:#252937;--b1:#2a2f3e;--b2:#353b4d;--w:#f0f1f4;--w2:#c8ccd6;--g1:#7c8497;--g2:#555d72;--g3:#3d4456;--fire:#f05a28;--fires:rgba(240,90,40,.08);--ok:#10b981;--oks:rgba(16,185,129,.08);--warn:#f59e0b;--warns:rgba(245,158,11,.08);--bad:#ef4444;--bads:rgba(239,68,68,.08);--info:#6366f1;--infos:rgba(99,102,241,.08);--r:12px;--rs:8px}
+:root{--bg:#0d0f14;--c1:#151820;--c2:#1c1f2a;--c3:#252937;--b1:#2a2f3e;--b2:#353b4d;--w:#f0f1f4;--w2:#c8ccd6;--g1:#7c8497;--g2:#555d72;--g3:#3d4456;--fire:#f05a28;--fires:rgba(240,90,40,.08);--ok:#10b981;--oks:rgba(16,185,129,.08);--warn:#f59e0b;--warns:rgba(245,158,11,.08);--bad:#ef4444;--bads:rgba(239,68,68,.08);--info:#6366f1;--infos:rgba(99,102,241,.08);--r:12px;--rs:8px;--status-red:#E74C3C;--status-red-soft:rgba(231,76,60,.12);--status-blue:#3498DB;--status-blue-soft:rgba(52,152,219,.12);--status-yellow:#F39C12;--status-yellow-soft:rgba(243,156,18,.12);--status-green:#27AE60;--status-green-soft:rgba(39,174,96,.12);--status-gray:#7F8C8D;--status-gray-soft:rgba(127,140,141,.1)}
+/* ═══ UNIVERSAL STATUS COLOR SYSTEM (Commander Data 2026-04-14) ═══ */
+/* One of four colors conveys meaning on every status indicator app-wide. */
+/* Orange is reserved for brand accents only (nav, primary buttons, company name). */
+.badge-red{background:var(--status-red-soft);color:var(--status-red)}
+.badge-blue{background:var(--status-blue-soft);color:var(--status-blue)}
+.badge-yellow{background:var(--status-yellow-soft);color:var(--status-yellow)}
+.badge-green{background:var(--status-green-soft);color:var(--status-green)}
+.badge-gray{background:var(--status-gray-soft);color:var(--status-gray)}
+.card-red::before,.card-red::after{background:var(--status-red)}
+.card-blue::before,.card-blue::after{background:var(--status-blue)}
+.card-yellow::before,.card-yellow::after{background:var(--status-yellow)}
+.card-green::before,.card-green::after{background:var(--status-green)}
+.card-gray::before,.card-gray::after{background:var(--status-gray)}
+.status-dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex-shrink:0}
+.dot-red{background:var(--status-red);box-shadow:0 0 6px rgba(231,76,60,.3)}
+.dot-blue{background:var(--status-blue);box-shadow:0 0 6px rgba(52,152,219,.3)}
+.dot-yellow{background:var(--status-yellow);box-shadow:0 0 6px rgba(243,156,18,.3)}
+.dot-green{background:var(--status-green);box-shadow:0 0 6px rgba(39,174,96,.3)}
+.dot-gray{background:var(--status-gray)}
+.stat-red{color:var(--status-red)}
+.stat-blue{color:var(--status-blue)}
+.stat-yellow{color:var(--status-yellow)}
+.stat-green{color:var(--status-green)}
+.stat-gray{color:var(--status-gray)}
 html,body{height:100%;overflow:hidden;overscroll-behavior:none}
 body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--w);font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased}
 button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
@@ -140,7 +164,7 @@ select{-webkit-appearance:none;appearance:none}
 .s3{grid-template-columns:repeat(3,1fr)}.s2{grid-template-columns:repeat(2,1fr)}
 .st{background:var(--c1);border:1px solid var(--b1);border-radius:var(--r);padding:14px 8px;text-align:center}
 .sn{font-size:22px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums}
-.sn.o{color:var(--fire)}.sn.g{color:var(--ok)}.sn.y{color:var(--warn)}.sn.r{color:var(--bad)}.sn.i{color:var(--info)}
+.sn.o{color:var(--status-blue)}.sn.g{color:var(--status-green)}.sn.y{color:var(--status-yellow)}.sn.r{color:var(--status-red)}.sn.i{color:var(--status-blue)}
 .sl{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:var(--g1);margin-top:5px}
 .sec{margin:20px 0 10px;display:flex;align-items:center;justify-content:space-between}
 .sec-t{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1.8px;color:var(--g2)}
@@ -158,7 +182,7 @@ select{-webkit-appearance:none;appearance:none}
 .jc{background:var(--c1);border:1px solid var(--b1);border-radius:var(--r);padding:14px 14px 14px 18px;margin-bottom:8px;position:relative;overflow:hidden;cursor:pointer;transition:border-color .12s}
 .jc:active{border-color:var(--fire)}
 .jc::after{content:'';position:absolute;left:0;top:0;bottom:0;width:3.5px;border-radius:0 2px 2px 0}
-.jc.jbl::after{background:var(--info)}.jc.jgn::after{background:var(--ok)}.jc.jrd::after{background:var(--bad)}.jc.jgy::after{background:var(--g3)}
+.jc.jbl::after{background:var(--status-blue)}.jc.jgn::after{background:var(--status-green)}.jc.jrd::after{background:var(--status-red)}.jc.jgy::after{background:var(--status-gray)}
 .jc-r1{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px}
 .jc-nm{font-size:15px;font-weight:700;line-height:1.25;flex:1;margin-right:8px}
 .jc-tm{font-size:11px;font-weight:600;color:var(--g1);white-space:nowrap}
@@ -188,7 +212,7 @@ select{-webkit-appearance:none;appearance:none}
 .ic-sub{font-size:11px;color:var(--g1);margin-top:2px}
 .ic-amt{font-size:18px;font-weight:800;margin-top:4px;font-variant-numeric:tabular-nums}
 .badge{font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;padding:3.5px 10px;border-radius:20px}
-.bpaid{background:var(--oks);color:var(--ok)}.bsent{background:var(--infos);color:var(--info)}.bover{background:var(--bads);color:var(--bad)}.bdraft{background:rgba(124,132,151,.08);color:var(--g1)}.brec{background:rgba(124,132,151,.08);color:var(--g1)}.bfact{background:rgba(99,102,241,.15);color:var(--info)}
+.bpaid{background:var(--status-green-soft);color:var(--status-green)}.bsent{background:var(--status-blue-soft);color:var(--status-blue)}.bover{background:var(--status-red-soft);color:var(--status-red)}.bdraft{background:var(--status-gray-soft);color:var(--status-gray)}.brec{background:var(--status-gray-soft);color:var(--status-gray)}.bfact{background:var(--status-yellow-soft);color:var(--status-yellow)}
 .srch{margin-bottom:12px}
 .ey{text-align:center;padding:60px 24px;color:var(--g2)}
 .ey-i{font-size:44px;margin-bottom:12px;opacity:.2}
@@ -661,6 +685,33 @@ async function load(){
 
 function contactsForEntity(entityType,entityId){
   return (D.contactLinks||[]).filter(cl=>cl.entity_type===entityType&&cl.entity_id===entityId).map(cl=>cl.contact||D.contacts?.find(c=>c.id===cl.contact_id)).filter(Boolean)
+}
+
+// ═══ UNIVERSAL STATUS → COLOR MAPPING (Commander Data 2026-04-14) ═══
+// Returns 'red' | 'blue' | 'yellow' | 'green' | 'gray'. Use with the
+// .badge-*, .card-*, .dot-*, .stat-* classes. Orange is brand-only.
+function statusColor(status,context){
+  const s=(status||'').toString().toLowerCase().trim()
+  const map={
+    // jobs
+    scheduled:'blue',en_route:'blue',in_progress:'blue',active:'blue',
+    completed:'green',invoiced:'green',
+    overdue:'red',cancelled:'gray',
+    // invoices
+    draft:'gray',sent:'blue',unpaid:'yellow',
+    paid:'green',partial:'yellow',record:'gray',void:'gray',factored:'yellow',
+    // equipment / extinguisher
+    pass:'green',good:'green',fail:'red',condemn:'red',
+    replace:'red',swap:'yellow',remove_unnecessary:'yellow',remove:'yellow',
+    needs_service:'yellow',expired:'red',not_inspected:'gray',
+    // checklist
+    'n/a':'gray',flag:'yellow',
+    // brycer / compliance
+    submitted:'green',pending:'yellow',failed:'red',not_required:'gray',
+    // square / payment
+    refunded:'yellow',processing:'blue'
+  }
+  return map[s]||'gray'
 }
 
 // ═══ ON-DEMAND LOCATION DETAIL (Phase 1 lazy-load) ═══
@@ -1677,11 +1728,11 @@ async function openReports(){
 
   // AR AGING
   h+=`<div class="ds"><div class="ds-t">Accounts Receivable Aging</div>
-    <div class="ds-row"><div class="ds-lbl">Current (0-30 days)</div><div class="ds-val" style="color:var(--ok)">${fmt(aging.current)}</div></div>
-    <div class="ds-row"><div class="ds-lbl">31-60 days</div><div class="ds-val" style="color:var(--warn)">${fmt(aging.d30)}</div></div>
-    <div class="ds-row"><div class="ds-lbl">61-90 days</div><div class="ds-val" style="color:var(--fire)">${fmt(aging.d60)}</div></div>
-    <div class="ds-row"><div class="ds-lbl">90+ days</div><div class="ds-val" style="color:var(--bad)">${fmt(aging.over90)}</div></div>
-    <div class="ds-row" style="border-top:2px solid var(--b1)"><div class="ds-lbl" style="font-weight:800;color:var(--w)">Total Outstanding</div><div class="ds-val" style="font-weight:800;color:var(--bad)">${fmt(aging.current+aging.d30+aging.d60+aging.over90)}</div></div>
+    <div class="ds-row"><div class="ds-lbl">Current (0-30 days)</div><div class="ds-val" style="color:var(--status-green)">${fmt(aging.current)}</div></div>
+    <div class="ds-row"><div class="ds-lbl">31-60 days</div><div class="ds-val" style="color:var(--status-yellow)">${fmt(aging.d30)}</div></div>
+    <div class="ds-row"><div class="ds-lbl">61-90 days</div><div class="ds-val" style="color:var(--status-red)">${fmt(aging.d60)}</div></div>
+    <div class="ds-row"><div class="ds-lbl">90+ days</div><div class="ds-val" style="color:var(--status-red)">${fmt(aging.over90)}</div></div>
+    <div class="ds-row" style="border-top:2px solid var(--b1)"><div class="ds-lbl" style="font-weight:800;color:var(--w)">Total Outstanding</div><div class="ds-val" style="font-weight:800;color:var(--status-yellow)">${fmt(aging.current+aging.d30+aging.d60+aging.over90)}</div></div>
   </div>`
 
   // WEEKLY (last 8 weeks)
