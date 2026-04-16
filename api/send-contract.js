@@ -14,7 +14,7 @@ module.exports = async function handler(req, res) {
     process.env.SUPABASE_SERVICE_KEY
   )
 
-  const { contractId } = req.body || {}
+  const { contractId, recipientEmail, recipientName } = req.body || {}
   if (!contractId) return res.status(400).json({ error: 'Missing contractId' })
 
   try {
@@ -51,14 +51,16 @@ module.exports = async function handler(req, res) {
     }
 
     // ── 2. Determine recipient info ─────────────────────────────────
-    const customerName = location?.contact_name
+    const customerName = recipientName
+      || location?.contact_name
       || billingAccount?.contact_name
       || contract.customer_name
       || 'Valued Customer'
 
-    const customerEmail = location?.contact_email
-      || billingAccount?.contact_email
+    const customerEmail = recipientEmail
       || contract.customer_email
+      || location?.contact_email
+      || billingAccount?.contact_email
 
     if (!customerEmail) {
       return res.status(400).json({ error: 'No customer email found for this contract' })
