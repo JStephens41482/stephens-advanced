@@ -912,6 +912,13 @@ function resizeCanvas() {
   const wrap = document.getElementById('sigWrap');
   const rect = wrap.getBoundingClientRect();
   const dpr = window.devicePixelRatio || 1;
+  // Save existing signature before resize clears the canvas
+  let savedImg = null;
+  const oldW = sigCanvas.width;
+  const oldH = sigCanvas.height;
+  if (sigHasData && oldW && oldH) {
+    try { savedImg = sigCanvas.toDataURL(); } catch(e) {}
+  }
   sigCanvas.width = rect.width * dpr;
   sigCanvas.height = 200 * dpr;
   sigCanvas.style.height = '200px';
@@ -920,13 +927,15 @@ function resizeCanvas() {
   sigCtx.lineWidth = 2;
   sigCtx.lineCap = 'round';
   sigCtx.lineJoin = 'round';
-  if (sigHasData) {
-    // Canvas was cleared by resize; user may need to re-sign
-    sigHasData = false;
-    document.getElementById('sigPlaceholder').style.opacity = '1';
+  // Restore saved signature
+  if (savedImg && sigHasData) {
+    const img = new Image();
+    img.onload = () => {
+      sigCtx.drawImage(img, 0, 0, rect.width, 200);
+    };
+    img.src = savedImg;
   }
 }
-
 function getPos(e) {
   const rect = sigCanvas.getBoundingClientRect();
   return { x: e.clientX - rect.left, y: e.clientY - rect.top };
