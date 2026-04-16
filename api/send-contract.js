@@ -10,7 +10,7 @@ module.exports = async function handler(req, res) {
   if (!apiKey) return res.status(500).json({ error: 'RESEND_API_KEY not configured' })
 
   const supabase = createClient(
-    'https://kbsezvqaiaborpfumqlo.supabase.co',
+    'https://motjasdokoxwiodwzyps.supabase.co',
     process.env.SUPABASE_SERVICE_KEY
   )
 
