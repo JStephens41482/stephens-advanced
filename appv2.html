@@ -628,7 +628,7 @@ async function load(){
   if(unpaidJobIds.length)orParts.push(`id.in.(${unpaidJobIds.join(',')})`)
   jobsQuery=jobsQuery.or(orParts.join(','))
 
-  const[j,l,i,b,r,ci,td2,mz,bq,tk,sr,pt,ce,ct,cl2,rch,pr,nf]=await Promise.all([
+  const[j,l,i,b,r,ci,td2,mz,bq,tk,sr,pt,ce,ct,cl2,rch,pr,nf,cn]=await Promise.all([
     jobsQuery,
     SB.from('locations').select('*,extinguishers(id,type,size,serial_number,location_in_building,manufacture_date,last_internal,last_hydro),suppression_systems(id,system_type,category,tank_count,nozzle_count,fusible_link_count),emergency_lights(id,fixture_count),billing_account:billing_accounts(*)').order('name'),
     SB.from('invoices').select('*').order('date',{ascending:false}).limit(100),
@@ -646,7 +646,8 @@ async function load(){
     SB.from('contact_links').select('*,contact:contacts(*)').order('created_at'),
     SB.from('rate_card_history').select('*').is('expired_date',null).order('key'),
     SB.from('pricing_rules').select('*').eq('active',true),
-    SB.from('notifications').select('*').eq('is_read',false).eq('is_dismissed',false).order('created_at',{ascending:false}).limit(50)
+    SB.from('notifications').select('*').eq('is_read',false).eq('is_dismissed',false).order('created_at',{ascending:false}).limit(50),
+    SB.from('contracts').select('*').order('created_at',{ascending:false})
   ])
   if(j.error)console.error('jobs error:',j.error)
   if(l.error)console.error('locations error:',l.error)
@@ -666,6 +667,7 @@ async function load(){
   if(rch.error)console.error('rate_card_history error:',rch.error)
   if(pr.error)console.error('pricing_rules error:',pr.error)
   if(nf.error)console.error('notifications error:',nf.error)
+  if(cn.error)console.error('contracts error:',cn.error)
   console.log('loaded:',j.data?.length,'jobs,',l.data?.length,'locs,',i.data?.length,'invs,',td2.data?.length,'todos')
   D.jobs=j.data||[];D.locs=l.data||[];D.invs=i.data||[];D.bas=b.data||[]
   const rc={};(r.data||[]).forEach(x=>rc[x.key]=+x.price);D.rc=rc
@@ -682,6 +684,7 @@ async function load(){
   D.currentRates=rch.data||[]
   D.pricingRules=pr.data||[]
   D.notifications=nf.data||[]
+  D.contracts=cn.data||[]
 }
 
 function contactsForEntity(entityType,entityId){
@@ -3544,6 +3547,45 @@ async function openCust(id){
     <button class="qa-btn pri" onclick="newJobForLoc('${l.id}')">+ New Job</button>
   </div>`
 
+  // Contract section
+  const locContract=D.contracts?.find(c=>c.location_id===id&&c.status!=='cancelled')
+  h+=`<div class="ds"><div class="ds-t" style="display:flex;justify-content:space-between;align-items:center">
+    <span>Service Contract</span>
+    ${locContract?`<span class="badge ${locContract.status==='active'?'bpaid':locContract.status==='sent'?'bsent':'bdraft'}">${locContract.signed?'Signed':''+locContract.status}</span>`:''}
+  </div>`
+  if(locContract){
+    h+=`<div style="padding:8px 0">`
+    if(locContract.signed){
+      h+=`<div style="font-size:12px;color:var(--ok);padding:8px 10px;background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.2);border-radius:var(--rs);margin-bottom:8px">
+        ✓ Signed ${locContract.signed_at?new Date(locContract.signed_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):''}${locContract.signer_name?' by '+esc(locContract.signer_name):''}
+        ${ba?.card_on_file?'<br>💳 Card on file: '+esc(ba.card_brand||'')+' ····'+esc(ba.card_last4||''):''}
+        ${ba?.billing_election==='billed_invoice'?'<br>📄 Billed invoice (net 15)':''}
+      </div>`
+      if(l.business_hours){
+        const days=['mon','tue','wed','thu','fri','sat','sun']
+        const dayLabels={mon:'Mon',tue:'Tue',wed:'Wed',thu:'Thu',fri:'Fri',sat:'Sat',sun:'Sun'}
+        const hrs=l.business_hours
+        const hStr=days.filter(d=>hrs[d]&&!hrs[d].closed).map(d=>dayLabels[d]+' '+hrs[d].open+'-'+hrs[d].close).join(' · ')
+        if(hStr)h+=`<div style="font-size:11px;color:var(--g1);margin-bottom:6px">🕐 ${hStr}</div>`
+      }
+      if(l.preferred_service_time)h+=`<div style="font-size:11px;color:var(--g1)">Preferred: ${esc(l.preferred_service_time)}</div>`
+    }else if(locContract.status==='sent'){
+      h+=`<div style="font-size:12px;color:var(--warn);padding:8px 10px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:var(--rs);margin-bottom:8px">
+        ✉ Contract sent ${locContract.sent_at?new Date(locContract.sent_at).toLocaleDateString('en-US',{month:'short',day:'numeric'}):''}. Awaiting signature.
+      </div>
+      <button style="width:100%;padding:10px;border-radius:var(--rs);background:var(--c2);border:1px solid var(--b1);color:var(--w2);font-size:12px;font-weight:700;cursor:pointer" onclick="resendContractEmail('${locContract.id}')">Resend Contract Email</button>`
+    }else{
+      h+=`<button style="width:100%;padding:10px;border-radius:var(--rs);background:var(--fire);border:none;color:#fff;font-size:13px;font-weight:700;cursor:pointer" onclick="sendContractEmail('${locContract.id}')">✉ Send Contract</button>`
+    }
+    h+=`</div>`
+  }else{
+    h+=`<div style="padding:10px 0">
+      <div style="font-size:12px;color:var(--g2);margin-bottom:8px">No service contract on file</div>
+      <button style="width:100%;padding:10px;border-radius:var(--rs);background:var(--fire);border:none;color:#fff;font-size:13px;font-weight:700;cursor:pointer" onclick="createAndSendContract('${l.id}')">📝 Create & Send Contract</button>
+    </div>`
+  }
+  h+=`</div>`
+
   // Contacts section
   const locContacts=contactsForEntity('location',id)
   h+=`<div class="ds"><div class="ds-t" style="display:flex;justify-content:space-between;align-items:center">
@@ -6198,6 +6240,45 @@ function buildInvoiceEmailHtml({invNum,custName,addr,date,dueDate,lines,total,po
       Stephens Advanced LLC · Fire Suppression &amp; Safety · DFW Texas<br>jonathan@stephensadvanced.com · (214) 994-4799
     </td></tr>
   </table></body></html>`
+}
+
+// ═══ CONTRACTS ═══
+async function createAndSendContract(locId){
+  const l=D.locs.find(x=>x.id===locId);if(!l)return
+  const ba=l.billing_account_id?D.bas.find(b=>b.id===l.billing_account_id):null
+  const email=l.contact_email||(ba?ba.email:null)
+  if(!email){alert('No email on file for this location. Add a contact email first.');return}
+  try{
+    const{data:c,error}=await SB.from('contracts').insert({
+      location_id:locId,
+      billing_account_id:l.billing_account_id||null,
+      type:'recurring',
+      frequency:'semi-annual',
+      services_included:['suppression','extinguishers'],
+      status:'draft',
+      language:l.preferred_language||'en'
+    }).select().single()
+    if(error)throw error
+    D.contracts=(D.contracts||[]);D.contracts.push(c)
+    await sendContractEmail(c.id)
+  }catch(e){console.error('createAndSendContract:',e);alert('Error: '+e.message)}
+}
+
+async function sendContractEmail(contractId){
+  try{
+    const res=await fetch('/api/send-contract',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contractId})})
+    const data=await res.json()
+    if(!res.ok)throw new Error(data.error||'Send failed')
+    const idx=(D.contracts||[]).findIndex(c=>c.id===contractId)
+    if(idx>=0){D.contracts[idx].status='sent';D.contracts[idx].sent_at=new Date().toISOString()}
+    alert('Contract sent!')
+    pop();
+  }catch(e){console.error('sendContractEmail:',e);alert('Error sending contract: '+e.message)}
+}
+
+async function resendContractEmail(contractId){
+  if(!confirm('Resend contract email?'))return
+  await sendContractEmail(contractId)
 }
 
 // SCHEDULE JOB

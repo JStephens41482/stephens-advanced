@@ -51,6 +51,7 @@
     { "src": "/portal(.*)", "dest": "/portal.html" },
     { "src": "/w9.pdf", "dest": "/w9.pdf" },
     { "src": "/coi.pdf", "dest": "/coi.pdf" },
+    { "src": "/sign-contract", "dest": "/sign-contract.html" },
     { "src": "/icon-(.*)\\.png", "dest": "/icon-$1.png" },
     { "src": "/favicon-(.*)\\.png", "dest": "/favicon-$1.png" },
     { "src": "/manifest.json", "dest": "/manifest.json" },

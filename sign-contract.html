@@ -1,0 +1,1244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#0d0f14">
+<link rel="apple-touch-icon" sizes="180x180" href="/icon-180.png">
+<link rel="apple-touch-icon" sizes="167x167" href="/icon-167.png">
+<link rel="apple-touch-icon" sizes="152x152" href="/icon-152.png">
+<link rel="apple-touch-icon" sizes="120x120" href="/icon-120.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
+<link rel="manifest" href="/manifest.json">
+<meta name="apple-mobile-web-app-title" content="Stephens Advanced">
+<title>Sign Agreement — Stephens Advanced LLC</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://sandbox.web.squarecdn.com/v1/square.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--fire:#f05a28;--darker:#0d0f14;--dark:#1a1a2e;--white:#f0f1f4;--radius:12px;--rs:8px;--card-bg:rgba(255,255,255,.04);--border:rgba(255,255,255,.08);--text:rgba(255,255,255,.85);--text-dim:rgba(255,255,255,.45);--input-bg:rgba(255,255,255,.06);--input-border:rgba(255,255,255,.12)}
+body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--darker);color:var(--text);font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;min-height:100vh}
+a{color:var(--fire);text-decoration:none}
+
+/* HEADER */
+.hdr{background:rgba(13,15,20,.97);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);padding:20px 16px;position:sticky;top:0;z-index:100}
+.hdr-inner{max-width:720px;margin:0 auto;display:flex;align-items:center;justify-content:space-between}
+.hdr-left{display:flex;align-items:center;gap:12px}
+.logo{display:flex;align-items:center;gap:8px;font-size:18px;font-weight:900;color:#fff;letter-spacing:-.5px}
+.logo span{color:var(--fire)}
+.hdr-sub{font-size:11px;color:var(--text-dim);margin-top:2px;font-weight:600;text-transform:uppercase;letter-spacing:1px}
+
+/* LANGUAGE TOGGLE */
+.lang-toggle{display:flex;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--rs);overflow:hidden}
+.lang-btn{padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;border:none;background:transparent;color:var(--text-dim);transition:all .2s}
+.lang-btn.active{background:var(--fire);color:#fff}
+
+/* WRAP */
+.wrap{max-width:720px;margin:0 auto;padding:24px 16px 80px}
+
+/* LOADING */
+.loading-screen{text-align:center;padding:120px 24px;color:var(--text-dim)}
+.loading-screen .spinner{width:40px;height:40px;border:3px solid var(--border);border-top-color:var(--fire);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 16px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ERROR */
+.error-screen{text-align:center;padding:120px 24px}
+.error-screen h2{color:#ef4444;font-size:20px;margin-bottom:8px}
+.error-screen p{color:var(--text-dim)}
+
+/* SUCCESS */
+.success-screen{display:none;text-align:center;padding:80px 24px}
+.success-screen .check-circle{width:80px;height:80px;border-radius:50%;background:rgba(16,185,129,.12);display:flex;align-items:center;justify-content:center;margin:0 auto 24px;animation:popIn .5s cubic-bezier(.17,.67,.21,1.27)}
+@keyframes popIn{0%{transform:scale(0);opacity:0}100%{transform:scale(1);opacity:1}}
+.success-screen h2{font-size:28px;font-weight:900;color:#fff;margin-bottom:8px}
+.success-screen p{color:var(--text-dim);font-size:15px;max-width:400px;margin:0 auto}
+
+/* CARDS & SECTIONS */
+.section{background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius);padding:24px;margin-bottom:20px}
+.section-title{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:var(--fire);margin-bottom:16px;display:flex;align-items:center;gap:8px}
+.section-title svg{flex-shrink:0}
+
+/* FORM INPUTS */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.form-grid.cols-3{grid-template-columns:1fr 1fr 1fr}
+.form-group{display:flex;flex-direction:column;gap:4px}
+.form-group.full{grid-column:1/-1}
+.form-group label{font-size:11px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px}
+.form-group input,.form-group select,.form-group textarea{padding:10px 12px;background:var(--input-bg);border:1.5px solid var(--input-border);border-radius:var(--rs);color:var(--text);font-size:14px;font-family:inherit;transition:border-color .2s}
+.form-group input:focus,.form-group select:focus,.form-group textarea:focus{border-color:var(--fire);outline:none}
+.form-group input::placeholder{color:var(--text-dim)}
+.form-group textarea{min-height:60px;resize:vertical}
+.form-group select{cursor:pointer;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23888' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:32px}
+.form-group select option{background:var(--dark);color:var(--text)}
+
+/* HOURS GRID */
+.hours-grid{display:flex;flex-direction:column;gap:8px}
+.hours-row{display:grid;grid-template-columns:60px 1fr 20px 1fr auto;align-items:center;gap:8px}
+.hours-row .day-label{font-size:12px;font-weight:700;color:var(--text)}
+.hours-row select{padding:8px 28px 8px 8px;background:var(--input-bg);border:1px solid var(--input-border);border-radius:var(--rs);color:var(--text);font-size:12px;font-family:inherit;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg width='8' height='5' viewBox='0 0 8 5' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l3 3 3-3' stroke='%23666' stroke-width='1.2' fill='none'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center}
+.hours-row select option{background:var(--dark);color:var(--text)}
+.hours-row .dash{text-align:center;color:var(--text-dim);font-weight:600}
+.hours-row .closed-wrap{display:flex;align-items:center;gap:6px;white-space:nowrap}
+.hours-row .closed-wrap label{font-size:11px;color:var(--text-dim);cursor:pointer}
+.hours-row .closed-wrap input[type="checkbox"]{accent-color:var(--fire);cursor:pointer;width:16px;height:16px}
+.hours-row select:disabled{opacity:.35;cursor:not-allowed}
+
+/* AGREEMENT TEXT */
+.agreement-wrap{max-height:500px;overflow-y:auto;padding:20px;background:rgba(0,0,0,.2);border:1px solid var(--border);border-radius:var(--rs);margin-top:8px;font-size:13px;line-height:1.7}
+.agreement-wrap::-webkit-scrollbar{width:6px}
+.agreement-wrap::-webkit-scrollbar-track{background:transparent}
+.agreement-wrap::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15);border-radius:3px}
+.agreement-text h2{font-size:16px;font-weight:800;color:#fff;margin:24px 0 12px;padding-bottom:8px;border-bottom:1px solid var(--border)}
+.agreement-text h2:first-child{margin-top:0}
+.agreement-text h3{font-size:14px;font-weight:700;color:var(--fire);margin:16px 0 8px}
+.agreement-text p{margin-bottom:10px;color:var(--text)}
+.agreement-text ul{margin:0 0 10px 20px;color:var(--text)}
+.agreement-text ul li{margin-bottom:4px}
+.agreement-text .disclaimer{background:rgba(240,90,40,.08);border:1px solid rgba(240,90,40,.2);border-radius:var(--rs);padding:12px;margin-bottom:16px;font-size:12px;color:var(--fire);font-style:italic}
+
+/* BILLING ELECTION */
+.billing-options{display:flex;flex-direction:column;gap:10px;margin-top:8px}
+.billing-opt{display:flex;align-items:flex-start;gap:12px;padding:16px;background:var(--input-bg);border:2px solid var(--input-border);border-radius:var(--rs);cursor:pointer;transition:border-color .2s}
+.billing-opt:hover{border-color:rgba(255,255,255,.2)}
+.billing-opt.selected{border-color:var(--fire);background:rgba(240,90,40,.06)}
+.billing-opt input[type="radio"]{accent-color:var(--fire);margin-top:2px;width:18px;height:18px;flex-shrink:0;cursor:pointer}
+.billing-opt-content h4{font-size:15px;font-weight:800;color:#fff;margin-bottom:4px}
+.billing-opt-content p{font-size:12px;color:var(--text-dim);line-height:1.5}
+.billing-opt .discount-badge{display:inline-block;padding:3px 10px;border-radius:9999px;background:rgba(240,90,40,.15);color:var(--fire);font-size:10px;font-weight:800;letter-spacing:.5px;margin-top:6px}
+
+/* CARD INPUT */
+.card-section{transition:opacity .3s}
+.card-section.dimmed{opacity:.45;pointer-events:auto}
+.card-benefit{display:flex;align-items:center;gap:8px;padding:10px 14px;background:rgba(240,90,40,.08);border:1px solid rgba(240,90,40,.15);border-radius:var(--rs);margin-bottom:16px;font-size:13px;font-weight:700;color:var(--fire)}
+#card-container{min-height:44px;padding:2px 0}
+.sq-input{border-radius:var(--rs)!important}
+.card-auth{display:flex;align-items:flex-start;gap:10px;margin-top:12px;padding:12px;background:rgba(255,255,255,.03);border-radius:var(--rs)}
+.card-auth input[type="checkbox"]{accent-color:var(--fire);margin-top:2px;width:16px;height:16px;flex-shrink:0;cursor:pointer}
+.card-auth label{font-size:12px;color:var(--text-dim);cursor:pointer;line-height:1.5}
+.pci-note{font-size:11px;color:var(--text-dim);margin-top:8px;display:flex;align-items:center;gap:6px}
+.pci-note svg{flex-shrink:0}
+
+/* SIGNATURE */
+.sig-canvas-wrap{position:relative;border:2px dashed var(--input-border);border-radius:var(--rs);overflow:hidden;background:rgba(0,0,0,.2);touch-action:none}
+.sig-canvas-wrap canvas{display:block;width:100%;cursor:crosshair}
+.sig-placeholder{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:var(--text-dim);font-size:13px;pointer-events:none;transition:opacity .3s}
+.sig-clear{position:absolute;top:8px;right:8px;padding:4px 12px;background:rgba(255,255,255,.08);border:1px solid var(--border);border-radius:var(--rs);color:var(--text-dim);font-size:11px;font-weight:700;cursor:pointer;transition:all .2s}
+.sig-clear:hover{background:rgba(255,255,255,.12);color:var(--text)}
+.sig-line{position:absolute;bottom:40px;left:20px;right:20px;height:1px;background:rgba(255,255,255,.15);pointer-events:none}
+
+/* CHECKBOX */
+.agreement-check{display:flex;align-items:flex-start;gap:12px;padding:16px;background:rgba(240,90,40,.04);border:1px solid rgba(240,90,40,.12);border-radius:var(--rs);margin-top:16px}
+.agreement-check input[type="checkbox"]{accent-color:var(--fire);margin-top:2px;width:18px;height:18px;flex-shrink:0;cursor:pointer}
+.agreement-check label{font-size:13px;color:var(--text);cursor:pointer;line-height:1.5;font-weight:600}
+
+/* SUBMIT */
+.submit-btn{width:100%;padding:18px;background:var(--fire);color:#fff;font-size:16px;font-weight:800;border:none;border-radius:var(--radius);cursor:pointer;transition:all .2s;margin-top:20px;letter-spacing:.5px;position:relative;overflow:hidden}
+.submit-btn:hover{box-shadow:0 8px 24px rgba(240,90,40,.35);transform:translateY(-1px)}
+.submit-btn:active{transform:translateY(0)}
+.submit-btn:disabled{opacity:.5;cursor:not-allowed;transform:none;box-shadow:none}
+.submit-btn .btn-spinner{display:none;width:20px;height:20px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite;margin:0 auto}
+.submit-btn.loading .btn-text{visibility:hidden}
+.submit-btn.loading .btn-spinner{display:block;position:absolute;top:50%;left:50%;margin:-10px 0 0 -10px}
+
+/* PRICING TABLE */
+.pricing-table{width:100%;border-collapse:collapse;margin-top:8px}
+.pricing-table th{text-align:left;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--text-dim);padding:8px 12px;border-bottom:1px solid var(--border)}
+.pricing-table td{padding:10px 12px;font-size:13px;border-bottom:1px solid var(--border);color:var(--text)}
+.pricing-placeholder{text-align:center;padding:24px;color:var(--text-dim);font-size:13px;font-style:italic}
+
+/* LANGUAGE TOGGLE VISIBILITY */
+.lang-es{display:none}
+body.es .lang-en{display:none}
+body.es .lang-es{display:block}
+
+/* FOOTER */
+.footer{text-align:center;padding:32px 16px;font-size:11px;color:var(--text-dim);border-top:1px solid var(--border);margin-top:40px}
+.footer a{color:var(--fire)}
+
+/* RESPONSIVE */
+@media(max-width:600px){
+  .form-grid{grid-template-columns:1fr}
+  .form-grid.cols-3{grid-template-columns:1fr}
+  .hours-row{grid-template-columns:48px 1fr 14px 1fr auto;gap:4px}
+  .hours-row select{padding:6px 22px 6px 6px;font-size:11px}
+  .hours-row .day-label{font-size:11px}
+  .section{padding:16px}
+  .wrap{padding:16px 10px 80px}
+  .hdr-inner{flex-direction:column;gap:12px;align-items:flex-start}
+  .lang-toggle{align-self:flex-end;margin-top:-32px}
+  .agreement-wrap{max-height:400px;padding:14px}
+}
+
+/* PRINT */
+@media print{
+  body{background:#fff;color:#000}
+  .hdr,.lang-toggle,.submit-btn,.sig-clear,.card-section,.loading-screen,.footer{display:none!important}
+  .wrap{max-width:100%;padding:0}
+  .section{border:1px solid #ddd;break-inside:avoid;page-break-inside:avoid;background:#fff}
+  .section-title{color:var(--fire)}
+  .agreement-wrap{max-height:none;overflow:visible;border:none;padding:0;background:transparent}
+  .agreement-text h2{color:#000}
+  .agreement-text p,.agreement-text ul li{color:#333}
+  .form-group input,.form-group select{border:1px solid #ccc;background:#fff;color:#000}
+  .sig-canvas-wrap{border:1px solid #ccc}
+  .billing-opt{border:1px solid #ccc;background:#fff}
+  .billing-opt-content h4{color:#000}
+  .billing-opt-content p{color:#555}
+}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="hdr">
+  <div class="hdr-inner">
+    <div class="hdr-left">
+      <svg width="28" height="32" viewBox="0 0 32 38" fill="none"><path d="M16 2C16 2 6 10 6 20C6 26 10 30 16 30C22 30 26 26 26 20C26 10 16 2 16 2Z" fill="#f05a28"/><path d="M16 8C16 8 10 14 10 20C10 23 12 25 14 26C13 23 14 20 16 18C18 20 19 23 18 26C20 25 22 23 22 20C22 14 16 8 16 8Z" fill="#ff7847"/><ellipse cx="16" cy="30" rx="5" ry="6" fill="#3498db"/><ellipse cx="16" cy="29" rx="3" ry="3.5" fill="#5dade2"/></svg>
+      <div>
+        <div class="logo">Stephens <span>Advanced</span></div>
+        <div class="hdr-sub lang-en">Recurring Service Agreement</div>
+        <div class="hdr-sub lang-es">Contrato de Servicio Recurrente</div>
+      </div>
+    </div>
+    <div class="lang-toggle">
+      <button class="lang-btn active" onclick="setLang('en')">EN</button>
+      <button class="lang-btn" onclick="setLang('es')">ES</button>
+    </div>
+  </div>
+</div>
+
+<!-- LOADING STATE -->
+<div class="wrap" id="loadingWrap">
+  <div class="loading-screen">
+    <div class="spinner"></div>
+    <p class="lang-en">Loading your agreement...</p>
+    <p class="lang-es">Cargando su contrato...</p>
+  </div>
+</div>
+
+<!-- ERROR STATE -->
+<div class="wrap" id="errorWrap" style="display:none">
+  <div class="error-screen">
+    <h2 class="lang-en">Agreement Not Found</h2>
+    <h2 class="lang-es">Contrato No Encontrado</h2>
+    <p class="lang-en">This link may be invalid or expired. Please contact Stephens Advanced for assistance.</p>
+    <p class="lang-es">Este enlace puede ser invalido o haber expirado. Por favor contacte a Stephens Advanced para asistencia.</p>
+    <p style="margin-top:16px"><a href="tel:+18174004919">(817) 400-4919</a></p>
+  </div>
+</div>
+
+<!-- SUCCESS STATE -->
+<div class="wrap" id="successWrap" style="display:none">
+  <div class="success-screen" style="display:block">
+    <div class="check-circle">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+    </div>
+    <h2 class="lang-en">Agreement Signed!</h2>
+    <h2 class="lang-es">Contrato Firmado!</h2>
+    <p class="lang-en">Thank you for signing your Recurring Service Agreement with Stephens Advanced LLC. You will receive a confirmation email with a copy of your signed agreement shortly.</p>
+    <p class="lang-es">Gracias por firmar su Contrato de Servicio Recurrente con Stephens Advanced LLC. Recibira un correo electronico de confirmacion con una copia de su contrato firmado en breve.</p>
+    <p style="margin-top:24px;color:var(--text-dim);font-size:13px" class="lang-en">If you have any questions, call us at <a href="tel:+18174004919">(817) 400-4919</a></p>
+    <p style="margin-top:24px;color:var(--text-dim);font-size:13px" class="lang-es">Si tiene preguntas, llamenos al <a href="tel:+18174004919">(817) 400-4919</a></p>
+  </div>
+</div>
+
+<!-- MAIN FORM -->
+<div class="wrap" id="mainWrap" style="display:none">
+<form id="contractForm" onsubmit="return false">
+
+  <!-- CUSTOMER INFO -->
+  <div class="section">
+    <div class="section-title">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      <span class="lang-en">Customer Information</span>
+      <span class="lang-es">Informacion del Cliente</span>
+    </div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label class="lang-en">Legal Name *</label>
+        <label class="lang-es">Nombre Legal *</label>
+        <input type="text" id="legalName" required placeholder="Business legal name">
+      </div>
+      <div class="form-group">
+        <label>DBA</label>
+        <input type="text" id="dba" placeholder="Doing business as">
+      </div>
+      <div class="form-group full">
+        <label class="lang-en">Service Address *</label>
+        <label class="lang-es">Direccion de Servicio *</label>
+        <input type="text" id="serviceAddress" required placeholder="Street, City, State ZIP">
+      </div>
+      <div class="form-group full">
+        <label class="lang-en">Billing Address</label>
+        <label class="lang-es">Direccion de Facturacion</label>
+        <input type="text" id="billingAddress" placeholder="If different from service address">
+      </div>
+    </div>
+  </div>
+
+  <!-- CONTACTS -->
+  <div class="section">
+    <div class="section-title">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 012.12 4.18 2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+      <span class="lang-en">Contact Information</span>
+      <span class="lang-es">Informacion de Contacto</span>
+    </div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label class="lang-en">Primary Contact Name *</label>
+        <label class="lang-es">Nombre del Contacto Principal *</label>
+        <input type="text" id="primaryName" required>
+      </div>
+      <div class="form-group">
+        <label class="lang-en">Title</label>
+        <label class="lang-es">Titulo</label>
+        <input type="text" id="primaryTitle" placeholder="e.g. Owner, Manager">
+      </div>
+      <div class="form-group">
+        <label class="lang-en">Phone *</label>
+        <label class="lang-es">Telefono *</label>
+        <input type="tel" id="primaryPhone" required placeholder="(555) 123-4567">
+      </div>
+      <div class="form-group">
+        <label class="lang-en">Email *</label>
+        <label class="lang-es">Correo Electronico *</label>
+        <input type="email" id="primaryEmail" required placeholder="email@example.com">
+      </div>
+      <div class="form-group">
+        <label class="lang-en">Secondary Contact Name</label>
+        <label class="lang-es">Nombre del Contacto Secundario</label>
+        <input type="text" id="secondaryName">
+      </div>
+      <div class="form-group">
+        <label class="lang-en">Secondary Phone</label>
+        <label class="lang-es">Telefono Secundario</label>
+        <input type="tel" id="secondaryPhone">
+      </div>
+    </div>
+  </div>
+
+  <!-- HOURS OF OPERATION -->
+  <div class="section">
+    <div class="section-title">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      <span class="lang-en">Hours of Operation</span>
+      <span class="lang-es">Horario de Operacion</span>
+    </div>
+    <div class="hours-grid" id="hoursGrid"></div>
+    <div class="form-grid" style="margin-top:16px">
+      <div class="form-group full">
+        <label class="lang-en">Preferred Service Day / Time</label>
+        <label class="lang-es">Dia / Hora Preferida de Servicio</label>
+        <input type="text" id="preferredServiceTime" placeholder="e.g. Tuesday mornings, any weekday before noon">
+      </div>
+    </div>
+  </div>
+
+  <!-- AGREEMENT TEXT - ENGLISH -->
+  <div class="section lang-en">
+    <div class="section-title">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+      Recurring Service Agreement
+    </div>
+    <p style="font-size:12px;color:var(--text-dim);margin-bottom:8px">This Recurring Service Agreement ("Agreement") is entered into between Stephens Advanced LLC ("Contractor") and the undersigned customer ("Customer") as of the date signed below.</p>
+    <div class="agreement-wrap">
+      <div class="agreement-text">
+
+        <h2>Section 1 — Scope of Services</h2>
+        <h3>1.1 Covered Services</h3>
+        <p>Contractor will provide recurring inspection, testing, and maintenance services for the following categories of equipment at Customer's service address, at the frequencies and to the standards required by the applicable NFPA codes and the Authority Having Jurisdiction ("AHJ"):</p>
+        <ul>
+          <li>Fixed fire suppression systems (kitchen hood, industrial, or special hazard), per NFPA 17 / 17A / 96, typically semiannual.</li>
+          <li>Portable fire extinguishers, per NFPA 10, typically annual inspection with internal maintenance and hydrostatic testing at the intervals required by NFPA 10 and Texas law.</li>
+        </ul>
+
+        <h3>1.2 Code-Mandated Maintenance Standard</h3>
+        <p>Contractor is authorized to perform, without additional Customer approval, any inspection, testing, tagging, maintenance, or servicing activity that is required by the then-current editions of NFPA 10, NFPA 17, NFPA 17A, NFPA 96, the Texas Insurance Code, and any applicable AHJ requirements for the Covered Services. This includes, without limitation, annual inspections, semiannual inspections, six-year internal maintenance, twelve-year hydrostatic testing, and replacement of tamper seals, pull pins, and inspection tags. Contractor will not perform any work beyond what is mandated by applicable code without Customer's prior written authorization.</p>
+
+        <h3>1.3 Optional Add-On Services</h3>
+        <p>Customer may elect to add any of the following services to this Agreement at any time by signing an addendum or accepting the added service within the Contractor portal:</p>
+        <ul>
+          <li>Emergency and exit lighting inspection and testing</li>
+          <li>Fire alarm system inspection and testing</li>
+          <li>Automatic sprinkler system inspection and testing</li>
+          <li>Kitchen exhaust cleaning</li>
+          <li>Electrical inspections or other services offered by Contractor</li>
+        </ul>
+
+        <h3>1.4 Not Included</h3>
+        <p>Unless separately agreed in writing, the following are not included in the recurring fees and will be quoted as separate work: repairs, parts, recharges, system replacements, UL-300 upgrades or code-mandated system upgrades, post-discharge cleanup and recharge, after-hours or emergency service (see Section 5), and any labor or materials beyond what is required by the applicable codes. Contractor will provide a written estimate for any such work and will not perform it without Customer's authorization.</p>
+
+        <h3>1.5 Code References</h3>
+        <p>Services are performed in accordance with the then-current editions of NFPA 10, NFPA 17, NFPA 17A, NFPA 96, NFPA 25, NFPA 72, the Texas Insurance Code, and any other applicable standard adopted by the AHJ.</p>
+
+        <h2>Section 2 — Priority Service</h2>
+        <p>Customers with an active Recurring Service Agreement receive priority scheduling over non-contract customers. This means contract customers are scheduled first for routine visits, receive priority response for emergency service calls, and receive first availability for add-on service requests. This is a core benefit of this Agreement and remains in effect for the duration of the Agreement.</p>
+
+        <h2>Section 3 — Term and Termination</h2>
+        <h3>3.1 Term</h3>
+        <p>This Agreement begins on the Effective Date and continues indefinitely until terminated in accordance with this Section 3.</p>
+        <h3>3.2 Termination by Either Party</h3>
+        <p>Either party may terminate this Agreement at any time by providing thirty (30) days' prior written notice to the other party.</p>
+        <h3>3.3 Scheduled Visits During Notice Period</h3>
+        <p>Any service visit that has been scheduled or that is required by the applicable NFPA inspection cycle during the thirty-day notice period will be performed and invoiced at the contracted rate.</p>
+        <h3>3.4 Termination for Cause</h3>
+        <p>Contractor may terminate this Agreement immediately upon written notice if Customer (a) fails to pay any amount due and does not cure within fifteen (15) days of written demand, (b) denies Contractor reasonable access to perform required services on two or more consecutive scheduled visits, or (c) materially breaches any provision of this Agreement.</p>
+
+        <h2>Section 4 — Scheduling and Access</h2>
+        <h3>4.1 Automated Scheduling</h3>
+        <p>Contractor will schedule recurring service visits at the intervals required by the applicable NFPA standards.</p>
+        <h3>4.2 Customer Hours of Operation</h3>
+        <p>Customer will provide and keep current its normal operating hours and preferred service windows.</p>
+        <h3>4.3 Advance Notice</h3>
+        <p>Customer will receive an automated reminder approximately seven (7) days before each scheduled visit, a confirmation approximately twenty-four (24) hours before the visit, and an "on my way" notification on the day of service.</p>
+        <h3>4.4 Access</h3>
+        <p>Customer will provide Contractor with reasonable access to all equipment and areas necessary to perform the Covered Services during the scheduled visit.</p>
+        <h3>4.5 Missed Visits and Trip Fee</h3>
+        <p>If Contractor arrives at the scheduled time and is unable to perform services because Customer is not present, the location is closed, equipment is inaccessible, or access is otherwise denied, Customer will be charged a trip fee of one hundred twenty-five dollars ($125.00) and the visit will be rescheduled.</p>
+
+        <h2>Section 5 — Emergency and After-Hours Service</h2>
+        <h3>5.1 Availability</h3>
+        <p>Contractor offers emergency and after-hours service to contract customers on a best-efforts basis.</p>
+        <h3>5.2 Emergency Service Fees</h3>
+        <p>After-hours/weekend call: $500.00. Holiday call: $1,000.00.</p>
+        <h3>5.3 Authorization</h3>
+        <p>Emergency service charges will be communicated to Customer before dispatch. Contractor will not dispatch without Customer's verbal or written authorization.</p>
+
+        <h2>Section 6 — Fees and Pricing</h2>
+        <h3>6.1 Per-Visit Pricing</h3>
+        <p>Each visit's fees are charged per service performed and per unit of equipment, as set forth in the pricing schedule delivered to Customer at the time of signing (the "Pricing Schedule," attached as Exhibit B).</p>
+        <h3>6.2 Price Lock</h3>
+        <p>The per-visit prices in the Pricing Schedule are locked for the term of this Agreement and will not increase except (a) by mutual written agreement, (b) upon addition of new services or equipment, or (c) upon a change in NFPA standards or AHJ requirements that materially increases the cost, in which case Contractor will provide sixty (60) days' written notice.</p>
+
+        <h2>Section 7 — Billing and Payment</h2>
+        <h3>7.1 Invoice on Completion</h3>
+        <p>Upon completion of each visit, Contractor will generate a detailed invoice. Customer will review and electronically sign the invoice as acknowledgment that the work was performed.</p>
+        <h3>7.2 Auto-Charge</h3>
+        <p>Customer authorizes Contractor to charge the payment method on file for the amount of each signed invoice.</p>
+        <h3>7.3 Billed-Invoice Option (Prompt-Pay Discount)</h3>
+        <p>Customer may elect to receive a traditional invoice instead of auto-charge. Billed invoices are priced at one hundred fifteen percent (115%) of the auto-charge rate. Customers who keep a payment method on file and authorize auto-charge receive a prompt-pay discount of approximately thirteen percent (13%). Billed invoices are due net fifteen (15) days.</p>
+        <h3>7.4 Late Payments</h3>
+        <p>If an invoice is not paid within thirty (30) days, a late fee of one and one-half percent (1.5%) per month will accrue. Contractor may suspend future service visits if any balance is more than thirty (30) days past due.</p>
+        <h3>7.5 Disputes</h3>
+        <p>Customer must dispute any charge in writing within fifteen (15) days of the invoice date.</p>
+
+        <h2>Section 8 — Payment Method on File</h2>
+        <h3>8.1 Authorization</h3>
+        <p>Customer will provide and maintain a valid payment method (credit card, debit card, or ACH authorization) on file with Contractor through Square, Contractor's payment processor.</p>
+        <h3>8.2 Storage</h3>
+        <p>Payment method data is stored by Square in accordance with PCI Data Security Standards. Contractor does not retain full card numbers, CVVs, or sensitive authentication data on its own systems.</p>
+        <h3>8.3 Failure to Maintain Payment Method</h3>
+        <p>If Customer's payment method expires, is repeatedly declined, or is removed and not replaced within fifteen (15) days of Contractor's written notice, Contractor may suspend service visits.</p>
+
+        <h2>Section 9 — Insurance and Liability</h2>
+        <h3>9.1 Contractor's Insurance</h3>
+        <p>Contractor maintains commercial general liability insurance and workers' compensation insurance as required by Texas law. A certificate of insurance is available upon Customer's written request.</p>
+        <h3>9.2 Limitation of Liability</h3>
+        <p>To the maximum extent permitted by law, Contractor's total liability to Customer is limited to the total fees paid by Customer to Contractor under this Agreement during the twelve (12) months preceding the event. Contractor is not liable for indirect, consequential, incidental, special, or punitive damages.</p>
+        <h3>9.3 No Guarantee of System Performance in a Fire Event</h3>
+        <p>Contractor's services consist of inspection, testing, and maintenance in accordance with applicable NFPA standards. Contractor does not guarantee that any suppression system, extinguisher, or other equipment will perform under specific fire conditions.</p>
+
+        <h2>Section 10 — Confidentiality</h2>
+        <h3>10.1 Mutual Obligation</h3>
+        <p>Each party acknowledges that, in the course of performing or receiving services under this Agreement, it may receive or observe confidential or proprietary information belonging to the other party.</p>
+        <h3>10.2 Restrictions</h3>
+        <p>Each party agrees to (a) hold the other party's confidential information in strict confidence, (b) not disclose it to any third party except as required by law, and (c) use it solely for the purposes contemplated by this Agreement. This obligation survives termination of the Agreement for a period of two (2) years.</p>
+
+        <h2>Section 11 — Communications and Customer Portal</h2>
+        <h3>11.1 Portal Access</h3>
+        <p>Customer will receive access to Contractor's portal, through which Customer can view upcoming visits, inspection history, certificates, inspection reports, invoices, payment method, contacts, and hours of operation.</p>
+        <h3>11.2 SMS and Email Communications</h3>
+        <p>By signing this Agreement, Customer consents to receive automated SMS text messages and emails from Contractor relating to service.</p>
+        <h3>11.3 Change of Contact</h3>
+        <p>Customer will promptly update contact information in the portal or by written notice to Contractor.</p>
+
+        <h2>Section 12 — Referral Program</h2>
+        <p>If Customer refers another business that enters into a Recurring Service Agreement with Contractor, Customer will receive a credit of fifty dollars ($50.00) applied toward Customer's next service visit.</p>
+
+        <h2>Section 13 — Change of Ownership</h2>
+        <p>If Customer sells, transfers, or otherwise ceases operation at the service address, Customer will notify Contractor in writing at least thirty (30) days in advance. This Agreement does not automatically transfer to a new owner.</p>
+
+        <h2>Section 14 — General Provisions</h2>
+        <h3>14.1 Governing Law and Venue</h3>
+        <p>This Agreement is governed by the laws of the State of Texas. Exclusive venue for any dispute lies in the state or federal courts located in Tarrant County or Dallas County, Texas.</p>
+        <h3>14.2 Electronic Signature</h3>
+        <p>The parties agree that this Agreement may be executed by electronic signature, which has the same legal effect as a handwritten signature under the Texas Uniform Electronic Transactions Act and the federal E-SIGN Act.</p>
+        <h3>14.3 Entire Agreement</h3>
+        <p>This Agreement, together with the Pricing Schedule (Exhibit B), the Billing Election (Exhibit A), and any signed addenda, is the entire agreement between the parties.</p>
+        <h3>14.4 Amendment</h3>
+        <p>This Agreement may not be amended except by a written instrument signed by both parties.</p>
+        <h3>14.5 Severability</h3>
+        <p>If any provision of this Agreement is held to be invalid or unenforceable, the remaining provisions will continue in full force and effect.</p>
+        <h3>14.6 Assignment</h3>
+        <p>Neither party may assign this Agreement without the prior written consent of the other party, except that Contractor may assign this Agreement to an affiliate or successor entity.</p>
+        <h3>14.7 Notices</h3>
+        <p>All notices under this Agreement must be in writing and will be deemed given when delivered by email, certified mail, or hand delivery to the addresses provided by each party.</p>
+        <h3>14.8 Force Majeure</h3>
+        <p>Neither party will be liable for any delay or failure to perform its obligations due to causes beyond its reasonable control, including but not limited to acts of God, government orders, natural disasters, pandemics, or civil disturbances.</p>
+        <h3>14.9 Waiver</h3>
+        <p>The failure of either party to enforce any provision of this Agreement will not constitute a waiver of that provision or the right to enforce it at a later time.</p>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- AGREEMENT TEXT - SPANISH -->
+  <div class="section lang-es">
+    <div class="section-title">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+      Contrato de Servicio Recurrente
+    </div>
+    <div class="disclaimer" style="background:rgba(240,90,40,.08);border:1px solid rgba(240,90,40,.2);border-radius:var(--rs);padding:12px;margin-bottom:12px;font-size:12px;color:var(--fire);font-style:italic">Este documento es una traduccion al espanol del Contrato de Servicio Recurrente en ingles. En caso de conflicto entre las dos versiones, la version en ingles prevalecera.</div>
+    <p style="font-size:12px;color:var(--text-dim);margin-bottom:8px">Este Contrato de Servicio Recurrente ("Contrato") se celebra entre Stephens Advanced LLC ("Contratista") y el cliente abajo firmante ("Cliente") a partir de la fecha de firma indicada a continuacion.</p>
+    <div class="agreement-wrap">
+      <div class="agreement-text">
+
+        <h2>Seccion 1 — Alcance de los Servicios</h2>
+        <h3>1.1 Servicios Cubiertos</h3>
+        <p>El Contratista proporcionara servicios recurrentes de inspeccion, prueba y mantenimiento para las siguientes categorias de equipo en la direccion de servicio del Cliente, con las frecuencias y segun los estandares requeridos por los codigos NFPA aplicables y la Autoridad con Jurisdiccion ("AHJ"):</p>
+        <ul>
+          <li>Sistemas fijos de supresion de incendios (campana de cocina, industrial o riesgo especial), segun NFPA 17 / 17A / 96, tipicamente semestral.</li>
+          <li>Extintores portatiles de incendios, segun NFPA 10, tipicamente inspeccion anual con mantenimiento interno y prueba hidrostatica en los intervalos requeridos por NFPA 10 y la ley de Texas.</li>
+        </ul>
+
+        <h3>1.2 Estandar de Mantenimiento Obligatorio por Codigo</h3>
+        <p>El Contratista esta autorizado para realizar, sin aprobacion adicional del Cliente, cualquier actividad de inspeccion, prueba, etiquetado, mantenimiento o servicio que sea requerida por las ediciones vigentes de NFPA 10, NFPA 17, NFPA 17A, NFPA 96, el Codigo de Seguros de Texas y cualquier requisito de la AHJ aplicable para los Servicios Cubiertos. Esto incluye, sin limitacion, inspecciones anuales, inspecciones semestrales, mantenimiento interno de seis anos, pruebas hidrostaticas de doce anos y reemplazo de sellos de seguridad, pasadores de traccion y etiquetas de inspeccion. El Contratista no realizara ningun trabajo mas alla de lo que exige el codigo aplicable sin la autorizacion previa por escrito del Cliente.</p>
+
+        <h3>1.3 Servicios Adicionales Opcionales</h3>
+        <p>El Cliente puede optar por agregar cualquiera de los siguientes servicios a este Contrato en cualquier momento mediante la firma de un adenda o aceptando el servicio agregado dentro del portal del Contratista:</p>
+        <ul>
+          <li>Inspeccion y prueba de iluminacion de emergencia y salida</li>
+          <li>Inspeccion y prueba del sistema de alarma contra incendios</li>
+          <li>Inspeccion y prueba del sistema de rociadores automaticos</li>
+          <li>Limpieza de escape de cocina</li>
+          <li>Inspecciones electricas u otros servicios ofrecidos por el Contratista</li>
+        </ul>
+
+        <h3>1.4 No Incluido</h3>
+        <p>A menos que se acuerde por separado por escrito, lo siguiente no esta incluido en las tarifas recurrentes y se cotizara como trabajo separado: reparaciones, piezas, recargas, reemplazos de sistemas, actualizaciones UL-300 o actualizaciones de sistemas exigidas por codigo, limpieza y recarga posterior a descarga, servicio fuera de horario o de emergencia (ver Seccion 5), y cualquier mano de obra o materiales mas alla de lo requerido por los codigos aplicables. El Contratista proporcionara un presupuesto por escrito para cualquier trabajo de este tipo y no lo realizara sin la autorizacion del Cliente.</p>
+
+        <h3>1.5 Referencias de Codigo</h3>
+        <p>Los servicios se realizan de acuerdo con las ediciones vigentes de NFPA 10, NFPA 17, NFPA 17A, NFPA 96, NFPA 25, NFPA 72, el Codigo de Seguros de Texas y cualquier otro estandar aplicable adoptado por la AHJ.</p>
+
+        <h2>Seccion 2 — Servicio Prioritario</h2>
+        <p>Los clientes con un Contrato de Servicio Recurrente activo reciben programacion prioritaria sobre los clientes sin contrato. Esto significa que los clientes con contrato se programan primero para visitas rutinarias, reciben respuesta prioritaria para llamadas de servicio de emergencia y reciben primera disponibilidad para solicitudes de servicios adicionales. Este es un beneficio fundamental de este Contrato y permanece vigente durante la duracion del Contrato.</p>
+
+        <h2>Seccion 3 — Vigencia y Terminacion</h2>
+        <h3>3.1 Vigencia</h3>
+        <p>Este Contrato comienza en la Fecha de Vigencia y continua indefinidamente hasta que se termine de acuerdo con esta Seccion 3.</p>
+        <h3>3.2 Terminacion por Cualquiera de las Partes</h3>
+        <p>Cualquiera de las partes puede terminar este Contrato en cualquier momento proporcionando treinta (30) dias de aviso previo por escrito a la otra parte.</p>
+        <h3>3.3 Visitas Programadas Durante el Periodo de Aviso</h3>
+        <p>Cualquier visita de servicio que haya sido programada o que sea requerida por el ciclo de inspeccion NFPA aplicable durante el periodo de aviso de treinta dias se realizara y facturara a la tarifa contratada.</p>
+        <h3>3.4 Terminacion por Causa</h3>
+        <p>El Contratista puede terminar este Contrato inmediatamente mediante aviso por escrito si el Cliente (a) no paga cualquier monto adeudado y no subsana dentro de quince (15) dias del requerimiento por escrito, (b) niega al Contratista acceso razonable para realizar los servicios requeridos en dos o mas visitas programadas consecutivas, o (c) incumple materialmente cualquier disposicion de este Contrato.</p>
+
+        <h2>Seccion 4 — Programacion y Acceso</h2>
+        <h3>4.1 Programacion Automatizada</h3>
+        <p>El Contratista programara visitas de servicio recurrentes en los intervalos requeridos por los estandares NFPA aplicables.</p>
+        <h3>4.2 Horario de Operacion del Cliente</h3>
+        <p>El Cliente proporcionara y mantendra actualizados sus horarios normales de operacion y ventanas de servicio preferidas.</p>
+        <h3>4.3 Aviso Anticipado</h3>
+        <p>El Cliente recibira un recordatorio automatizado aproximadamente siete (7) dias antes de cada visita programada, una confirmacion aproximadamente veinticuatro (24) horas antes de la visita y una notificacion de "en camino" el dia del servicio.</p>
+        <h3>4.4 Acceso</h3>
+        <p>El Cliente proporcionara al Contratista acceso razonable a todos los equipos y areas necesarias para realizar los Servicios Cubiertos durante la visita programada.</p>
+        <h3>4.5 Visitas Perdidas y Cargo por Viaje</h3>
+        <p>Si el Contratista llega a la hora programada y no puede realizar los servicios porque el Cliente no esta presente, la ubicacion esta cerrada, el equipo es inaccesible o el acceso es denegado, se cobrara al Cliente un cargo por viaje de ciento veinticinco dolares ($125.00) y la visita se reprogramara.</p>
+
+        <h2>Seccion 5 — Servicio de Emergencia y Fuera de Horario</h2>
+        <h3>5.1 Disponibilidad</h3>
+        <p>El Contratista ofrece servicio de emergencia y fuera de horario a clientes con contrato en la medida de lo posible.</p>
+        <h3>5.2 Tarifas de Servicio de Emergencia</h3>
+        <p>Llamada fuera de horario/fin de semana: $500.00. Llamada en dia festivo: $1,000.00.</p>
+        <h3>5.3 Autorizacion</h3>
+        <p>Los cargos por servicio de emergencia se comunicaran al Cliente antes del despacho. El Contratista no despachara sin la autorizacion verbal o escrita del Cliente.</p>
+
+        <h2>Seccion 6 — Tarifas y Precios</h2>
+        <h3>6.1 Precios por Visita</h3>
+        <p>Las tarifas de cada visita se cobran por servicio realizado y por unidad de equipo, segun lo establecido en el programa de precios entregado al Cliente al momento de la firma (el "Programa de Precios," adjunto como Anexo B).</p>
+        <h3>6.2 Precio Fijo</h3>
+        <p>Los precios por visita en el Programa de Precios estan fijados por la vigencia de este Contrato y no aumentaran excepto (a) por acuerdo mutuo por escrito, (b) al agregar nuevos servicios o equipos, o (c) ante un cambio en los estandares NFPA o requisitos de la AHJ que aumente materialmente el costo, en cuyo caso el Contratista proporcionara sesenta (60) dias de aviso previo por escrito.</p>
+
+        <h2>Seccion 7 — Facturacion y Pago</h2>
+        <h3>7.1 Factura al Completar</h3>
+        <p>Al completar cada visita, el Contratista generara una factura detallada. El Cliente revisara y firmara electronicamente la factura como reconocimiento de que el trabajo fue realizado.</p>
+        <h3>7.2 Cobro Automatico</h3>
+        <p>El Cliente autoriza al Contratista a cobrar el metodo de pago registrado por el monto de cada factura firmada.</p>
+        <h3>7.3 Opcion de Factura Tradicional (Descuento por Pago Rapido)</h3>
+        <p>El Cliente puede optar por recibir una factura tradicional en lugar del cobro automatico. Las facturas tradicionales se calculan al ciento quince por ciento (115%) de la tarifa de cobro automatico. Los clientes que mantienen un metodo de pago registrado y autorizan el cobro automatico reciben un descuento por pago rapido de aproximadamente trece por ciento (13%). Las facturas tradicionales vencen a quince (15) dias netos.</p>
+        <h3>7.4 Pagos Atrasados</h3>
+        <p>Si una factura no se paga dentro de treinta (30) dias, se acumulara un recargo por mora del uno y medio por ciento (1.5%) mensual. El Contratista puede suspender futuras visitas de servicio si cualquier saldo tiene mas de treinta (30) dias de atraso.</p>
+        <h3>7.5 Disputas</h3>
+        <p>El Cliente debe disputar cualquier cargo por escrito dentro de quince (15) dias de la fecha de la factura.</p>
+
+        <h2>Seccion 8 — Metodo de Pago Registrado</h2>
+        <h3>8.1 Autorizacion</h3>
+        <p>El Cliente proporcionara y mantendra un metodo de pago valido (tarjeta de credito, tarjeta de debito o autorizacion ACH) registrado con el Contratista a traves de Square, el procesador de pagos del Contratista.</p>
+        <h3>8.2 Almacenamiento</h3>
+        <p>Los datos del metodo de pago son almacenados por Square de acuerdo con los Estandares de Seguridad de Datos PCI. El Contratista no retiene numeros completos de tarjeta, CVVs ni datos sensibles de autenticacion en sus propios sistemas.</p>
+        <h3>8.3 Falta de Mantenimiento del Metodo de Pago</h3>
+        <p>Si el metodo de pago del Cliente expira, es rechazado repetidamente o es eliminado y no reemplazado dentro de quince (15) dias del aviso por escrito del Contratista, el Contratista puede suspender las visitas de servicio.</p>
+
+        <h2>Seccion 9 — Seguro y Responsabilidad</h2>
+        <h3>9.1 Seguro del Contratista</h3>
+        <p>El Contratista mantiene seguro de responsabilidad general comercial y seguro de compensacion laboral segun lo requiere la ley de Texas. Un certificado de seguro esta disponible a solicitud por escrito del Cliente.</p>
+        <h3>9.2 Limitacion de Responsabilidad</h3>
+        <p>En la medida maxima permitida por la ley, la responsabilidad total del Contratista ante el Cliente se limita al total de tarifas pagadas por el Cliente al Contratista bajo este Contrato durante los doce (12) meses anteriores al evento. El Contratista no es responsable por danos indirectos, consecuentes, incidentales, especiales o punitivos.</p>
+        <h3>9.3 Sin Garantia de Rendimiento del Sistema en un Evento de Incendio</h3>
+        <p>Los servicios del Contratista consisten en inspeccion, prueba y mantenimiento de acuerdo con los estandares NFPA aplicables. El Contratista no garantiza que ningun sistema de supresion, extintor u otro equipo funcionara bajo condiciones especificas de incendio.</p>
+
+        <h2>Seccion 10 — Confidencialidad</h2>
+        <h3>10.1 Obligacion Mutua</h3>
+        <p>Cada parte reconoce que, en el curso de realizar o recibir servicios bajo este Contrato, puede recibir u observar informacion confidencial o propietaria perteneciente a la otra parte.</p>
+        <h3>10.2 Restricciones</h3>
+        <p>Cada parte acuerda (a) mantener la informacion confidencial de la otra parte en estricta confidencialidad, (b) no divulgarla a terceros excepto segun lo requiera la ley, y (c) utilizarla unicamente para los fines contemplados por este Contrato. Esta obligacion sobrevive la terminacion del Contrato por un periodo de dos (2) anos.</p>
+
+        <h2>Seccion 11 — Comunicaciones y Portal del Cliente</h2>
+        <h3>11.1 Acceso al Portal</h3>
+        <p>El Cliente recibira acceso al portal del Contratista, a traves del cual puede ver visitas programadas, historial de inspecciones, certificados, informes de inspeccion, facturas, metodo de pago, contactos y horario de operacion.</p>
+        <h3>11.2 Comunicaciones por SMS y Correo Electronico</h3>
+        <p>Al firmar este Contrato, el Cliente consiente en recibir mensajes de texto SMS automatizados y correos electronicos del Contratista relacionados con el servicio.</p>
+        <h3>11.3 Cambio de Contacto</h3>
+        <p>El Cliente actualizara prontamente la informacion de contacto en el portal o mediante aviso por escrito al Contratista.</p>
+
+        <h2>Seccion 12 — Programa de Referidos</h2>
+        <p>Si el Cliente refiere a otro negocio que celebre un Contrato de Servicio Recurrente con el Contratista, el Cliente recibira un credito de cincuenta dolares ($50.00) aplicado a su proxima visita de servicio.</p>
+
+        <h2>Seccion 13 — Cambio de Propiedad</h2>
+        <p>Si el Cliente vende, transfiere o de otra manera cesa operaciones en la direccion de servicio, el Cliente notificara al Contratista por escrito con al menos treinta (30) dias de anticipacion. Este Contrato no se transfiere automaticamente a un nuevo propietario.</p>
+
+        <h2>Seccion 14 — Disposiciones Generales</h2>
+        <h3>14.1 Ley Aplicable y Jurisdiccion</h3>
+        <p>Este Contrato se rige por las leyes del Estado de Texas. La jurisdiccion exclusiva para cualquier disputa reside en los tribunales estatales o federales ubicados en el Condado de Tarrant o el Condado de Dallas, Texas.</p>
+        <h3>14.2 Firma Electronica</h3>
+        <p>Las partes acuerdan que este Contrato puede ser ejecutado mediante firma electronica, la cual tiene el mismo efecto legal que una firma manuscrita bajo la Ley Uniforme de Transacciones Electronicas de Texas y la Ley federal E-SIGN.</p>
+        <h3>14.3 Acuerdo Completo</h3>
+        <p>Este Contrato, junto con el Programa de Precios (Anexo B), la Eleccion de Facturacion (Anexo A) y cualquier adenda firmada, constituye el acuerdo completo entre las partes.</p>
+        <h3>14.4 Modificacion</h3>
+        <p>Este Contrato no puede ser modificado excepto mediante un instrumento escrito firmado por ambas partes.</p>
+        <h3>14.5 Divisibilidad</h3>
+        <p>Si alguna disposicion de este Contrato se considera invalida o inaplicable, las disposiciones restantes continuaran en pleno vigor y efecto.</p>
+        <h3>14.6 Cesion</h3>
+        <p>Ninguna de las partes puede ceder este Contrato sin el consentimiento previo por escrito de la otra parte, excepto que el Contratista puede ceder este Contrato a una entidad afiliada o sucesora.</p>
+        <h3>14.7 Notificaciones</h3>
+        <p>Todas las notificaciones bajo este Contrato deben ser por escrito y se consideraran entregadas cuando se envien por correo electronico, correo certificado o entrega en mano a las direcciones proporcionadas por cada parte.</p>
+        <h3>14.8 Fuerza Mayor</h3>
+        <p>Ninguna de las partes sera responsable por cualquier retraso o incumplimiento de sus obligaciones debido a causas fuera de su control razonable, incluyendo pero no limitado a actos de Dios, ordenes gubernamentales, desastres naturales, pandemias o disturbios civiles.</p>
+        <h3>14.9 Renuncia</h3>
+        <p>La falta de cualquiera de las partes de hacer cumplir cualquier disposicion de este Contrato no constituira una renuncia a esa disposicion o al derecho de hacerla cumplir en un momento posterior.</p>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- EXHIBIT A - BILLING ELECTION -->
+  <div class="section">
+    <div class="section-title">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+      <span class="lang-en">Exhibit A — Billing Election</span>
+      <span class="lang-es">Anexo A — Eleccion de Facturacion</span>
+    </div>
+    <div class="billing-options">
+      <label class="billing-opt selected" id="billingOptAuto" onclick="selectBilling('auto')">
+        <input type="radio" name="billingElection" value="auto" checked>
+        <div class="billing-opt-content">
+          <h4 class="lang-en">Auto-Charge (Payment Method on File)</h4>
+          <h4 class="lang-es">Cobro Automatico (Metodo de Pago Registrado)</h4>
+          <p class="lang-en">Your card on file is charged automatically for each signed invoice. You receive the prompt-pay discount.</p>
+          <p class="lang-es">Su tarjeta registrada se cobra automaticamente por cada factura firmada. Usted recibe el descuento por pago rapido.</p>
+          <div class="discount-badge lang-en">SAVE ~13% — PROMPT-PAY DISCOUNT</div>
+          <div class="discount-badge lang-es">AHORRE ~13% — DESCUENTO POR PAGO RAPIDO</div>
+        </div>
+      </label>
+      <label class="billing-opt" id="billingOptInvoice" onclick="selectBilling('invoice')">
+        <input type="radio" name="billingElection" value="invoice">
+        <div class="billing-opt-content">
+          <h4 class="lang-en">Billed Invoice</h4>
+          <h4 class="lang-es">Factura Tradicional</h4>
+          <p class="lang-en">Receive a traditional invoice at 115% of auto-charge rates. Payment due net 15 days.</p>
+          <p class="lang-es">Reciba una factura tradicional al 115% de las tarifas de cobro automatico. Pago a 15 dias netos.</p>
+        </div>
+      </label>
+    </div>
+  </div>
+
+  <!-- EXHIBIT B - PRICING SCHEDULE -->
+  <div class="section">
+    <div class="section-title">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+      <span class="lang-en">Exhibit B — Pricing Schedule</span>
+      <span class="lang-es">Anexo B — Programa de Precios</span>
+    </div>
+    <div id="pricingTableWrap">
+      <table class="pricing-table" id="pricingTable" style="display:none">
+        <thead>
+          <tr>
+            <th class="lang-en">Service / Equipment</th>
+            <th class="lang-es">Servicio / Equipo</th>
+            <th class="lang-en">Qty</th>
+            <th class="lang-es">Cant</th>
+            <th class="lang-en">Rate</th>
+            <th class="lang-es">Tarifa</th>
+            <th class="lang-en">Frequency</th>
+            <th class="lang-es">Frecuencia</th>
+          </tr>
+        </thead>
+        <tbody id="pricingBody"></tbody>
+      </table>
+      <div class="pricing-placeholder" id="pricingPlaceholder">
+        <p class="lang-en">Pricing will be provided by your service technician based on your equipment inventory.</p>
+        <p class="lang-es">Los precios seran proporcionados por su tecnico de servicio basado en el inventario de su equipo.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- CARD ON FILE -->
+  <div class="section card-section" id="cardSection">
+    <div class="section-title">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+      <span class="lang-en">Payment Method on File</span>
+      <span class="lang-es">Metodo de Pago Registrado</span>
+    </div>
+    <div class="card-benefit" id="cardBenefit">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+      <span class="lang-en">Save ~13% with Auto-Charge</span>
+      <span class="lang-es">Ahorre ~13% con Cobro Automatico</span>
+    </div>
+    <p style="font-size:12px;color:var(--text-dim);margin-bottom:16px" class="lang-en">Add a credit or debit card to enable automatic payments after each service visit.</p>
+    <p style="font-size:12px;color:var(--text-dim);margin-bottom:16px" class="lang-es">Agregue una tarjeta de credito o debito para habilitar pagos automaticos despues de cada visita de servicio.</p>
+    <div id="card-container"></div>
+    <div id="card-errors" style="color:#ef4444;font-size:12px;margin-top:8px;min-height:18px"></div>
+    <div class="card-auth">
+      <input type="checkbox" id="cardAuth">
+      <label for="cardAuth">
+        <span class="lang-en">I authorize Stephens Advanced LLC to charge this card for signed invoices per the billing election above.</span>
+        <span class="lang-es">Autorizo a Stephens Advanced LLC a cobrar esta tarjeta por facturas firmadas segun la eleccion de facturacion anterior.</span>
+      </label>
+    </div>
+    <div class="pci-note">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+      <span class="lang-en">Card data is stored securely by Square (PCI DSS compliant). Stephens Advanced never sees your full card number.</span>
+      <span class="lang-es">Los datos de la tarjeta se almacenan de forma segura por Square (compatible con PCI DSS). Stephens Advanced nunca ve su numero completo de tarjeta.</span>
+    </div>
+  </div>
+
+  <!-- SIGNATURE -->
+  <div class="section">
+    <div class="section-title">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+      <span class="lang-en">Signature</span>
+      <span class="lang-es">Firma</span>
+    </div>
+
+    <div class="sig-canvas-wrap" id="sigWrap">
+      <canvas id="sigCanvas" height="200"></canvas>
+      <div class="sig-placeholder" id="sigPlaceholder">
+        <span class="lang-en">Sign here</span>
+        <span class="lang-es">Firme aqui</span>
+      </div>
+      <div class="sig-line"></div>
+      <button type="button" class="sig-clear" onclick="clearSignature()">
+        <span class="lang-en">Clear</span>
+        <span class="lang-es">Borrar</span>
+      </button>
+    </div>
+
+    <div class="form-grid" style="margin-top:16px">
+      <div class="form-group">
+        <label class="lang-en">Printed Name *</label>
+        <label class="lang-es">Nombre Impreso *</label>
+        <input type="text" id="signedName" required>
+      </div>
+      <div class="form-group">
+        <label class="lang-en">Title *</label>
+        <label class="lang-es">Titulo *</label>
+        <input type="text" id="signedTitle" required placeholder="e.g. Owner, Manager">
+      </div>
+      <div class="form-group">
+        <label class="lang-en">Date</label>
+        <label class="lang-es">Fecha</label>
+        <input type="text" id="signedDate" readonly>
+      </div>
+    </div>
+
+    <div class="agreement-check">
+      <input type="checkbox" id="agreeCheck" required>
+      <label for="agreeCheck">
+        <span class="lang-en">I have read, understood, and agreed to all terms of this Recurring Service Agreement.</span>
+        <span class="lang-es">He leido, entendido y aceptado todos los terminos de este Contrato de Servicio Recurrente.</span>
+      </label>
+    </div>
+  </div>
+
+  <!-- SUBMIT -->
+  <button type="button" class="submit-btn" id="submitBtn" onclick="submitContract()">
+    <span class="btn-text lang-en">Sign Agreement</span>
+    <span class="btn-text lang-es">Firmar Contrato</span>
+    <div class="btn-spinner"></div>
+  </button>
+
+</form>
+
+<div class="footer">
+  <p>&copy; 2026 Stephens Advanced LLC &middot; <a href="/terms.html">Terms</a> &middot; <a href="/privacy.html">Privacy</a></p>
+  <p style="margin-top:4px">Fire Suppression &amp; Safety &mdash; Dallas-Fort Worth, Texas</p>
+</div>
+</div>
+
+<script>
+/* ============================================
+   STEPHENS ADVANCED — CONTRACT SIGNING PAGE
+   ============================================ */
+
+const SUPABASE_URL = 'https://kbsezvqaiaborpfumqlo.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtic2V6dnFhaWFib3JwZnVtcWxvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDQxMzkzMDksImV4cCI6MjA1OTcxNTMwOX0.CM5outTVnDBNunk2Gp8tY-2qYa0BFOkWGO-VhCSpoEo';
+
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let contractData = null;
+let locationData = null;
+let billingData = null;
+let squareCard = null;
+let currentLang = 'en';
+
+/* ── LANGUAGE TOGGLE ── */
+function setLang(lang) {
+  currentLang = lang;
+  document.body.classList.toggle('es', lang === 'es');
+  document.querySelectorAll('.lang-btn').forEach(b => {
+    b.classList.toggle('active', b.textContent.trim() === lang.toUpperCase());
+  });
+}
+
+/* ── HOURS OF OPERATION GRID ── */
+function buildHoursGrid() {
+  const days = [
+    { key: 'mon', en: 'Mon', es: 'Lun' },
+    { key: 'tue', en: 'Tue', es: 'Mar' },
+    { key: 'wed', en: 'Wed', es: 'Mie' },
+    { key: 'thu', en: 'Thu', es: 'Jue' },
+    { key: 'fri', en: 'Fri', es: 'Vie' },
+    { key: 'sat', en: 'Sat', es: 'Sab' },
+    { key: 'sun', en: 'Sun', es: 'Dom' }
+  ];
+  const grid = document.getElementById('hoursGrid');
+  grid.innerHTML = '';
+  days.forEach(day => {
+    const row = document.createElement('div');
+    row.className = 'hours-row';
+    row.innerHTML = `
+      <div class="day-label"><span class="lang-en">${day.en}</span><span class="lang-es">${day.es}</span></div>
+      <select id="open_${day.key}" class="hour-select">${buildTimeOptions('9:00 AM')}</select>
+      <div class="dash">-</div>
+      <select id="close_${day.key}" class="hour-select">${buildTimeOptions('5:00 PM')}</select>
+      <div class="closed-wrap">
+        <input type="checkbox" id="closed_${day.key}" onchange="toggleClosed('${day.key}')">
+        <label for="closed_${day.key}"><span class="lang-en">Closed</span><span class="lang-es">Cerrado</span></label>
+      </div>
+    `;
+    grid.appendChild(row);
+  });
+}
+
+function buildTimeOptions(defaultVal) {
+  const times = [];
+  for (let h = 5; h <= 23; h++) {
+    for (let m = 0; m < 60; m += 30) {
+      const hour12 = h > 12 ? h - 12 : (h === 0 ? 12 : h);
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      const label = `${hour12}:${m.toString().padStart(2, '0')} ${ampm}`;
+      const selected = label === defaultVal ? ' selected' : '';
+      times.push(`<option value="${label}"${selected}>${label}</option>`);
+    }
+  }
+  return times.join('');
+}
+
+function toggleClosed(dayKey) {
+  const closed = document.getElementById(`closed_${dayKey}`).checked;
+  document.getElementById(`open_${dayKey}`).disabled = closed;
+  document.getElementById(`close_${dayKey}`).disabled = closed;
+}
+
+function getHoursData() {
+  const days = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+  const hours = {};
+  days.forEach(d => {
+    const closed = document.getElementById(`closed_${d}`).checked;
+    hours[d] = closed ? { closed: true } : {
+      open: document.getElementById(`open_${d}`).value,
+      close: document.getElementById(`close_${d}`).value
+    };
+  });
+  return hours;
+}
+
+/* ── BILLING ELECTION ── */
+function selectBilling(type) {
+  document.getElementById('billingOptAuto').classList.toggle('selected', type === 'auto');
+  document.getElementById('billingOptInvoice').classList.toggle('selected', type === 'invoice');
+  document.querySelector(`input[name="billingElection"][value="${type}"]`).checked = true;
+  const cardSection = document.getElementById('cardSection');
+  cardSection.classList.toggle('dimmed', type === 'invoice');
+  const benefit = document.getElementById('cardBenefit');
+  if (type === 'invoice') {
+    benefit.style.display = 'none';
+  } else {
+    benefit.style.display = 'flex';
+  }
+}
+
+/* ── SIGNATURE PAD ── */
+let sigCanvas, sigCtx, sigDrawing = false, sigHasData = false;
+
+function initSignaturePad() {
+  sigCanvas = document.getElementById('sigCanvas');
+  sigCtx = sigCanvas.getContext('2d');
+  resizeCanvas();
+  window.addEventListener('resize', resizeCanvas);
+
+  sigCanvas.addEventListener('mousedown', sigStart);
+  sigCanvas.addEventListener('mousemove', sigMove);
+  sigCanvas.addEventListener('mouseup', sigEnd);
+  sigCanvas.addEventListener('mouseleave', sigEnd);
+  sigCanvas.addEventListener('touchstart', sigTouchStart, { passive: false });
+  sigCanvas.addEventListener('touchmove', sigTouchMove, { passive: false });
+  sigCanvas.addEventListener('touchend', sigEnd);
+}
+
+function resizeCanvas() {
+  const wrap = document.getElementById('sigWrap');
+  const rect = wrap.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  sigCanvas.width = rect.width * dpr;
+  sigCanvas.height = 200 * dpr;
+  sigCanvas.style.height = '200px';
+  sigCtx.scale(dpr, dpr);
+  sigCtx.strokeStyle = '#fff';
+  sigCtx.lineWidth = 2;
+  sigCtx.lineCap = 'round';
+  sigCtx.lineJoin = 'round';
+  if (sigHasData) {
+    // Canvas was cleared by resize; user may need to re-sign
+    sigHasData = false;
+    document.getElementById('sigPlaceholder').style.opacity = '1';
+  }
+}
+
+function getPos(e) {
+  const rect = sigCanvas.getBoundingClientRect();
+  return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+}
+
+function sigStart(e) {
+  sigDrawing = true;
+  sigHasData = true;
+  document.getElementById('sigPlaceholder').style.opacity = '0';
+  const p = getPos(e);
+  sigCtx.beginPath();
+  sigCtx.moveTo(p.x, p.y);
+}
+
+function sigMove(e) {
+  if (!sigDrawing) return;
+  const p = getPos(e);
+  sigCtx.lineTo(p.x, p.y);
+  sigCtx.stroke();
+}
+
+function sigEnd() {
+  sigDrawing = false;
+}
+
+function sigTouchStart(e) {
+  e.preventDefault();
+  const t = e.touches[0];
+  sigStart({ clientX: t.clientX, clientY: t.clientY });
+}
+
+function sigTouchMove(e) {
+  e.preventDefault();
+  const t = e.touches[0];
+  sigMove({ clientX: t.clientX, clientY: t.clientY });
+}
+
+function clearSignature() {
+  const dpr = window.devicePixelRatio || 1;
+  sigCtx.clearRect(0, 0, sigCanvas.width / dpr, sigCanvas.height / dpr);
+  sigHasData = false;
+  document.getElementById('sigPlaceholder').style.opacity = '1';
+}
+
+function getSignatureData() {
+  if (!sigHasData) return null;
+  return sigCanvas.toDataURL('image/png');
+}
+
+/* ── SQUARE PAYMENTS ── */
+async function initSquarePayments() {
+  const appId = window.SQ_APP_ID;
+  const locationId = window.SQ_LOCATION_ID;
+  if (!appId || !locationId || typeof window.Square === 'undefined') {
+    console.warn('Square SDK not configured — card input disabled');
+    document.getElementById('card-container').innerHTML = '<p style="font-size:12px;color:var(--text-dim);padding:12px;background:var(--input-bg);border-radius:var(--rs);text-align:center">Card input will be available when payment processing is configured.</p>';
+    return;
+  }
+  try {
+    const payments = window.Square.payments(appId, locationId);
+    squareCard = await payments.card();
+    await squareCard.attach('#card-container');
+    squareCard.configure({
+      style: {
+        '.input-container': { borderColor: 'rgba(255,255,255,0.12)', borderRadius: '8px' },
+        '.input-container.is-focus': { borderColor: '#f05a28' },
+        input: { color: '#f0f1f4', fontSize: '14px', fontFamily: 'Inter, system-ui, sans-serif' },
+        'input::placeholder': { color: 'rgba(255,255,255,0.35)' },
+        '.message-text': { color: '#ef4444' }
+      }
+    });
+  } catch (err) {
+    console.error('Square init error:', err);
+    document.getElementById('card-container').innerHTML = '<p style="font-size:12px;color:var(--text-dim);padding:12px;background:var(--input-bg);border-radius:var(--rs);text-align:center">Card input unavailable. You can add a card later in the customer portal.</p>';
+  }
+}
+
+async function tokenizeCard() {
+  if (!squareCard) return null;
+  try {
+    const result = await squareCard.tokenize();
+    if (result.status === 'OK') {
+      return result.token;
+    } else {
+      const errEl = document.getElementById('card-errors');
+      errEl.textContent = result.errors ? result.errors.map(e => e.message).join(', ') : 'Card verification failed.';
+      return null;
+    }
+  } catch (err) {
+    console.error('Tokenize error:', err);
+    return null;
+  }
+}
+
+/* ── LOAD CONTRACT DATA ── */
+async function loadContract() {
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get('token');
+  if (!token) {
+    showError();
+    return;
+  }
+
+  try {
+    // Load contract
+    const { data: contract, error: cErr } = await supabase
+      .from('contracts')
+      .select('*')
+      .eq('id', token)
+      .single();
+
+    if (cErr || !contract) {
+      showError();
+      return;
+    }
+
+    contractData = contract;
+
+    // Load location
+    if (contract.location_id) {
+      const { data: loc } = await supabase
+        .from('locations')
+        .select('*')
+        .eq('id', contract.location_id)
+        .single();
+      locationData = loc;
+    }
+
+    // Load billing account
+    if (contract.billing_account_id) {
+      const { data: bill } = await supabase
+        .from('billing_accounts')
+        .select('*')
+        .eq('id', contract.billing_account_id)
+        .single();
+      billingData = bill;
+    }
+
+    prefillForm();
+    document.getElementById('loadingWrap').style.display = 'none';
+    document.getElementById('mainWrap').style.display = 'block';
+
+  } catch (err) {
+    console.error('Load error:', err);
+    showError();
+  }
+}
+
+function prefillForm() {
+  // Pre-fill from location data
+  if (locationData) {
+    const addr = [locationData.address, locationData.city, locationData.state, locationData.zip].filter(Boolean).join(', ');
+    document.getElementById('serviceAddress').value = addr;
+    document.getElementById('legalName').value = locationData.name || '';
+    document.getElementById('primaryName').value = locationData.contact_name || '';
+    document.getElementById('primaryEmail').value = locationData.contact_email || '';
+    document.getElementById('primaryPhone').value = locationData.contact_phone || '';
+  }
+
+  // Pre-fill from billing account
+  if (billingData) {
+    if (billingData.name) document.getElementById('legalName').value = billingData.name;
+    const billAddr = [billingData.address, billingData.city, billingData.state, billingData.zip].filter(Boolean).join(', ');
+    if (billAddr) document.getElementById('billingAddress').value = billAddr;
+    if (billingData.contact_name) document.getElementById('primaryName').value = billingData.contact_name;
+    if (billingData.email) document.getElementById('primaryEmail').value = billingData.email;
+    if (billingData.phone) document.getElementById('primaryPhone').value = billingData.phone;
+  }
+
+  // Set today's date
+  const today = new Date();
+  const dateStr = today.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  document.getElementById('signedDate').value = dateStr;
+}
+
+function showError() {
+  document.getElementById('loadingWrap').style.display = 'none';
+  document.getElementById('errorWrap').style.display = 'block';
+}
+
+function showSuccess() {
+  document.getElementById('mainWrap').style.display = 'none';
+  document.getElementById('successWrap').style.display = 'block';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+/* ── FORM SUBMISSION ── */
+async function submitContract() {
+  const btn = document.getElementById('submitBtn');
+  const errFields = [];
+
+  // Validate required fields
+  const legalName = document.getElementById('legalName').value.trim();
+  const serviceAddress = document.getElementById('serviceAddress').value.trim();
+  const primaryName = document.getElementById('primaryName').value.trim();
+  const primaryPhone = document.getElementById('primaryPhone').value.trim();
+  const primaryEmail = document.getElementById('primaryEmail').value.trim();
+  const signedName = document.getElementById('signedName').value.trim();
+  const signedTitle = document.getElementById('signedTitle').value.trim();
+  const agreeCheck = document.getElementById('agreeCheck').checked;
+
+  if (!legalName) errFields.push('Legal Name');
+  if (!serviceAddress) errFields.push('Service Address');
+  if (!primaryName) errFields.push('Primary Contact Name');
+  if (!primaryPhone) errFields.push('Phone');
+  if (!primaryEmail) errFields.push('Email');
+  if (!signedName) errFields.push('Printed Name');
+  if (!signedTitle) errFields.push('Title');
+
+  if (!agreeCheck) {
+    const msg = currentLang === 'es'
+      ? 'Debe aceptar los terminos del contrato para continuar.'
+      : 'You must agree to the terms of the agreement to continue.';
+    alert(msg);
+    return;
+  }
+
+  const sigData = getSignatureData();
+  if (!sigData) {
+    const msg = currentLang === 'es'
+      ? 'Por favor proporcione su firma.'
+      : 'Please provide your signature.';
+    alert(msg);
+    return;
+  }
+
+  if (errFields.length > 0) {
+    const msg = currentLang === 'es'
+      ? `Por favor complete los siguientes campos: ${errFields.join(', ')}`
+      : `Please complete the following fields: ${errFields.join(', ')}`;
+    alert(msg);
+    // Focus the first empty required field
+    const firstEmpty = document.querySelector('input:required:invalid');
+    if (firstEmpty) firstEmpty.focus();
+    return;
+  }
+
+  // Collect data
+  const billingElection = document.querySelector('input[name="billingElection"]:checked').value;
+  const cardAuthChecked = document.getElementById('cardAuth').checked;
+
+  btn.classList.add('loading');
+  btn.disabled = true;
+
+  try {
+    // Tokenize card if provided and authorized
+    let cardToken = null;
+    if (squareCard && cardAuthChecked) {
+      cardToken = await tokenizeCard();
+      // Card tokenization is optional, don't block submission if it fails
+    }
+
+    const payload = {
+      contract_id: contractData.id,
+      legal_name: legalName,
+      dba: document.getElementById('dba').value.trim(),
+      service_address: serviceAddress,
+      billing_address: document.getElementById('billingAddress').value.trim(),
+      primary_contact: {
+        name: primaryName,
+        title: document.getElementById('primaryTitle').value.trim(),
+        phone: primaryPhone,
+        email: primaryEmail
+      },
+      secondary_contact: {
+        name: document.getElementById('secondaryName').value.trim(),
+        phone: document.getElementById('secondaryPhone').value.trim()
+      },
+      hours_of_operation: getHoursData(),
+      preferred_service_time: document.getElementById('preferredServiceTime').value.trim(),
+      billing_election: billingElection,
+      card_token: cardToken,
+      card_authorized: cardAuthChecked,
+      signature_data: sigData,
+      signed_name: signedName,
+      signed_title: signedTitle,
+      signed_date: new Date().toISOString(),
+      language: currentLang
+    };
+
+    const response = await fetch('/api/sign-contract', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.error || 'Submission failed');
+    }
+
+    showSuccess();
+
+  } catch (err) {
+    console.error('Submit error:', err);
+    const msg = currentLang === 'es'
+      ? `Error al enviar: ${err.message}. Por favor intente de nuevo.`
+      : `Submission error: ${err.message}. Please try again.`;
+    alert(msg);
+  } finally {
+    btn.classList.remove('loading');
+    btn.disabled = false;
+  }
+}
+
+/* ── INIT ── */
+document.addEventListener('DOMContentLoaded', () => {
+  buildHoursGrid();
+  initSignaturePad();
+  initSquarePayments();
+  loadContract();
+});
+</script>
+</body>
+</html>
