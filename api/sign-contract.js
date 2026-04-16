@@ -11,17 +11,29 @@ module.exports = async function handler(req, res) {
     process.env.SUPABASE_SERVICE_KEY
   )
 
-  const {
-    contractId,
-    customerInfo,
-    businessHours,
-    billingElection,
-    signature,
-    signerName,
-    signerTitle,
-    cardNonce,
-    language
-  } = req.body || {}
+  const body = req.body || {}
+
+  // Accept both naming conventions (form sends snake_case, normalize here)
+  const contractId = body.contractId || body.contract_id
+  const signature = body.signature || body.signature_data
+  const signerName = body.signerName || body.signed_name
+  const signerTitle = body.signerTitle || body.signed_title
+  const billingElection = body.billingElection || body.billing_election
+  const cardNonce = body.cardNonce || body.card_token
+  const language = body.language
+  const customerInfo = body.customerInfo || {
+    legal_name: body.legal_name,
+    dba: body.dba,
+    service_address: body.service_address,
+    billing_address: body.billing_address,
+    primary_contact: body.primary_contact,
+    secondary_contact: body.secondary_contact,
+    email: body.primary_contact?.email
+  }
+  const businessHours = body.businessHours || {
+    hours_of_operation: body.hours_of_operation,
+    preferred_service_time: body.preferred_service_time
+  }
 
   // ── Validate required fields ──────────────────────────────────────
   if (!contractId) return res.status(400).json({ error: 'Missing contractId' })
@@ -64,7 +76,9 @@ module.exports = async function handler(req, res) {
       }
 
       // Create Square customer
-      const custName = customerInfo?.contactName || signerName || ''
+      const custName = customerInfo?.primary_contact?.name || customerInfo?.contactName || signerName || ''
+      const custEmail = customerInfo?.primary_contact?.email || customerInfo?.email || undefined
+      const custPhone = customerInfo?.primary_contact?.phone || customerInfo?.phone || undefined
       const custRes = await fetch(`${baseUrl}/v2/customers`, {
         method: 'POST',
         headers: sqHeaders,
@@ -72,11 +86,11 @@ module.exports = async function handler(req, res) {
           idempotency_key: `contract-cust-${contractId}`,
           given_name: custName.split(' ')[0] || '',
           family_name: custName.split(' ').slice(1).join(' ') || '',
-          email_address: customerInfo?.email || undefined,
-          phone_number: customerInfo?.phone
-            ? customerInfo.phone.replace(/\D/g, '').replace(/^(\d{10})$/, '+1$1')
+          email_address: custEmail,
+          phone_number: custPhone
+            ? custPhone.replace(/\D/g, '').replace(/^(\d{10})$/, '+1$1')
             : undefined,
-          company_name: customerInfo?.legalName || undefined,
+          company_name: customerInfo?.legal_name || customerInfo?.legalName || undefined,
           reference_id: contract.location_id || contractId
         })
       })
@@ -141,13 +155,13 @@ module.exports = async function handler(req, res) {
     if (contract.location_id) {
       const locationUpdate = {}
       if (businessHours) locationUpdate.business_hours = businessHours
-      if (customerInfo?.preferredServiceTime) locationUpdate.preferred_service_time = customerInfo.preferredServiceTime
-      if (customerInfo?.contactName) locationUpdate.contact_name = customerInfo.contactName
-      if (customerInfo?.phone) locationUpdate.contact_phone = customerInfo.phone
-      if (customerInfo?.email) locationUpdate.contact_email = customerInfo.email
-      if (customerInfo?.serviceAddress) locationUpdate.address = customerInfo.serviceAddress
-      if (customerInfo?.secondaryContact) locationUpdate.secondary_contact = customerInfo.secondaryContact
-      if (customerInfo?.secondaryPhone) locationUpdate.secondary_phone = customerInfo.secondaryPhone
+      if (businessHours?.preferred_service_time) locationUpdate.preferred_service_time = businessHours.preferred_service_time
+      if (customerInfo?.primary_contact?.name) locationUpdate.contact_name = customerInfo.primary_contact.name
+      if (customerInfo?.primary_contact?.phone) locationUpdate.contact_phone = customerInfo.primary_contact.phone
+      if (customerInfo?.primary_contact?.email) locationUpdate.contact_email = customerInfo.primary_contact.email
+      if (customerInfo?.service_address) locationUpdate.address = customerInfo.service_address
+      if (customerInfo?.secondary_contact?.name) locationUpdate.secondary_contact = customerInfo.secondary_contact.name
+      if (customerInfo?.secondary_contact?.phone) locationUpdate.secondary_phone = customerInfo.secondary_contact.phone
 
       if (Object.keys(locationUpdate).length) {
         const { error: locErr } = await supabase
@@ -167,8 +181,8 @@ module.exports = async function handler(req, res) {
         billingUpdate.card_last4 = cardLast4
         billingUpdate.card_brand = cardBrand
       }
-      if (customerInfo?.billingAddress) billingUpdate.billing_address = customerInfo.billingAddress
-      if (customerInfo?.legalName) billingUpdate.legal_name = customerInfo.legalName
+      if (customerInfo?.billing_address) billingUpdate.billing_address = customerInfo.billing_address
+      if (customerInfo?.legal_name) billingUpdate.legal_name = customerInfo.legal_name
       if (customerInfo?.dba) billingUpdate.dba = customerInfo.dba
 
       const { error: billErr } = await supabase
