@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+h<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -15,7 +15,7 @@
 <title>Sign Agreement — Stephens Advanced LLC</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://sandbox.web.squarecdn.com/v1/square.js"></script>
+<script src="https://sandbox.web.squarecdn.com/v1/square.js"></script>h
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{--fire:#f05a28;--darker:#0d0f14;--dark:#1a1a2e;--white:#f0f1f4;--radius:12px;--rs:8px;--card-bg:rgba(255,255,255,.04);--border:rgba(255,255,255,.08);--text:rgba(255,255,255,.85);--text-dim:rgba(255,255,255,.45);--input-bg:rgba(255,255,255,.06);--input-border:rgba(255,255,255,.12)}
@@ -620,7 +620,7 @@ body.es .lang-es{display:block}
         <p>Este Contrato no puede ser modificado excepto mediante un instrumento escrito firmado por ambas partes.</p>
         <h3>14.5 Divisibilidad</h3>
         <p>Si alguna disposicion de este Contrato se considera invalida o inaplicable, las disposiciones restantes continuaran en pleno vigor y efecto.</p>
-        <h3>14.6 Cesion</h3>
+        <h3>14.6 Cesion</h3>h
         <p>Ninguna de las partes puede ceder este Contrato sin el consentimiento previo por escrito de la otra parte, excepto que el Contratista puede ceder este Contrato a una entidad afiliada o sucesora.</p>
         <h3>14.7 Notificaciones</h3>
         <p>Todas las notificaciones bajo este Contrato deben ser por escrito y se consideraran entregadas cuando se envien por correo electronico, correo certificado o entrega en mano a las direcciones proporcionadas por cada parte.</p>
@@ -795,7 +795,7 @@ body.es .lang-es{display:block}
 const SUPABASE_URL = 'https://motjasdokoxwiodwzyps.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1vdGphc2Rva294d2lvZHd6eXBzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzNDI2NTcsImV4cCI6MjA4ODkxODY1N30.IMf0plnDRhVgts9LjJr219Tax4J175iuWN1u6ZKTZ-I';
 
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 let contractData = null;
 let locationData = null;
@@ -1032,7 +1032,7 @@ async function loadContract() {
 
   try {
     // Load contract
-    const { data: contract, error: cErr } = await supabase
+    const { data: contract, error: cErr } = await sb
       .from('contracts')
       .select('*')
       .eq('id', token)
@@ -1047,7 +1047,7 @@ async function loadContract() {
 
     // Load location
     if (contract.location_id) {
-      const { data: loc } = await supabase
+      const { data: loc } = await sb
         .from('locations')
         .select('*')
         .eq('id', contract.location_id)
@@ -1057,7 +1057,7 @@ async function loadContract() {
 
     // Load billing account
     if (contract.billing_account_id) {
-      const { data: bill } = await supabase
+      const { data: bill } = await sb
         .from('billing_accounts')
         .select('*')
         .eq('id', contract.billing_account_id)
