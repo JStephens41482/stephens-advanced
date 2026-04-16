@@ -18,7 +18,10 @@ module.exports = async function handler(req, res) {
   const signature = body.signature || body.signature_data
   const signerName = body.signerName || body.signed_name
   const signerTitle = body.signerTitle || body.signed_title
-  const billingElection = body.billingElection || body.billing_election
+  let billingElection = body.billingElection || body.billing_election
+  // Normalize short form values from the sign-contract form
+  const billingMap = { auto: 'auto_charge', invoice: 'billed_invoice' }
+  if (billingMap[billingElection]) billingElection = billingMap[billingElection]
   const cardNonce = body.cardNonce || body.card_token
   const language = body.language
   const customerInfo = body.customerInfo || {
