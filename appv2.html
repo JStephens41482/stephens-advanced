@@ -4413,215 +4413,451 @@ async function markUnpaid(id){
   pop();openInvDetail(id)
 }
 
+// ═══════════════════════════════════════════════════════════════
 // MAZON FACTORING FLOW
-function openMazonFlow(invId,custName,total){
+// ═══════════════════════════════════════════════════════════════
+// Mazon identity constants (kept in sync with /src/config/mazon.js)
+const MAZON_CONST={
+  LEGAL_NAME:'Mazon Associates, Inc.',
+  REMIT_ADDRESS:'P.O. Box 166858, Irving, TX 75016-6858',
+  PHONE:'(972) 554-6967',
+  CLIENT_NUMBER:'1410',
+  BATCH_THRESHOLD:1000.00,
+  SAME_DAY_CUTOFF:'10:00 AM CT',
+  ASSIGNMENT_LANG:`By signing below, I authorize Stephens Advanced LLC to assign this invoice to Mazon Associates, Inc. for factoring. I agree to remit payment for this invoice directly to Mazon Associates, Inc. at the address shown on the invoice. I acknowledge that Stephens Advanced LLC has performed the services described in this invoice to my satisfaction.`
+}
+
+// Entry point — invoked from invoice detail "Mazon" button.
+async function openMazonFlow(invId,custName,total){
+  // Preflight: look up billing_account via invoice → location → billing_account
+  const inv=D.invs.find(x=>x.id===invId)||{}
+  let baId=inv.billing_account_id
+  if(!baId){
+    const loc=D.locs.find(x=>x.id===inv.location_id)
+    baId=loc?.billing_account_id
+  }
+  if(!baId){
+    pushMazonBlock('This invoice has no billing account linked. Attach a billing account to the location first, then try Mazon again.',null)
+    return
+  }
+  const ba=(D.bas||[]).find(b=>b.id===baId)||await fetchBa(baId)
+  if(!ba){
+    pushMazonBlock('Could not load billing account.',null)
+    return
+  }
+
+  // Rule 1: phone required
+  if(!ba.phone||!ba.phone.trim()){
+    pushMazonBlock('Mazon requires a customer phone number. Add one to the billing account before queueing this invoice.',{type:'edit_ba',baId:ba.id})
+    return
+  }
+
+  // Rule 2: mazon_approved required
+  if(!ba.mazon_approved){
+    pushMazonBlock('This customer is not yet approved by Mazon. New customers take 1–2 business days for Mazon to credit-check. Mark them Approved only after Mazon confirms.',{type:'approve_ba',baId:ba.id,invId,custName,total})
+    return
+  }
+
+  // All checks passed — show assignment screen
+  renderMazonAssignment(invId,custName,total,ba)
+}
+
+async function fetchBa(id){
+  const{data}=await SB.from('billing_accounts').select('*').eq('id',id).maybeSingle()
+  return data||null
+}
+
+function pushMazonBlock(msg,action){
+  let ctas=''
+  if(action?.type==='edit_ba'){
+    ctas=`<button class="btn-p" style="margin-top:12px" onclick="pop();openBa('${action.baId}')">Open billing account →</button>`
+  }else if(action?.type==='approve_ba'){
+    ctas=`<button class="btn-p" style="margin-top:12px;background:var(--info)" onclick="confirmMazonApproval('${action.baId}','${esc(action.invId)}','${esc(action.custName)}',${action.total})">I have Mazon's approval</button>
+         <button class="btn-s" style="margin-top:8px" onclick="pop()">Cancel</button>`
+  }else{
+    ctas=`<button class="btn-s" style="margin-top:12px" onclick="pop()">Close</button>`
+  }
+  const h=`<div class="ov-hdr"><button class="ov-back" onclick="pop()">‹</button><div class="ov-title">Mazon — Blocked</div></div>
+  <div class="ov-body">
+    <div style="background:rgba(231,76,60,.08);border:1.5px solid var(--bad);border-radius:var(--r);padding:16px;margin-bottom:12px">
+      <div style="font-size:13px;font-weight:800;color:var(--bad);margin-bottom:6px">Cannot queue for Mazon</div>
+      <div style="font-size:13px;line-height:1.55">${esc(msg)}</div>
+    </div>
+    ${ctas}
+  </div>`
+  push(h)
+}
+
+async function confirmMazonApproval(baId,invId,custName,total){
+  if(!confirm('Confirm: Mazon has approved this customer for factoring?'))return
+  const{error}=await SB.from('billing_accounts').update({
+    mazon_approved:true,mazon_approved_at:new Date().toISOString()
+  }).eq('id',baId)
+  if(error){toast('Failed to save approval',false);return}
+  audit('mazon_approved','billing_account',baId,'jon',null,'Jon confirmed Mazon approval')
+  await load()
+  pop()
+  // Continue into assignment flow
+  openMazonFlow(invId,custName,total)
+}
+
+function renderMazonAssignment(invId,custName,total,ba){
   const h=`<div class="ov-hdr">
     <button class="ov-back" onclick="pop()">‹</button>
     <div class="ov-title">Mazon Factoring</div>
   </div><div class="ov-body">
   <div style="background:var(--infos);border:1.5px solid var(--info);border-radius:var(--r);padding:14px;margin-bottom:16px">
-    <div style="font-size:13px;font-weight:700;color:var(--info);margin-bottom:4px">Mazon Invoice Factoring</div>
-    <div style="font-size:12px;color:var(--g1)">Client #1410 · PIN 4182<br>Customer: ${esc(custName)}<br>Amount: ${fmt(total)}</div>
+    <div style="font-size:13px;font-weight:700;color:var(--info);margin-bottom:4px">${MAZON_CONST.LEGAL_NAME}</div>
+    <div style="font-size:12px;color:var(--g1);line-height:1.55">
+      Client #${MAZON_CONST.CLIENT_NUMBER}<br>
+      Customer: ${esc(custName)}<br>
+      Billing: ${esc(ba.name||'')} (${esc(ba.phone||'')})<br>
+      Amount: ${fmt(total)}
+    </div>
   </div>
   <div class="ds"><div class="ds-t">Customer Agreement</div>
-  <div class="ds-info" style="font-size:12px;line-height:1.8">
-    By signing below, the customer authorizes Stephens Advanced LLC to assign this invoice to Mazon Capital for factoring. The customer agrees to make payment directly to Mazon Capital and acknowledges that Stephens Advanced LLC has performed the services described in this invoice.<br><br>
-    <b>Mazon Capital</b> · Client #1410<br>
-    Remit payment to Mazon Capital as directed on the invoice.
-  </div></div>
+    <div class="ds-info" style="font-size:12.5px;line-height:1.65">${esc(MAZON_CONST.ASSIGNMENT_LANG)}</div>
+  </div>
   <div class="ds"><div class="ds-t">Customer Signature</div>
     <div class="sig-wrap" id="mazonSigWrap"><canvas id="mazonSigC"></canvas><div class="sig-ph" id="mazonSigPh">Customer signs here</div><button class="sig-clr" onclick="clrMazonSig()">Clear</button></div>
   </div>
-  <div class="fg"><label class="fg-l">Printed Name</label><input id="mazon-name" placeholder="Customer printed name"></div>
-  <button class="btn-p" id="mazonSubmitBtn" onclick="submitMazon('${invId}','${esc(custName)}',${total})">Submit to Mazon</button>
+  <div class="fg"><label class="fg-l">Printed Name *</label><input id="mazon-name" placeholder="Customer printed name" oninput="updateMazonSubmitEnabled()"></div>
+  <button class="btn-p" id="mazonSubmitBtn" onclick="submitMazon('${invId}','${esc(custName)}',${total})" disabled>Submit to Mazon</button>
   </div>`
   push(h)
   setTimeout(initMazonSig,80)
 }
 
-let mazonSigCtx=null,mazonSigOn=false
+let mazonSigCtx=null,mazonSigOn=false,mazonHasInk=false
 function initMazonSig(){
   const c=$('mazonSigC');if(!c)return
   const r=c.parentElement.getBoundingClientRect();c.width=r.width;c.height=r.height
   mazonSigCtx=c.getContext('2d');mazonSigCtx.strokeStyle='#222';mazonSigCtx.lineWidth=2.5;mazonSigCtx.lineCap='round';mazonSigCtx.lineJoin='round'
-  const sp=e=>{e.preventDefault();mazonSigOn=true;if($('mazonSigPh'))$('mazonSigPh').style.display='none';const p=gp2(e);mazonSigCtx.beginPath();mazonSigCtx.moveTo(p.x,p.y)}
+  mazonHasInk=false
+  const sp=e=>{e.preventDefault();mazonSigOn=true;mazonHasInk=true;if($('mazonSigPh'))$('mazonSigPh').style.display='none';const p=gp2(e);mazonSigCtx.beginPath();mazonSigCtx.moveTo(p.x,p.y);updateMazonSubmitEnabled()}
   const sm=e=>{if(!mazonSigOn)return;e.preventDefault();const p=gp2(e);mazonSigCtx.lineTo(p.x,p.y);mazonSigCtx.stroke()}
   const se=()=>{mazonSigOn=false}
   c.addEventListener('touchstart',sp,{passive:false});c.addEventListener('touchmove',sm,{passive:false});c.addEventListener('touchend',se)
   c.addEventListener('mousedown',sp);c.addEventListener('mousemove',sm);c.addEventListener('mouseup',se)
 }
 function gp2(e){const c=$('mazonSigC'),r=c.getBoundingClientRect(),t=e.touches?e.touches[0]:e;return{x:t.clientX-r.left,y:t.clientY-r.top}}
-function clrMazonSig(){if(mazonSigCtx){const c=$('mazonSigC');mazonSigCtx.clearRect(0,0,c.width,c.height)}if($('mazonSigPh'))$('mazonSigPh').style.display=''}
-
-async function submitMazon(invId,custName,total){
-  const sig=$('mazonSigC')?.toDataURL()||null
-  const name=$('mazon-name')?.value?.trim()||''
-  const b=$('mazonSubmitBtn');if(b){b.innerHTML='<span class="spin"></span> Adding to queue...';b.classList.add('loading')}
-
-  // get invoice + location for address and service date
-  const inv=D.invs.find(x=>x.id===invId)||{}
-  const loc=D.locs.find(x=>x.id===inv.location_id)||{}
-  const addr=[loc.address,loc.city,loc.state,loc.zip].filter(Boolean).join(', ')
-
-  // apply factoring surcharge if pricing rule exists
-  const factRule2=getPricingRule('factoring_surcharge')
-  let factoredTotal=+total||0
-  if(factRule2){
-    const surcharge=Math.round(factoredTotal*factRule2.percentage/100*100)/100
-    factoredTotal+=surcharge
-    // add surcharge line item to invoice
-    try{
-      await SB.from('invoice_lines').insert({invoice_id:invId,description:`Processing Fee (${factRule2.percentage}%)`,quantity:1,unit_price:surcharge,total:surcharge,sort_order:999})
-      await SB.from('invoices').update({total:factoredTotal}).eq('id',invId)
-    }catch(e){console.error('factoring surcharge:',e)}
-  }
-
-  // save to mazon_queue
-  const{error:qErr}=await SB.from('mazon_queue').insert({
-    invoice_id:invId,customer_name:name||custName,amount:factoredTotal,
-    location_address:addr,date_of_service:inv.date||td(),
-    signature_data:sig,status:'pending',invoice_number:inv.invoice_number||''
-  })
-  if(qErr){toast('Error queuing',false);if(b){b.innerHTML='Submit to Mazon';b.classList.remove('loading')}return}
-
-  // mark invoice as factored (not paid yet — pending Mazon submission)
-  await SB.from('invoices').update({
-    status:'factored',payment_method:'mazon',
-    notes:'Mazon Factoring — Client #1410. Customer: '+(name||custName)+'. In queue for submission.'
-  }).eq('id',invId)
-
-  audit('factored','invoice',invId,'jon',{amount:factoredTotal},'Invoice factored to Mazon — '+(name||custName))
-  await load()
-  toast('Added to Mazon queue ✓')
-  popAll()
-  rMoney()
-  go(document.querySelector('[data-v="vMoney"]'))
+function clrMazonSig(){if(mazonSigCtx){const c=$('mazonSigC');mazonSigCtx.clearRect(0,0,c.width,c.height)}if($('mazonSigPh'))$('mazonSigPh').style.display='';mazonHasInk=false;updateMazonSubmitEnabled()}
+function updateMazonSubmitEnabled(){
+  const btn=$('mazonSubmitBtn');if(!btn)return
+  const name=($('mazon-name')?.value||'').trim()
+  btn.disabled=!(mazonHasInk&&name.length>0)
 }
 
-// MAZON QUEUE REVIEW
+async function submitMazon(invId,custName,total){
+  const sig=$('mazonSigC')?.toDataURL('image/png')||null
+  const name=$('mazon-name')?.value?.trim()||''
+  const b=$('mazonSubmitBtn')
+  if(!sig||!name){toast('Signature and printed name required',false);return}
+  if(b){b.innerHTML='<span class="spin"></span> Queueing…';b.disabled=true}
+
+  try{
+    const res=await fetch('/api/mazon/stamp-invoice',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({invoice_id:invId,signature_data_url:sig,printed_name:name})
+    })
+    const data=await res.json()
+    if(!res.ok){toast('Mazon queue failed: '+(data.error||res.status),false);if(b){b.innerHTML='Submit to Mazon';b.disabled=false};return}
+
+    audit('factored','invoice',invId,'jon',{queue_id:data.queue_id,amount:+total||0},'Invoice queued for Mazon — '+(name||custName))
+
+    // Email the stamped invoice to the customer
+    try{
+      const inv=D.invs.find(x=>x.id===invId)||{}
+      const loc=D.locs.find(x=>x.id===inv.location_id)||{}
+      const email=loc.contact_email
+      if(email){
+        await fetch('/api/send-email',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+          to:email,
+          subject:`Your invoice ${inv.invoice_number||''} from Stephens Advanced — remit to ${MAZON_CONST.LEGAL_NAME}`,
+          html:`<div style="font-family:Arial,sans-serif;font-size:14px;color:#222;max-width:600px;line-height:1.6">
+            <p>Hi ${esc(name||custName)},</p>
+            <p>Thanks for your business. Your invoice <b>${esc(inv.invoice_number||'')}</b> is attached.</p>
+            <p style="background:#fff7e6;border-left:4px solid #c94c1a;padding:12px 14px;margin:16px 0">
+              <b>Please remit payment to:</b><br>
+              ${esc(MAZON_CONST.LEGAL_NAME)}<br>
+              ${esc(MAZON_CONST.REMIT_ADDRESS)}<br>
+              Questions: ${esc(MAZON_CONST.PHONE)}
+            </p>
+            <p>A link to your stamped invoice: <a href="${data.invoice_url}">View invoice PDF</a></p>
+            <p>— Jonathan Stephens<br>Stephens Advanced LLC</p>
+          </div>`,
+          invoiceNumber:inv.invoice_number
+        })})
+      }
+    }catch(e){console.error('customer email:',e)}
+
+    await load()
+    toast(`Queued for Mazon. Funds when batch reaches $${MAZON_CONST.BATCH_THRESHOLD.toFixed(0)} and ships Friday.`)
+    popAll();rMoney();go(document.querySelector('[data-v="vMoney"]'))
+  }catch(e){
+    console.error('submitMazon:',e)
+    toast('Network error — try again',false)
+    if(b){b.innerHTML='Submit to Mazon';b.disabled=false}
+  }
+}
+
+// ═══ MAZON QUEUE VIEW ═══
 async function openMazonQueue(){
-  const{data:queue}=await SB.from('mazon_queue').select('*').order('created_at',{ascending:false})
+  const[{data:queue},{data:schedules}]=await Promise.all([
+    SB.from('mazon_queue').select('*').order('created_at',{ascending:true}),
+    SB.from('mazon_schedules').select('*').order('schedule_number',{ascending:false})
+  ])
   const items=queue||[]
   const pending=items.filter(x=>x.status==='pending')
   const submitted=items.filter(x=>x.status==='submitted')
+  const funded=items.filter(x=>x.status==='funded')
+  const rejected=items.filter(x=>x.status==='rejected')
   const pendingTotal=pending.reduce((s,x)=>s+(+x.amount||0),0)
+  const threshold=MAZON_CONST.BATCH_THRESHOLD
+  const meetsThreshold=pendingTotal>=threshold
+  const shortfall=Math.max(0,threshold-pendingTotal)
 
   let h=`<div class="ov-hdr">
     <button class="ov-back" onclick="pop()">‹</button>
     <div class="ov-title">Mazon Queue</div>
   </div><div class="ov-body">
   <div style="background:var(--infos);border:1.5px solid var(--info);border-radius:var(--r);padding:14px;margin-bottom:16px">
-    <div style="font-size:13px;font-weight:700;color:var(--info)">Client #1410 · PIN 4182</div>
-    <div style="font-size:12px;color:var(--g1);margin-top:4px">Submit to schedule@mazon.com by 10 AM Friday for same-day funding</div>
+    <div style="font-size:13px;font-weight:700;color:var(--info)">${esc(MAZON_CONST.LEGAL_NAME)} · Client #${MAZON_CONST.CLIENT_NUMBER}</div>
+    <div style="font-size:12px;color:var(--g1);margin-top:4px">Submit by ${MAZON_CONST.SAME_DAY_CUTOFF} Friday for same-day funding</div>
   </div>`
 
+  // ─── Pending section ───
+  h+=`<div class="sec"><div class="sec-t" style="color:${meetsThreshold?'var(--ok)':'var(--warn)'}">Pending · ${pending.length} invoice${pending.length===1?'':'s'} · ${fmt(pendingTotal)}</div></div>`
+
   if(pending.length){
-    h+=`<div class="sec"><div class="sec-t" style="color:var(--warn)">Pending · ${pending.length} invoices · ${fmt(pendingTotal)}</div></div>`
-    pending.forEach((q,i)=>{
+    pending.forEach(q=>{
       h+=`<div class="ic" style="margin-bottom:8px" id="mq-${q.id}">
         <div class="ic-r1">
-          <div class="ic-nm">${esc(q.customer_name)}</div>
-          <span class="badge bsent">${q.invoice_number||'—'}</span>
+          <div class="ic-nm">${esc(q.customer_name||'')}</div>
+          <span class="badge bsent">${esc(q.invoice_number||'—')}</span>
         </div>
         <div class="ic-sub">${esc(q.location_address||'')}</div>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
           <div style="font-size:11px;color:var(--g1)">Service: ${q.date_of_service||'—'}</div>
-          <div style="display:flex;align-items:center;gap:6px">
-            <span style="font-size:11px;color:var(--g1)">$</span>
-            <input type="number" value="${+q.amount||0}" style="width:80px;text-align:right;font-size:15px;font-weight:800;background:var(--c2);border:1px solid var(--b1);padding:6px 8px" id="mq-amt-${q.id}" onchange="updateMazonAmt('${q.id}',this.value)">
-          </div>
+          <div style="font-size:15px;font-weight:800">${fmt(+q.amount||0)}</div>
         </div>
-        <button style="margin-top:6px;font-size:11px;color:var(--bad);background:none;padding:4px 0" onclick="removeMazonQueue('${q.id}')">Remove from queue</button>
+        <div style="display:flex;gap:6px;margin-top:8px;font-size:11px">
+          ${q.signature_url?`<a href="${q.signature_url}" target="_blank" style="color:var(--info);text-decoration:none">View signature</a>`:''}
+          ${q.invoice_id?`<a href="#" onclick="openMazonInvoicePdf('${q.id}');return false" style="color:var(--info);text-decoration:none">View stamped PDF</a>`:''}
+          <button style="color:var(--bad);background:none;padding:0;border:none;font-size:11px;cursor:pointer;margin-left:auto" onclick="voidMazonQueue('${q.id}')">Void</button>
+        </div>
       </div>`
     })
-    h+=`<button class="btn-p" id="mazonSendBtn" style="margin-top:12px;background:var(--info)" onclick="sendMazonSchedule()">✉️ Send ${pending.length} Invoice${pending.length>1?'s':''} to Mazon — ${fmt(pendingTotal)}</button>`
+
+    // Threshold + submit button
+    if(meetsThreshold){
+      h+=`<button class="btn-p" id="mazonReviewBtn" style="margin-top:12px;background:var(--ok)" onclick="openMazonReview()">Submit Batch to Mazon — ${fmt(pendingTotal)}</button>`
+    }else{
+      h+=`<div style="margin-top:12px;padding:12px;background:var(--c2);border:1px dashed var(--b1);border-radius:var(--rs);text-align:center">
+        <button class="btn-p" style="background:var(--g2);opacity:.5;cursor:not-allowed" disabled>Submit Batch to Mazon</button>
+        <div style="font-size:12px;color:var(--g1);margin-top:8px">Need ${fmt(shortfall)} more to reach ${fmt(threshold)} threshold</div>
+      </div>`
+    }
   }else{
-    h+=`<div class="ey" style="padding:30px"><div class="ey-t">No pending invoices in queue.<br>Add invoices via the Mazon payment option.</div></div>`
+    h+=`<div class="ey" style="padding:24px"><div class="ey-t">No pending invoices.<br>Add invoices via the Mazon payment option on an invoice.</div></div>`
   }
 
-  if(submitted.length){
-    h+=`<div class="sec"><div class="sec-t">Submitted</div></div>`
-    submitted.forEach(q=>{
-      h+=`<div class="ic" style="margin-bottom:8px;opacity:.6">
-        <div class="ic-r1"><div class="ic-nm">${esc(q.customer_name)}</div><span class="badge bpaid">${q.invoice_number||'—'}</span></div>
-        <div style="display:flex;justify-content:space-between;margin-top:4px">
-          <div class="ic-sub">${esc(q.location_address||'')}</div>
-          <div style="font-size:15px;font-weight:800;color:var(--ok)">${fmt(+q.amount)}</div>
-        </div>
-        <div style="font-size:10px;color:var(--g2);margin-top:4px">Submitted ${q.submitted_at?new Date(q.submitted_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):''}</div>
-      </div>`
+  // ─── Submitted, grouped by schedule ───
+  const submittedByScheduleMap=new Map()
+  for(const q of submitted.concat(funded).concat(rejected)){
+    const k=q.schedule_id||'ungrouped'
+    if(!submittedByScheduleMap.has(k))submittedByScheduleMap.set(k,[])
+    submittedByScheduleMap.get(k).push(q)
+  }
+
+  if(submittedByScheduleMap.size){
+    h+=`<div class="sec" style="margin-top:24px"><div class="sec-t">Submitted Schedules</div></div>`
+    const sortedSchedIds=Array.from(submittedByScheduleMap.keys()).sort((a,b)=>{
+      const sa=(schedules||[]).find(s=>s.id===a)
+      const sb=(schedules||[]).find(s=>s.id===b)
+      return (sb?.schedule_number||0)-(sa?.schedule_number||0)
     })
+    for(const sid of sortedSchedIds){
+      const rows=submittedByScheduleMap.get(sid)
+      const sched=(schedules||[]).find(s=>s.id===sid)
+      const schedNum=sched?.schedule_number||'?'
+      const schedDate=sched?.submitted_at?new Date(sched.submitted_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):''
+      const schedTotal=rows.reduce((s,x)=>s+(+x.amount||0),0)
+      const allFunded=rows.every(r=>r.status==='funded')
+      h+=`<div style="background:var(--c2);border:1px solid var(--b1);border-radius:var(--r);padding:12px;margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <div style="font-weight:800;font-size:14px">Schedule #${schedNum}</div>
+            <div style="font-size:11px;color:var(--g1)">${schedDate} · ${rows.length} invoice${rows.length===1?'':'s'} · ${fmt(schedTotal)}</div>
+          </div>
+          ${!allFunded&&rows.some(r=>r.status==='submitted')?`<button class="btn-s" style="font-size:11px;padding:6px 10px" onclick="markScheduleFunded('${sid}')">Mark all funded</button>`:''}
+        </div>`
+      rows.forEach(q=>{
+        const statusBadge=q.status==='funded'?'<span class="badge bpaid">FUNDED</span>':q.status==='rejected'?'<span class="badge bover">REJECTED</span>':'<span class="badge bsent">SUBMITTED</span>'
+        const amt=q.funded_amount!=null?q.funded_amount:q.amount
+        h+=`<div style="padding:8px 0;border-top:1px solid var(--b1);display:flex;justify-content:space-between;align-items:center;font-size:12.5px">
+          <div>
+            <div style="font-weight:700">${esc(q.customer_name||'')} · ${esc(q.invoice_number||'—')}</div>
+            ${q.status==='rejected'&&q.rejected_reason?`<div style="font-size:11px;color:var(--bad);margin-top:2px">${esc(q.rejected_reason)}</div>`:''}
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            ${statusBadge}
+            <div style="font-weight:800">${fmt(+amt||0)}</div>
+          </div>
+        </div>
+        ${q.status==='submitted'?`<div style="padding:6px 0 0;display:flex;gap:8px;font-size:11px">
+          <button style="color:var(--ok);background:none;border:none;padding:0;cursor:pointer" onclick="markMazonFunded('${q.id}')">Mark funded</button>
+          <button style="color:var(--bad);background:none;border:none;padding:0;cursor:pointer" onclick="markMazonRejected('${q.id}')">Mark rejected</button>
+        </div>`:''}`
+      })
+      h+=`</div>`
+    }
   }
 
   h+=`</div>`
   push(h)
 }
 
-async function updateMazonAmt(qId,val){
-  await SB.from('mazon_queue').update({amount:+val||0}).eq('id',qId)
+async function openMazonInvoicePdf(qId){
+  const{data}=await SB.from('mazon_queue').select('invoice_id').eq('id',qId).single()
+  if(!data)return
+  const{data:inv}=await SB.from('invoices').select('mazon_stamped_pdf_url').eq('id',data.invoice_id).single()
+  if(inv?.mazon_stamped_pdf_url)window.open(inv.mazon_stamped_pdf_url,'_blank')
+  else toast('No stamped PDF on file',false)
 }
 
-async function removeMazonQueue(qId){
-  if(!confirm('Remove from Mazon queue?'))return
-  // get the invoice_id to un-factor it
-  const{data}=await SB.from('mazon_queue').select('invoice_id').eq('id',qId).single()
-  await SB.from('mazon_queue').delete().eq('id',qId)
-  if(data?.invoice_id){
-    await SB.from('invoices').update({status:'draft',payment_method:null,notes:null}).eq('id',data.invoice_id)
+async function voidMazonQueue(qId){
+  const reason=prompt('Reason for voiding?')
+  if(!reason)return
+  await SB.from('mazon_queue').update({status:'voided',voided_reason:reason,updated_at:new Date().toISOString()}).eq('id',qId)
+  // Get invoice_id to revert
+  const{data:qr}=await SB.from('mazon_queue').select('invoice_id').eq('id',qId).single()
+  if(qr?.invoice_id){
+    await SB.from('invoices').update({status:'draft',payment_method:null,mazon_queue_id:null,updated_at:new Date().toISOString()}).eq('id',qr.invoice_id)
   }
+  await SB.from('mazon_audit_log').insert({actor:'jon',entity_type:'queue',entity_id:qId,old_status:'pending',new_status:'voided',reason})
   await load();pop();openMazonQueue()
 }
 
-async function sendMazonSchedule(){
-  const btn=$('mazonSendBtn');if(btn){btn.innerHTML='<span class="spin"></span> Sending to Mazon...';btn.disabled=true}
-  // fetch current pending
-  const{data:pending}=await SB.from('mazon_queue').select('*').eq('status','pending').order('created_at')
-  if(!pending?.length){toast('No pending invoices',false);if(btn){btn.textContent='Send';btn.disabled=false};return}
+// ═══ REVIEW MODAL ═══
+async function openMazonReview(){
+  const{data:pending}=await SB.from('mazon_queue').select('*').eq('status','pending').order('created_at',{ascending:true})
+  if(!pending?.length){toast('No pending invoices',false);return}
+  const{data:maxSched}=await SB.from('mazon_schedules').select('schedule_number').order('schedule_number',{ascending:false}).limit(1).maybeSingle()
+  const nextNum=(maxSched?.schedule_number||0)+1
+  window._mazonReview={items:pending.map(p=>({id:p.id,checked:true,amount:+p.amount||0,customer:p.customer_name,invoice:p.invoice_number,date:p.date_of_service}))}
+  renderMazonReview(nextNum)
+}
 
-  const totalAmt=pending.reduce((s,x)=>s+(+x.amount||0),0)
-  const today=new Date().toLocaleDateString('en-US',{month:'2-digit',day:'2-digit',year:'numeric'})
+function renderMazonReview(nextNum){
+  const items=window._mazonReview?.items||[]
+  const selected=items.filter(i=>i.checked)
+  const total=selected.reduce((s,i)=>s+(+i.amount||0),0)
 
-  // build Mazon schedule email
-  let scheduleHtml=`<div style="font-family:Arial,sans-serif;font-size:14px;color:#222;max-width:600px">
-    <p>Good morning,</p>
-    <p>Please find below the schedule submission for <b>Stephens Advanced LLC</b>.</p>
-    <p><b>Client #:</b> 1410<br><b>PIN:</b> 4182<br><b>Date:</b> ${today}<br><b>Number of Invoices:</b> ${pending.length}<br><b>Total Amount:</b> ${fmt(totalAmt)}</p>
-    <table style="width:100%;border-collapse:collapse;margin:16px 0">
-      <tr style="background:#f5f5f5">
-        <th style="text-align:left;padding:8px;border:1px solid #ddd;font-size:12px">Invoice #</th>
-        <th style="text-align:left;padding:8px;border:1px solid #ddd;font-size:12px">Customer</th>
-        <th style="text-align:left;padding:8px;border:1px solid #ddd;font-size:12px">Address</th>
-        <th style="text-align:right;padding:8px;border:1px solid #ddd;font-size:12px">Amount</th>
-        <th style="text-align:center;padding:8px;border:1px solid #ddd;font-size:12px">Date of Service</th>
-      </tr>`
-  pending.forEach(q=>{
-    scheduleHtml+=`<tr>
-      <td style="padding:8px;border:1px solid #ddd">${esc(q.invoice_number||'—')}</td>
-      <td style="padding:8px;border:1px solid #ddd">${esc(q.customer_name)}</td>
-      <td style="padding:8px;border:1px solid #ddd;font-size:12px">${esc(q.location_address||'')}</td>
-      <td style="padding:8px;border:1px solid #ddd;text-align:right;font-weight:bold">${fmt(+q.amount)}</td>
-      <td style="padding:8px;border:1px solid #ddd;text-align:center">${q.date_of_service||'—'}</td>
-    </tr>`
-  })
-  scheduleHtml+=`<tr style="background:#f0f0f0;font-weight:bold">
-      <td colspan="3" style="padding:8px;border:1px solid #ddd;text-align:right">Total</td>
-      <td style="padding:8px;border:1px solid #ddd;text-align:right">${fmt(totalAmt)}</td>
-      <td style="padding:8px;border:1px solid #ddd"></td>
-    </tr></table>
-    <p>Thank you,<br><b>Jonathan Stephens</b><br>Stephens Advanced LLC<br>(214) 994-4799<br>jonathan@stephensadvanced.com</p>
+  let h=`<div class="ov-hdr">
+    <button class="ov-back" onclick="pop()">‹</button>
+    <div class="ov-title">Review Schedule #${nextNum}</div>
+  </div><div class="ov-body">
+  <div style="background:var(--infos);border:1.5px solid var(--info);border-radius:var(--r);padding:12px;margin-bottom:14px;font-size:12px">
+    Review each invoice. Uncheck to hold for next batch.
   </div>`
 
-  // Build plain-text body for email preview
-  const mazonSubj='Stephens Advanced LLC — Schedule Submission — Client #1410 — '+today
-  let mazonBody=`Client #: 1410\nPIN: 4182\nDate: ${today}\nNumber of Invoices: ${pending.length}\nTotal Amount: ${fmt(totalAmt)}\n\n`
-  pending.forEach(q=>{
-    mazonBody+=`${q.invoice_number||'—'} | ${q.customer_name} | ${q.location_address||''} | ${fmt(+q.amount)} | ${q.date_of_service||'—'}\n`
+  items.forEach((it,idx)=>{
+    h+=`<label style="display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--b1);border-radius:var(--rs);margin-bottom:8px;cursor:pointer">
+      <input type="checkbox" ${it.checked?'checked':''} onchange="toggleMazonReviewItem(${idx},this.checked,${nextNum})" style="width:20px;height:20px;accent-color:var(--info)">
+      <div style="flex:1">
+        <div style="font-weight:700;font-size:13px">${esc(it.customer)} · ${esc(it.invoice||'—')}</div>
+        <div style="font-size:11px;color:var(--g1)">Service ${it.date||'—'}</div>
+      </div>
+      <div style="font-weight:800">${fmt(+it.amount||0)}</div>
+    </label>`
   })
-  mazonBody+=`\nTotal: ${fmt(totalAmt)}\n\nThank you,\nJonathan Stephens\nStephens Advanced LLC\n(214) 994-4799\njonathan@stephensadvanced.com`
 
-  window.open(`mailto:schedule@mazon.com?subject=${encodeURIComponent(mazonSubj)}&body=${encodeURIComponent(mazonBody)}`)
-  toast('Mazon email opened for review')
-  if(btn){btn.textContent='✉️ Send to Mazon';btn.disabled=false}
+  h+=`<div style="margin-top:14px;padding:14px;background:var(--c2);border:1px solid var(--b1);border-radius:var(--r);display:flex;justify-content:space-between;font-weight:800">
+    <span>Selected total · ${selected.length} invoice${selected.length===1?'':'s'}</span>
+    <span>${fmt(total)}</span>
+  </div>
+  <button class="btn-p" id="mazonSubmitBatchBtn" style="margin-top:14px;background:${selected.length?'var(--info)':'var(--g2)'}" ${selected.length?'':'disabled'} onclick="submitMazonBatch()">Send to Mazon</button>
+  <button class="btn-s" style="margin-top:8px" onclick="pop()">Cancel</button>
+  </div>`
+
+  const existing=document.querySelector('.ov.active.ov-review')
+  if(existing){existing.innerHTML=h}
+  else{push(h);const last=document.querySelector('.ov.active');if(last)last.classList.add('ov-review')}
+}
+
+function toggleMazonReviewItem(idx,checked,nextNum){
+  if(!window._mazonReview?.items?.[idx])return
+  window._mazonReview.items[idx].checked=checked
+  renderMazonReview(nextNum)
+}
+
+async function submitMazonBatch(){
+  const items=window._mazonReview?.items||[]
+  const selected=items.filter(i=>i.checked)
+  if(!selected.length)return
+  const btn=$('mazonSubmitBatchBtn')
+  if(btn){btn.innerHTML='<span class="spin"></span> Sending to Mazon…';btn.disabled=true}
+  try{
+    const res=await fetch('/api/mazon/submit-batch',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({queue_ids:selected.map(i=>i.id)})
+    })
+    const data=await res.json()
+    if(!res.ok){toast('Submission failed: '+(data.error||res.status),false);if(btn){btn.innerHTML='Send to Mazon';btn.disabled=false};return}
+    window._mazonReview=null
+    toast(`Schedule #${data.schedule_number} sent — ${data.count} invoice${data.count===1?'':'s'} · ${fmt(data.total)}`)
+    await load();popAll();rMoney();openMazonQueue()
+  }catch(e){
+    console.error('submitMazonBatch:',e)
+    toast('Network error — try again',false)
+    if(btn){btn.innerHTML='Send to Mazon';btn.disabled=false}
+  }
+}
+
+// ═══ FUNDED / REJECTED ACTIONS ═══
+async function markMazonFunded(qId){
+  const{data:qr}=await SB.from('mazon_queue').select('*').eq('id',qId).single()
+  if(!qr)return
+  const promptAmt=prompt('Funded amount? (may be less than $'+(+qr.amount).toFixed(2)+' if Mazon took fees)',(+qr.amount).toFixed(2))
+  if(promptAmt===null)return
+  const amt=parseFloat(promptAmt)
+  if(isNaN(amt)||amt<=0){toast('Invalid amount',false);return}
+  const nowIso=new Date().toISOString()
+  await SB.from('mazon_queue').update({status:'funded',funded_at:nowIso,funded_amount:amt,updated_at:nowIso}).eq('id',qId)
+  await SB.from('invoices').update({status:'paid',paid_at:nowIso,payment_method:'mazon',updated_at:nowIso}).eq('id',qr.invoice_id)
+  await SB.from('mazon_audit_log').insert({actor:'jon',entity_type:'queue',entity_id:qId,old_status:'submitted',new_status:'funded',reason:'Mazon funded',metadata:{funded_amount:amt}})
+  audit('paid','invoice',qr.invoice_id,'jon',{amount:amt,method:'mazon'},'Mazon funded — '+qr.customer_name)
+  await load();pop();openMazonQueue()
+}
+
+async function markScheduleFunded(schedId){
+  if(!confirm('Mark all invoices in this schedule as funded at face value?'))return
+  const{data:rows}=await SB.from('mazon_queue').select('id,amount,invoice_id,customer_name').eq('schedule_id',schedId).eq('status','submitted')
+  if(!rows?.length){toast('No submitted rows in schedule',false);return}
+  const nowIso=new Date().toISOString()
+  for(const r of rows){
+    const amt=+r.amount||0
+    await SB.from('mazon_queue').update({status:'funded',funded_at:nowIso,funded_amount:amt,updated_at:nowIso}).eq('id',r.id)
+    await SB.from('invoices').update({status:'paid',paid_at:nowIso,payment_method:'mazon',updated_at:nowIso}).eq('id',r.invoice_id)
+    await SB.from('mazon_audit_log').insert({actor:'jon',entity_type:'queue',entity_id:r.id,old_status:'submitted',new_status:'funded',reason:'Bulk mark funded (schedule)'})
+    audit('paid','invoice',r.invoice_id,'jon',{amount:amt,method:'mazon'},'Mazon funded (bulk) — '+r.customer_name)
+  }
+  await SB.from('mazon_schedules').update({status:'funded'}).eq('id',schedId)
+  await load();pop();openMazonQueue()
+}
+
+async function markMazonRejected(qId){
+  const reason=prompt('Reason Mazon rejected?')
+  if(!reason)return
+  const{data:qr}=await SB.from('mazon_queue').select('invoice_id,customer_name').eq('id',qId).single()
+  await SB.from('mazon_queue').update({status:'rejected',rejected_reason:reason,updated_at:new Date().toISOString()}).eq('id',qId)
+  if(qr?.invoice_id){
+    // Revert invoice to unpaid so Jon can collect another way
+    await SB.from('invoices').update({status:'sent',updated_at:new Date().toISOString()}).eq('id',qr.invoice_id)
+  }
+  await SB.from('mazon_audit_log').insert({actor:'jon',entity_type:'queue',entity_id:qId,old_status:'submitted',new_status:'rejected',reason})
+  await load();pop();openMazonQueue()
 }
 
 // CLIENTS LIST
@@ -9133,6 +9369,9 @@ async function confirmChatActions(yes){
   renderChat()
 }
 
+// Riker session for app context — one session per browser install (localStorage)
+const RIKER_APP_SESSION_KEY='riker_app_session'
+
 async function sendChat(){
   const input=$('chatInput')
   const msg=input?.value?.trim()
@@ -9145,7 +9384,55 @@ async function sendChat(){
 
   const btn=$('chatSendBtn');if(btn)btn.disabled=true
 
-  // build business context
+  // Server-side Riker builds the full context (prompts, memory, calendar,
+  // rate card, William availability). Client only sends the turn + a few
+  // UX hints about what's open on screen.
+  const sessionId=localStorage.getItem(RIKER_APP_SESSION_KEY)||null
+  try{
+    const res=await fetch('/api/riker',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        context:'app',
+        session_id:sessionId,
+        message:msg,
+        auth:{tech_id:(D.techs||[]).find(tt=>tt.active)?.id||null},
+        client_context:{
+          current_screen:(window._currentScreen||null),
+          active_location_id:(window._openLocId||null),
+          active_job_id:(window._openJobId||null)
+        }
+      })
+    })
+    const data=await res.json()
+    if(data.session_id)localStorage.setItem(RIKER_APP_SESSION_KEY,data.session_id)
+    const reply=data.reply||'Done.'
+    if(reply)_chatMsgs.push({role:'assistant',content:reply})
+    // Apply UI-only client hints (open_screen, open_client, open_job, toast)
+    for(const hint of (data.client_hints||[])){
+      try{await execChatAction(hint)}catch(e){console.error('client hint:',e)}
+    }
+    // If anything was written server-side, refresh local data
+    const wrote=(data.actions_taken||[]).some(a=>a.ok&&!['lookup_client','lookup_invoice','open_screen','open_client','open_job','toast','memory_write','memory_delete','view_invoices','view_equipment','view_next_service'].includes(a.type))
+    if(wrote){
+      try{await load()}catch(e){console.error('refresh after action:',e)}
+    }
+  }catch(e){
+    console.error('chat error:',e)
+    _chatMsgs.push({role:'assistant',content:'Connection error — check your internet and try again.'})
+  }
+
+  renderChat()
+  if(btn)btn.disabled=false
+  return
+}
+
+// ─── old inline context builder + raw /api/claude path (kept for reference only, never runs) ───
+// eslint-disable-next-line no-unused-vars
+async function _sendChatLegacy(){
+  const input=$('chatInput')
+  const msg=input?.value?.trim()
+  if(!msg)return
   const t=td()
   const todayJobs=D.jobs.filter(j=>j.scheduled_date===t)
   const overdueJobs=D.jobs.filter(j=>j.status==='scheduled'&&j.scheduled_date<t)

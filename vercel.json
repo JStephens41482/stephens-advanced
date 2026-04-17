@@ -5,8 +5,28 @@
       "schedule": "0 8 1 * *"
     },
     {
-      "path": "/api/cron?job=morning-digest",
+      "path": "/api/cron?job=riker-morning-brief",
       "schedule": "0 11 * * *"
+    },
+    {
+      "path": "/api/cron?job=riker-invoice-aging",
+      "schedule": "0 15 * * *"
+    },
+    {
+      "path": "/api/cron?job=riker-compliance-alerts",
+      "schedule": "0 14 * * *"
+    },
+    {
+      "path": "/api/cron?job=riker-memory-prune",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/email-inbound",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/mazon/friday-check",
+      "schedule": "0 14 * * 5"
     }
   ],
   "routes": [

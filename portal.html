@@ -1039,6 +1039,137 @@ function showError(msg){
 }
 
 initPortal()
+
+// ═══ RIKER PORTAL CHAT WIDGET ═══
+// Sends to /api/riker with context=portal + the portal_token for auth.
+const RIKER_PORTAL_SESSION='riker_portal_session'
+let _rkOpen=false,_rkMsgs=[],_rkLast=0,_rkBusy=false
+
+function rkToggle(){
+  _rkOpen=!_rkOpen
+  const p=document.getElementById('rkPanel')
+  if(!p)return
+  p.classList.toggle('open',_rkOpen)
+  if(_rkOpen){
+    if(!_rkMsgs.length){
+      const nm=(_portalData?.locs?.[0]?.contact_name||'').split(' ')[0]||'there'
+      _rkMsgs.push({role:'assistant',content:`Hi ${nm}, I'm Riker. How can I help? You can ask about invoices, equipment, or request service.`})
+      rkRender()
+    }
+    setTimeout(()=>{const i=document.getElementById('rkInput');if(i)i.focus()},120)
+  }
+}
+
+function rkRender(){
+  const el=document.getElementById('rkMsgs');if(!el)return
+  el.innerHTML=_rkMsgs.map(m=>{
+    const isUser=m.role==='user'
+    return`<div style="display:flex;justify-content:${isUser?'flex-end':'flex-start'};margin-bottom:8px">
+      <div style="max-width:82%;padding:10px 13px;border-radius:${isUser?'16px 16px 4px 16px':'16px 16px 16px 4px'};background:${isUser?'#f05a28':'#eef2f6'};color:${isUser?'#fff':'#1a1a2e'};font-size:13.5px;line-height:1.45;word-wrap:break-word;white-space:pre-wrap">${rkEsc(m.content)}</div>
+    </div>`
+  }).join('')
+  el.scrollTop=el.scrollHeight
+}
+function rkEsc(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+function rkKey(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();rkSend()}}
+
+async function rkSend(){
+  if(_rkBusy)return
+  const input=document.getElementById('rkInput')
+  const msg=input?.value?.trim()
+  if(!msg)return
+  const now=Date.now();if(now-_rkLast<1200)return
+  _rkLast=now;input.value=''
+  _rkMsgs.push({role:'user',content:msg});rkRender()
+  _rkBusy=true
+  const typ=document.getElementById('rkTyping');if(typ)typ.style.display='flex'
+  const sessionId=sessionStorage.getItem(RIKER_PORTAL_SESSION)||null
+  const portalToken=_portalData?.token?.token
+  try{
+    const res=await fetch('/api/riker',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        context:'portal',
+        session_id:sessionId,
+        message:msg,
+        auth:{portal_token:portalToken}
+      })
+    })
+    const data=await res.json()
+    if(data.session_id)sessionStorage.setItem(RIKER_PORTAL_SESSION,data.session_id)
+    if(data.reply)_rkMsgs.push({role:'assistant',content:data.reply})
+    else if(data.error)_rkMsgs.push({role:'assistant',content:'Sorry, something went wrong. Call (214) 994-4799.'})
+  }catch(e){
+    _rkMsgs.push({role:'assistant',content:"I'm having trouble connecting. Call (214) 994-4799."})
+  }finally{
+    _rkBusy=false
+    if(typ)typ.style.display='none'
+    rkRender()
+  }
+}
+
+// Inject chat widget markup + styles only when portal loads successfully
+function rkMount(){
+  if(!_portalData?.token?.token)return  // only for authenticated portal sessions
+  const style=document.createElement('style')
+  style.textContent=`
+  #rkBtn{position:fixed;bottom:20px;right:20px;width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#f05a28,#d44a1a);border:none;color:#fff;cursor:pointer;z-index:5000;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(240,90,40,.35);transition:transform .18s}
+  #rkBtn:hover{transform:translateY(-2px) scale(1.05)}
+  #rkPanel{position:fixed;bottom:86px;right:20px;width:360px;max-width:calc(100vw - 40px);height:520px;max-height:calc(100vh - 120px);background:#fff;border:1px solid #e0e3e8;border-radius:14px;z-index:5001;box-shadow:0 16px 48px rgba(0,0,0,.18);opacity:0;transform:translateY(10px) scale(.97);pointer-events:none;transition:opacity .2s,transform .2s;overflow:hidden;display:flex;flex-direction:column}
+  #rkPanel.open{opacity:1;transform:translateY(0) scale(1);pointer-events:auto}
+  .rkh{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid #eef1f4;background:linear-gradient(135deg,rgba(240,90,40,.06),transparent);flex-shrink:0}
+  .rkh-i{width:34px;height:34px;border-radius:50%;background:rgba(240,90,40,.12);color:#f05a28;display:flex;align-items:center;justify-content:center}
+  .rkh-t{font-size:14px;font-weight:800;color:#1a1a2e}
+  .rkh-s{font-size:11px;color:#888;margin-top:1px}
+  .rkh-x{margin-left:auto;background:none;border:none;color:#888;font-size:18px;cursor:pointer;padding:4px 8px}
+  .rkh-x:hover{color:#1a1a2e}
+  #rkMsgs{flex:1;overflow-y:auto;padding:14px 14px 4px;background:#fff}
+  #rkTyping{display:none;align-items:center;gap:4px;padding:4px 20px 8px}
+  #rkTyping span{width:6px;height:6px;border-radius:50%;background:#f05a28;opacity:.6;animation:rkDot 1.2s infinite}
+  #rkTyping span:nth-child(2){animation-delay:.15s}
+  #rkTyping span:nth-child(3){animation-delay:.3s}
+  @keyframes rkDot{0%,60%,100%{transform:translateY(0);opacity:.4}30%{transform:translateY(-4px);opacity:1}}
+  .rkin{display:flex;gap:8px;padding:10px 12px;border-top:1px solid #eef1f4;background:#fafbfc;align-items:flex-end}
+  .rkin textarea{flex:1;background:#fff;border:1px solid #dfe3e8;border-radius:10px;color:#1a1a2e;font-size:13.5px;padding:9px 11px;resize:none;font-family:inherit;line-height:1.35;max-height:90px;outline:none}
+  .rkin textarea:focus{border-color:#f05a28}
+  .rkin button{width:38px;height:38px;border-radius:10px;background:#f05a28;border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .rkin button:hover{background:#d44a1a}
+  @media(max-width:480px){
+    #rkPanel{width:calc(100vw - 16px);right:8px;bottom:76px;height:calc(100vh - 90px)}
+    #rkBtn{right:12px;bottom:12px;width:52px;height:52px}
+  }`
+  document.head.appendChild(style)
+
+  const btn=document.createElement('button')
+  btn.id='rkBtn';btn.setAttribute('onclick','rkToggle()');btn.setAttribute('aria-label','Chat with Riker')
+  btn.innerHTML='<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>'
+  document.body.appendChild(btn)
+
+  const panel=document.createElement('div')
+  panel.id='rkPanel'
+  panel.innerHTML=`
+    <div class="rkh">
+      <div class="rkh-i"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+      <div><div class="rkh-t">Riker</div><div class="rkh-s">Stephens Advanced</div></div>
+      <button class="rkh-x" onclick="rkToggle()" aria-label="Close">✕</button>
+    </div>
+    <div id="rkMsgs"></div>
+    <div id="rkTyping"><span></span><span></span><span></span></div>
+    <div class="rkin">
+      <textarea id="rkInput" placeholder="Ask about your account, request service…" rows="1" onkeydown="rkKey(event)"></textarea>
+      <button onclick="rkSend()" aria-label="Send"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg></button>
+    </div>`
+  document.body.appendChild(panel)
+}
+
+// Hook into initPortal's success path — poll briefly for _portalData.token
+const _rkMountInterval=setInterval(()=>{
+  if(_portalData?.token?.token){
+    clearInterval(_rkMountInterval)
+    rkMount()
+  }
+},300)
+setTimeout(()=>clearInterval(_rkMountInterval),8000)
 </script>
 </body>
 </html>
