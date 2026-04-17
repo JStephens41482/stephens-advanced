@@ -249,7 +249,7 @@ const CONTEXT_ACTIONS = {
   portal: ['submit_service_request', 'view_invoices', 'view_equipment', 'update_contact_info', 'request_portal_extension', 'view_next_service', 'sms_jon', 'memory_write'],
   app: ['add_client', 'schedule_job', 'add_todo', 'mark_paid', 'lookup_client', 'lookup_invoice', 'open_screen', 'open_client', 'open_job', 'delete_job', 'add_extinguisher', 'add_suppression', 'send_sms', 'toast', 'build_route', 'modify_route', 'suggest_job', 'add_contact', 'memory_write', 'memory_delete', 'need_quote'],
   sms_customer: ['create_customer', 'schedule_job', 'generate_portal', 'sms_jon', 'need_quote', 'memory_write'],
-  sms_jon: ['approve_pending', 'reject_pending', 'counter_offer', 'memory_write', 'memory_delete', 'sms_customer'],
+  sms_jon: ['approve_pending', 'reject_pending', 'counter_offer', 'lookup_client', 'lookup_invoice', 'schedule_job', 'build_route', 'suggest_job', 'add_client', 'add_todo', 'send_sms', 'sms_customer', 'memory_write', 'memory_delete'],
   email_customer: ['create_customer', 'schedule_job', 'generate_portal', 'sms_jon', 'need_quote', 'memory_write']
 }
 
