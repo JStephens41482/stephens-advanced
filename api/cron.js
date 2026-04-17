@@ -21,7 +21,24 @@ module.exports = async function handler(req, res) {
 
   if (job === 'morning-digest') return morningDigest(req, res, SB)
   if (job === 'auto-reschedule') return autoReschedule(req, res, SB)
-  return res.status(400).json({ error: 'Unknown job. Use ?job=morning-digest or ?job=auto-reschedule' })
+  if (job === 'riker-morning-brief') return runProactive('morningBrief', res, SB)
+  if (job === 'riker-invoice-aging') return runProactive('invoiceAging', res, SB)
+  if (job === 'riker-compliance-alerts') return runProactive('complianceAlerts', res, SB)
+  if (job === 'riker-memory-prune') return runProactive('memoryPrune', res, SB)
+  return res.status(400).json({ error: 'Unknown job' })
+}
+
+async function runProactive(fnName, res, SB) {
+  try {
+    const mod = require('./riker-proactive')
+    const fn = mod[fnName]
+    if (!fn) return res.status(400).json({ error: 'Unknown proactive fn: ' + fnName })
+    const result = await fn(SB)
+    return res.status(200).json({ ok: true, job: fnName, result })
+  } catch (e) {
+    console.error('[cron] proactive error:', fnName, e)
+    return res.status(500).json({ error: e.message, job: fnName })
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════

@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Riker — Wall Reference</title>
+<style>
+  @page { size: letter; margin: 0.5in; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, Segoe UI, Helvetica, Arial, sans-serif;
+    color: #111;
+    line-height: 1.35;
+    margin: 0;
+    padding: 24px;
+    font-size: 11pt;
+  }
+  h1 {
+    font-size: 28pt;
+    margin: 0 0 4px 0;
+    letter-spacing: -0.5px;
+    border-bottom: 3px solid #f05a28;
+    padding-bottom: 6px;
+  }
+  h1 span { color: #f05a28; }
+  .subtitle {
+    font-size: 10pt;
+    color: #555;
+    margin-bottom: 18px;
+    font-style: italic;
+  }
+  h2 {
+    font-size: 13pt;
+    margin: 16px 0 6px 0;
+    color: #f05a28;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    border-bottom: 1px solid #ddd;
+    padding-bottom: 3px;
+  }
+  h3 {
+    font-size: 10pt;
+    margin: 8px 0 4px 0;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  p { margin: 4px 0; }
+  ul { margin: 4px 0 8px 0; padding-left: 18px; }
+  li { margin-bottom: 2px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  .card {
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    padding: 10px 12px;
+    background: #fafafa;
+  }
+  .card h3 { margin-top: 0; color: #333; }
+  .rule {
+    background: #fff4e6;
+    border-left: 4px solid #f05a28;
+    padding: 8px 10px;
+    margin: 8px 0;
+  }
+  .rule strong { color: #c94c1a; }
+  code, .kbd {
+    background: #f0f0f0;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-family: Menlo, Consolas, monospace;
+    font-size: 9.5pt;
+  }
+  .phrase {
+    background: #e8f4f8;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-weight: 600;
+  }
+  .big {
+    font-size: 14pt;
+    font-weight: 800;
+  }
+  .danger { color: #b91c1c; font-weight: 700; }
+  .ok { color: #059669; font-weight: 700; }
+  .faces {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+    margin: 10px 0;
+  }
+  .face {
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    padding: 6px 8px;
+    text-align: center;
+    font-size: 9.5pt;
+  }
+  .face strong { display: block; color: #f05a28; font-size: 10pt; }
+  .pagebreak { page-break-before: always; }
+  table { width: 100%; border-collapse: collapse; font-size: 10pt; }
+  th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid #eee; }
+  th { background: #f5f5f5; font-weight: 800; }
+  .footer {
+    margin-top: 18px;
+    padding-top: 10px;
+    border-top: 1px solid #ddd;
+    font-size: 9pt;
+    color: #777;
+    text-align: center;
+  }
+  @media print {
+    body { padding: 0; font-size: 10.5pt; }
+    .noprint { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<h1>RIKER <span>— the wall chart</span></h1>
+<div class="subtitle">One AI brain, five faces, one rule book. Stephens Advanced LLC.</div>
+
+<h2>The Five Faces</h2>
+<div class="faces">
+  <div class="face"><strong>WEBSITE</strong>chat widget on stephensadvanced.com</div>
+  <div class="face"><strong>PORTAL</strong>chat for signed-in customers</div>
+  <div class="face"><strong>APP</strong>your field app chat</div>
+  <div class="face"><strong>SMS</strong>Twilio number inbound</div>
+  <div class="face"><strong>EMAIL</strong>jonathan@ with "Riker" label</div>
+</div>
+<p style="font-size: 10pt;">Same brain, same memory, same rules. The voice softens for customers and sharpens for you, but it's still Riker.</p>
+
+<h2>What Riker Does Without Being Asked</h2>
+<table>
+  <tr><th>When</th><th>What</th></tr>
+  <tr><td>Every 5 min</td><td>Checks Gmail for Riker-labeled emails, replies to customers on your behalf (with your approval gate)</td></tr>
+  <tr><td>6 AM daily</td><td>Emails you the morning brief — today's jobs, overdue items, anything from the notebook worth flagging</td></tr>
+  <tr><td>9 AM daily</td><td>Scans equipment for compliance coming due at 30/14/7 days. At 14-day and 7-day, you get an SMS.</td></tr>
+  <tr><td>10 AM daily</td><td>Sends 7/14/30 day payment reminders to customers. SMS if they're opted in, email otherwise.</td></tr>
+  <tr><td>4 AM daily</td><td>Prunes notebook — archives expired / stale entries.</td></tr>
+  <tr><td>Fri 8 AM CT</td><td>If Mazon queue ≥ $1,000, SMS reminder to ship by 10 AM.</td></tr>
+  <tr><td>1st of month, 3 AM</td><td>Auto-creates 6-month / 12-month follow-up jobs from completed work.</td></tr>
+</table>
+
+<h2>How To Give Riker Orders That Stick</h2>
+<div class="rule">
+  <strong>These phrases tell Riker to REMEMBER a rule permanently:</strong><br>
+  <span class="phrase">that's an order</span> &nbsp;
+  <span class="phrase">I'm ordering you to…</span> &nbsp;
+  <span class="phrase">from now on…</span> &nbsp;
+  <span class="phrase">never do X</span> &nbsp;
+  <span class="phrase">always do X</span> &nbsp;
+  <span class="phrase">stop doing X</span> &nbsp;
+  <span class="phrase">going forward…</span> &nbsp;
+  <span class="phrase">make it a rule that…</span>
+</div>
+<p>When Riker hears one of these from you (via SMS or field app), it writes a <code>STANDING ORDER</code> to memory at priority 10, permanent, and follows it from then on. Reply should come back as <span class="ok">"Locked in."</span></p>
+<p><strong>To revoke a rule:</strong> <span class="phrase">cancel that rule</span>, <span class="phrase">forget that order</span>, or <span class="phrase">that rule no longer applies.</span> No other phrasing unwinds it.</p>
+
+<h2>The Approval Gate</h2>
+<p>When a customer proposes a time (via website / SMS / email), Riker texts you first:</p>
+<div class="rule" style="font-family:Menlo,Consolas,monospace;font-size:10pt">
+  CONFIRM? Taqueria La Estrella (via sms_customer)<br>
+  2026-04-23 10:00 (1.5hr)<br>
+  suppression, extinguishers<br>
+  Arlington<br>
+  <br>
+  Reply YES to approve, NO to reject, or suggest alt like "Tue 2pm"
+</div>
+<div class="grid2">
+  <div>
+    <h3>Reply options</h3>
+    <ul>
+      <li><strong>YES / Y / OK / do it</strong> → books the job, texts/emails the customer the confirmation</li>
+      <li><strong>NO / N / cancel</strong> → tells the customer you need to adjust</li>
+      <li><strong>"Tue 2pm instead"</strong> → counter-offer to the customer</li>
+    </ul>
+  </div>
+  <div>
+    <h3>Toggle auto-confirm</h3>
+    <p>Set <code>RIKER_AUTO_CONFIRM=true</code> in Vercel env. Then Riker auto-books when the slot cleanly fits. You still get a heads-up text. Turn it off anytime by changing the value back.</p>
+  </div>
+</div>
+
+<h2>William's Custody — Hard Rules (School Year)</h2>
+<div class="grid2">
+  <div>
+    <h3>Mom has him</h3>
+    <ul>
+      <li>Every Thursday (pickup 4:10 → Friday 8:40)</li>
+      <li>1st, 3rd, 5th weekends (Thu 4:10 → Mon 8:40)</li>
+    </ul>
+  </div>
+  <div>
+    <h3>You have him</h3>
+    <ul>
+      <li>Mon–Wed school nights</li>
+      <li>2nd &amp; 4th weekends (Fri 4:10 → Mon 8:40)</li>
+    </ul>
+  </div>
+</div>
+<p><strong>Riker already bakes this into AVAILABLE_SLOTS for every scheduling call.</strong> First job can't start before ~9:00 on days you drop off (8:40 + drive). Last job must end by ~3:45 on days you pick up. Summer, holidays, and specific appointments: add a busy event on your Google Calendar titled <em>William</em> and Riker treats it as unavailable.</p>
+
+<div class="pagebreak"></div>
+
+<h1>RIKER <span>— page 2</span></h1>
+
+<h2>What Riker Remembers (and Doesn't)</h2>
+<div class="grid2">
+  <div class="card">
+    <h3>Does remember</h3>
+    <ul>
+      <li>Anything you tag as a standing order (priority 10, forever)</li>
+      <li>Customer preferences, relationships, equipment notes when the AI decides they're worth remembering</li>
+      <li>Pending items with expirations ("send insurance docs by May 1")</li>
+      <li>Route tips — gate codes, back entrance, "daughter translates"</li>
+      <li>Your full custody schedule + work hours</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>Doesn't remember</h3>
+    <ul>
+      <li>Pattern-mining your behavior on its own (if you reject 3 Thursdays, it won't auto-infer a rule — tell it to make a rule)</li>
+      <li>Anything from conversations older than 30 days at priority < 5</li>
+      <li>Corrections unless you phrase them as a rule</li>
+      <li>Anything after a failed memory write (it logs errors — check <code>riker_interactions</code>)</li>
+    </ul>
+  </div>
+</div>
+
+<h2>What Customers Can (and Can't) Do</h2>
+<table>
+  <tr><th>They can ask Riker to</th><th>They cannot</th></tr>
+  <tr>
+    <td>
+      • Schedule an inspection<br>
+      • Get pricing on standard services<br>
+      • Get portal access<br>
+      • Reschedule an existing job (portal, as service request)<br>
+      • View their invoices (portal only)<br>
+      • View their equipment history (portal only)
+    </td>
+    <td>
+      • See other customers' data<br>
+      • See internal pricing margins<br>
+      • Schedule weekend work<br>
+      • Diagnose system problems over chat<br>
+      • Book without your approval (until RIKER_AUTO_CONFIRM=true)
+    </td>
+  </tr>
+</table>
+
+<h2>What You Can Ask Riker (in the field app or SMS)</h2>
+<ul>
+  <li>"Show me my overdue jobs"</li>
+  <li>"Schedule a job at Primo Brothers for next Tuesday at 9"</li>
+  <li>"Look up Look Cinemas"</li>
+  <li>"Mark INV-649577 paid by check"</li>
+  <li>"Add a to-do: order fusible links"</li>
+  <li>"Text Maria saying I'm running late"</li>
+  <li>"Build me a route for Thursday anchored to Dragon Palace at 10 AM"</li>
+  <li>"What do I know about Taqueria La Estrella?"</li>
+  <li>"From now on, never schedule before 9:30 on school days" ← writes a standing order</li>
+</ul>
+
+<h2>When Things Go Sideways</h2>
+<div class="grid2">
+  <div>
+    <h3>Kill switches (Vercel env vars)</h3>
+    <ul>
+      <li><code>RIKER_AUTO_CONFIRM</code> = <code>false</code> forces every booking through your approval</li>
+      <li>Remove the cron entries in <code>vercel.json</code> to pause proactive behaviors</li>
+      <li>Change Twilio's inbound webhook URL to disable SMS</li>
+      <li>Remove the Gmail "Riker" filter to disable email</li>
+    </ul>
+  </div>
+  <div>
+    <h3>Audit trails</h3>
+    <ul>
+      <li><code>riker_interactions</code> — every Claude call, cost, actions taken</li>
+      <li><code>pending_confirmations</code> — every proposed action, whether approved</li>
+      <li><code>messages</code> + <code>conversations</code> — every SMS/email turn</li>
+      <li><code>mazon_audit_log</code> — every Mazon state change</li>
+    </ul>
+  </div>
+</div>
+
+<h2>Mazon Quick Rules</h2>
+<ul>
+  <li>Customer needs a <strong>phone on billing account</strong> AND <strong>Mazon-approved flag</strong> before you can tap Mazon.</li>
+  <li>Batch won't ship below <strong>$1,000</strong>.</li>
+  <li>Ship by <strong>10 AM CT Friday</strong> for same-day funding.</li>
+  <li>Invoice flows: <code>factored_pending</code> → <code>factored_submitted</code> → <code>paid</code>. <span class="danger">Never hits <code>paid</code> until Mazon actually funds.</span></li>
+  <li>If Mazon rejects, invoice goes back to <code>sent</code> with a red banner — collect another way.</li>
+</ul>
+
+<h2>Who to Call When Riker Is Down</h2>
+<table>
+  <tr><td><strong>Website / portal / app chat broken</strong></td><td>Check Vercel deploy status; <code>/api/riker</code> logs</td></tr>
+  <tr><td><strong>SMS not routing</strong></td><td>Twilio console → Messaging Logs + webhook config</td></tr>
+  <tr><td><strong>Email not being read</strong></td><td>Gmail filter + <code>/api/email-inbound</code> cron + Google OAuth scope</td></tr>
+  <tr><td><strong>Morning brief didn't arrive</strong></td><td>Hit <code>/api/cron?job=riker-morning-brief</code> manually; check Resend dashboard</td></tr>
+  <tr><td><strong>Mazon submission failed</strong></td><td>Check Resend delivery + <code>mazon_audit_log</code>; retry is safe (queue untouched on fail)</td></tr>
+</table>
+
+<div class="footer">
+  Stephens Advanced LLC · (214) 994-4799 · jonathan@stephensadvanced.com · Riker v1.0
+</div>
+
+</body>
+</html>

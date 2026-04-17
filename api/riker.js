@@ -1,0 +1,116 @@
+// /api/riker.js
+// Unified chat endpoint for website / portal / app surfaces. All three
+// call here. System prompts, context data, memory, and actions are all
+// assembled server-side.
+//
+// Request body:
+//   {
+//     context: 'website' | 'portal' | 'app',
+//     session_id?: string,                 // omit on first turn to create a new session
+//     message: string,                     // current user turn
+//     attachments?: [...Claude content blocks],  // images for app photo analysis
+//     auth: {                              // per-context authentication
+//       portal_token?: string,             // portal only
+//       tech_id?: string                   // app only
+//     },
+//     client_context?: {                   // optional metadata from client
+//       current_screen?: string,           // app: e.g. 'dashboard', 'clients'
+//       active_location_id?: string,       // app: which client is open
+//       active_job_id?: string,            // app: which job is open
+//       utm?: {...}                        // website: source tracking
+//     }
+//   }
+//
+// Response body:
+//   {
+//     reply: string,
+//     session_id: string,
+//     actions_taken: [{type, ok, detail}],
+//     client_hints: [{type, ...}],          // e.g. { type: 'open_screen', screen: 'jobs' }
+//     cost_usd: number
+//   }
+
+const { createClient } = require('@supabase/supabase-js')
+const core = require('./riker-core')
+
+module.exports = async function handler(req, res) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' })
+
+  const sbUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || 'https://motjasdokoxwiodwzyps.supabase.co'
+  const sbKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY
+  const supabase = createClient(sbUrl, sbKey)
+
+  const body = req.body || {}
+  const context = body.context
+  if (!['website', 'portal', 'app'].includes(context)) {
+    return res.status(400).json({ error: 'Invalid context; must be website | portal | app' })
+  }
+  const message = (body.message || '').trim()
+  if (!message && !(body.attachments && body.attachments.length)) {
+    return res.status(400).json({ error: 'message or attachments required' })
+  }
+
+  try {
+    // Resolve identity per-context
+    const identity = {}
+    if (context === 'portal') {
+      const token = body.auth?.portal_token
+      if (!token) return res.status(401).json({ error: 'portal_token required' })
+      const { data: tokenRow } = await supabase
+        .from('portal_tokens')
+        .select('billing_account_id, location_id, expires_at, is_active')
+        .eq('token', token)
+        .maybeSingle()
+      if (!tokenRow || !tokenRow.is_active) return res.status(401).json({ error: 'invalid portal_token' })
+      if (tokenRow.expires_at && new Date(tokenRow.expires_at) < new Date()) {
+        return res.status(401).json({ error: 'portal_token expired' })
+      }
+      identity.billing_account_id = tokenRow.billing_account_id
+      identity.location_id = tokenRow.location_id || null
+      // Touch last_accessed_at
+      await supabase.from('portal_tokens').update({ last_accessed_at: new Date().toISOString() }).eq('token', token)
+    } else if (context === 'app') {
+      identity.tech_id = body.auth?.tech_id || null
+      // Accept client_context fields as identity hints
+      if (body.client_context?.active_location_id) identity.location_id = body.client_context.active_location_id
+    }
+
+    // Resolve or create session
+    let sessionId = body.session_id
+    if (!sessionId) {
+      const { data: session } = await supabase.from('riker_sessions').insert({
+        context,
+        tech_id: identity.tech_id || null,
+        location_id: identity.location_id || null,
+        billing_account_id: identity.billing_account_id || null,
+        portal_token: context === 'portal' ? body.auth?.portal_token : null,
+        messages: [],
+        status: 'active'
+      }).select().single()
+      sessionId = session.id
+    }
+
+    const result = await core.processMessage({
+      supabase,
+      context,
+      sessionKey: sessionId,
+      sessionStorage: 'riker_sessions',
+      identity,
+      message,
+      attachments: body.attachments,
+      inboundAlreadyLogged: false  // riker_sessions adapter will append
+    })
+
+    return res.status(200).json({
+      reply: result.reply,
+      session_id: result.session_id,
+      actions_taken: result.actions_taken,
+      client_hints: result.client_hints,
+      cost_usd: result.cost
+    })
+
+  } catch (e) {
+    console.error('[riker] error:', e)
+    return res.status(500).json({ error: e.message })
+  }
+}

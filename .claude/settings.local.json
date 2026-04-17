@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs ls *)",
+      "Bash(xargs basename *)",
+      "Bash(node -c C:/Users/Jonat/Downloads/stephens-advanced-dev/api/william-schedule.js)",
+      "Bash(node -c C:/Users/Jonat/Downloads/stephens-advanced-dev/api/riker-brain.js)",
+      "Bash(node -c C:/Users/Jonat/Downloads/stephens-advanced-dev/api/sms-inbound.js)",
+      "Bash(node -c C:/Users/Jonat/Downloads/stephens-advanced-dev/api/email-inbound.js)",
+      "Bash(node -e ' *)",
+      "Bash(node -c C:/Users/Jonat/Downloads/stephens-advanced-dev/api/riker-prompts.js)",
+      "Bash(node -c api/mazon/stamp-invoice.js)",
+      "Bash(node -c api/mazon/submit-batch.js)",
+      "Bash(node -c api/mazon/friday-check.js)",
+      "Bash(node -c src/config/mazon.js)"
+    ]
+  }
+}
