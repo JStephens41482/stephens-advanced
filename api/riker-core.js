@@ -281,6 +281,29 @@ async function buildLiveData({ supabase, context, identity }) {
     }
   }
 
+  // Overdue + due-soon jobs (for sms_jon and app contexts)
+  if (['sms_jon', 'app'].includes(context)) {
+    const thirtyDaysOut = new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0]
+    const { data: overdueJobs } = await supabase
+      .from('jobs')
+      .select('id, scheduled_date, scope, location:locations(name, city)')
+      .eq('status', 'scheduled')
+      .lt('scheduled_date', today)
+      .order('scheduled_date', { ascending: true })
+      .limit(20)
+    if (overdueJobs?.length) {
+      parts.push('OVERDUE_JOBS (' + overdueJobs.length + '):')
+      for (const j of overdueJobs) {
+        parts.push('- ' + (j.location?.name || '?') + ' (' + (j.location?.city || '') + ') — scheduled ' + j.scheduled_date + ' — ' + (j.scope || []).join(','))
+      }
+    } else {
+      parts.push('OVERDUE_JOBS: none')
+    }
+    const { count: locCount } = await supabase.from('locations').select('id', { count: 'exact', head: true })
+    const { count: baCount } = await supabase.from('billing_accounts').select('id', { count: 'exact', head: true })
+    parts.push('DATABASE: ' + (locCount || 0) + ' locations, ' + (baCount || 0) + ' billing accounts')
+  }
+
   // Pending confirmations (for sms_jon context)
   if (context === 'sms_jon') {
     const { data: pendings } = await supabase.from('pending_confirmations').select('*').eq('status', 'pending').gt('expires_at', new Date().toISOString()).order('created_at', { ascending: false }).limit(3)
