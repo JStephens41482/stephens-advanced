@@ -11,17 +11,29 @@ module.exports = async function handler(req, res) {
     process.env.SUPABASE_SERVICE_KEY
   )
 
-  const {
-    contractId,
-    customerInfo,
-    businessHours,
-    billingElection,
-    signature,
-    signerName,
-    signerTitle,
-    cardNonce,
-    language
-  } = req.body || {}
+  const body = req.body || {}
+
+  // Accept both naming conventions (form sends snake_case, normalize here)
+  const contractId = body.contractId || body.contract_id
+  const signature = body.signature || body.signature_data
+  const signerName = body.signerName || body.signed_name
+  const signerTitle = body.signerTitle || body.signed_title
+  const billingElection = body.billingElection || body.billing_election
+  const cardNonce = body.cardNonce || body.card_token
+  const language = body.language
+  const customerInfo = body.customerInfo || {
+    legal_name: body.legal_name,
+    dba: body.dba,
+    service_address: body.service_address,
+    billing_address: body.billing_address,
+    primary_contact: body.primary_contact,
+    secondary_contact: body.secondary_contact,
+    email: body.primary_contact?.email
+  }
+  const businessHours = body.businessHours || {
+    hours_of_operation: body.hours_of_operation,
+    preferred_service_time: body.preferred_service_time
+  }
 
   // ── Validate required fields ──────────────────────────────────────
   if (!contractId) return res.status(400).json({ error: 'Missing contractId' })
