@@ -84,6 +84,22 @@ module.exports = async function handler(req, res) {
           email_to: parsed.to
         })
 
+        // Mirror into riker_sessions (parallel to conversations/messages)
+        const rikerSession = await core.upsertRikerSessionForChannel({
+          supabase, context: 'email_customer',
+          email: parsed.from,
+          party: 'customer',
+          locationId: conv.location_id || null,
+          customerName: conv.customer_name || null
+        })
+        if (rikerSession) {
+          await core.appendToRikerSession(supabase, rikerSession.id, 'user', parsed.bodyText, {
+            channel: 'email',
+            email_message_id: parsed.messageIdHeader,
+            email_subject: parsed.subject
+          })
+        }
+
         // Dispatch to core
         const result = await core.processMessage({
           supabase,
@@ -96,7 +112,8 @@ module.exports = async function handler(req, res) {
             customer_name: conv.customer_name
           },
           message: parsed.bodyText,
-          inboundAlreadyLogged: true
+          inboundAlreadyLogged: true,
+          rikerSessionId: rikerSession?.id
         })
 
         // Send threaded reply via Resend
@@ -117,6 +134,24 @@ module.exports = async function handler(req, res) {
           } catch (e) {
             console.error('[email-inbound] reply send failed:', e.message)
             results.errors.push({ gmailId, error: 'send: ' + e.message })
+          }
+        }
+
+        // Mirror outbound + stats, then memory extraction every N inbound turns
+        if (rikerSession) {
+          if (result.reply) {
+            await core.appendToRikerSession(supabase, rikerSession.id, 'assistant', result.reply, { channel: 'email' })
+            await core.bumpSessionStats(supabase, rikerSession.id, {
+              usage: { input_tokens: 0, output_tokens: 0 },
+              cost: result.cost || 0,
+              actions: result.actions_taken || []
+            })
+          }
+          const { data: sessAfter } = await supabase.from('riker_sessions').select('messages').eq('id', rikerSession.id).maybeSingle()
+          const inboundTurns = (sessAfter?.messages || []).filter(m => m.role === 'user').length
+          if (inboundTurns > 0 && inboundTurns % core.MEMORY_EXTRACT_EVERY_N_INBOUND === 0) {
+            try { await core.extractMemoryFromSession(supabase, rikerSession.id) }
+            catch (e) { console.error('[email-inbound] memory extract failed:', e.message) }
           }
         }
 

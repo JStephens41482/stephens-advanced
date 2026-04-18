@@ -76,12 +76,25 @@ module.exports = async function handler(req, res) {
       conv = newConv
     }
 
-    // Log inbound
+    // Log inbound in messages (append-only audit)
     await supabase.from('messages').insert({
       conversation_id: conv.id,
       direction: 'inbound', channel: 'sms',
       body, twilio_sid: messageSid
     })
+
+    // Mirror into riker_sessions so memory extraction + continuity can run off
+    // a unified session object. Keyed by (context, phone, status='active').
+    const rikerSession = await core.upsertRikerSessionForChannel({
+      supabase, context,
+      phone: from,
+      party,
+      locationId: conv.location_id || null,
+      customerName: conv.customer_name || null
+    })
+    if (rikerSession) {
+      await core.appendToRikerSession(supabase, rikerSession.id, 'user', body, { channel: 'sms', twilio_sid: messageSid })
+    }
 
     // Dispatch to core
     const result = await core.processMessage({
@@ -94,13 +107,35 @@ module.exports = async function handler(req, res) {
         customer_name: conv.customer_name
       },
       message: body,
-      inboundAlreadyLogged: true
+      inboundAlreadyLogged: true,
+      rikerSessionId: rikerSession?.id
     })
 
-    // Core's adapter already logged the outbound message; send the actual SMS
+    // Mirror the outbound into riker_sessions + bump stats
+    if (rikerSession && result.reply) {
+      await core.appendToRikerSession(supabase, rikerSession.id, 'assistant', result.reply, { channel: 'sms' })
+      await core.bumpSessionStats(supabase, rikerSession.id, {
+        usage: { input_tokens: 0, output_tokens: 0 },  // token counts already in riker_interactions; skip double-counting here
+        cost: result.cost || 0,
+        actions: result.actions_taken || []
+      })
+    }
+
+    // Core's adapter already logged the outbound to `messages`; send the actual SMS
     if (result.reply) {
       try { await sendSMS(from, result.reply) }
       catch (e) { console.error('[sms-inbound] send failed:', e.message) }
+    }
+
+    // Memory extraction — every Nth inbound turn, Claude distills durable facts
+    if (rikerSession) {
+      const { data: sessAfter } = await supabase.from('riker_sessions').select('messages').eq('id', rikerSession.id).maybeSingle()
+      const inboundTurns = (sessAfter?.messages || []).filter(m => m.role === 'user').length
+      if (inboundTurns > 0 && inboundTurns % core.MEMORY_EXTRACT_EVERY_N_INBOUND === 0) {
+        // Synchronous — SMS latency gets +1-2s every Nth turn, acceptable for getting memory persisted reliably
+        try { await core.extractMemoryFromSession(supabase, rikerSession.id) }
+        catch (e) { console.error('[sms-inbound] memory extract failed:', e.message) }
+      }
     }
 
     res.setHeader('Content-Type', 'text/xml')

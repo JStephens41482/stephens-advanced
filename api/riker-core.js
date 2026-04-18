@@ -116,6 +116,212 @@ function getNextBusinessDays(count) {
   return days
 }
 
+// ═══ RIKER_SESSIONS MIRRORING FOR SMS/EMAIL ═══
+// SMS + email primary storage is `conversations` + `messages` (keyed by
+// external identity). We *also* mirror state into `riker_sessions` so
+// analytics, memory extraction, and cross-channel continuity all have a
+// single unified session object to work from.
+
+const MEMORY_EXTRACT_EVERY_N_INBOUND = 4  // run extraction after every N inbound turns
+
+// Find or create the active riker_sessions row for an external-identity channel.
+async function upsertRikerSessionForChannel({ supabase, context, phone, email, party, locationId, billingAccountId, customerName }) {
+  let q = supabase.from('riker_sessions').select('*').eq('context', context).eq('status', 'active')
+  if (phone) q = q.eq('customer_phone', phone)
+  else if (email) q = q.eq('customer_email', email)
+  const { data: existing } = await q.order('updated_at', { ascending: false }).limit(1).maybeSingle()
+  if (existing) {
+    // Keep location/billing in sync if we've since identified the customer
+    const updates = {}
+    if (locationId && !existing.location_id) updates.location_id = locationId
+    if (billingAccountId && !existing.billing_account_id) updates.billing_account_id = billingAccountId
+    if (customerName && !existing.customer_name) updates.customer_name = customerName
+    if (Object.keys(updates).length) {
+      updates.updated_at = new Date().toISOString()
+      await supabase.from('riker_sessions').update(updates).eq('id', existing.id)
+    }
+    return existing
+  }
+  const { data: created, error } = await supabase.from('riker_sessions').insert({
+    context,
+    customer_phone: phone || null,
+    customer_email: email || null,
+    customer_name: customerName || null,
+    location_id: locationId || null,
+    billing_account_id: billingAccountId || null,
+    messages: [],
+    status: 'active'
+  }).select().single()
+  if (error) { console.error('[riker-core] upsertRikerSession insert failed:', error); return null }
+  return created
+}
+
+// Append a message to a riker_sessions.messages JSONB array.
+async function appendToRikerSession(supabase, sessionId, role, content, meta = {}) {
+  if (!sessionId || !content) return
+  // Atomic-ish: fetch, append, write. Fine for single-user-per-conversation cadence.
+  const { data: sess } = await supabase.from('riker_sessions').select('messages').eq('id', sessionId).maybeSingle()
+  const msgs = Array.isArray(sess?.messages) ? sess.messages : []
+  msgs.push({ role, content, ts: new Date().toISOString(), ...meta })
+  await supabase.from('riker_sessions').update({
+    messages: msgs,
+    updated_at: new Date().toISOString()
+  }).eq('id', sessionId)
+}
+
+// Update aggregate stats on a session (token counts, cost, last action list).
+async function bumpSessionStats(supabase, sessionId, { usage, cost, actions }) {
+  if (!sessionId) return
+  const { data: sess } = await supabase.from('riker_sessions').select('total_input_tokens,total_output_tokens,total_cost_usd,actions_taken').eq('id', sessionId).maybeSingle()
+  const prevActions = Array.isArray(sess?.actions_taken) ? sess.actions_taken : []
+  await supabase.from('riker_sessions').update({
+    total_input_tokens: (sess?.total_input_tokens || 0) + (usage?.input_tokens || 0),
+    total_output_tokens: (sess?.total_output_tokens || 0) + (usage?.output_tokens || 0),
+    total_cost_usd: Number(sess?.total_cost_usd || 0) + Number(cost || 0),
+    actions_taken: [...prevActions, ...(actions || []).map(a => ({ type: a.type, ok: a.ok, ts: new Date().toISOString() }))],
+    updated_at: new Date().toISOString()
+  }).eq('id', sessionId)
+}
+
+// Count inbound turns in this session so we can trigger extraction every N turns.
+function countInboundTurns(session) {
+  return (Array.isArray(session?.messages) ? session.messages : [])
+    .filter(m => m.role === 'user').length
+}
+
+// ═══ MEMORY EXTRACTION ═══
+// After every N inbound turns, Claude reads the session transcript and
+// extracts durable facts into riker_memory entries. Non-blocking from the
+// caller's perspective (caller should fire-and-forget if latency matters).
+async function extractMemoryFromSession(supabase, sessionId, { force = false } = {}) {
+  try {
+    const { data: session } = await supabase.from('riker_sessions').select('*').eq('id', sessionId).maybeSingle()
+    if (!session) return { skipped: 'no session' }
+
+    const msgs = Array.isArray(session.messages) ? session.messages : []
+    const userTurns = msgs.filter(m => m.role === 'user').length
+    if (userTurns === 0) return { skipped: 'no user turns' }
+
+    // Transcript — last ~20 messages
+    const recent = msgs.slice(-24)
+    const transcript = recent.map(m => `${m.role === 'user' ? (session.context === 'sms_jon' ? 'Jon' : 'Customer') : 'Riker'}: ${m.content}`).join('\n')
+
+    const scopeHint = session.location_id
+      ? `location_id ${session.location_id}`
+      : session.billing_account_id
+        ? `billing_account_id ${session.billing_account_id}`
+        : 'global only (no specific location/customer)'
+
+    const extractionPrompt = `You are reviewing a conversation to extract durable facts worth remembering for future interactions. You are Riker's memory-extraction pass — your ONLY job is to output a JSON array, no prose.
+
+CONTEXT:
+- Session type: ${session.context}
+- Identified location: ${scopeHint}
+${session.customer_name ? '- Customer name: ' + session.customer_name : ''}
+
+EXTRACT — things like:
+- Customer preferences ("prefers morning service", "bilingual communication needed")
+- Relationships ("daughter handles communication", "owner's name is Wei")
+- Equipment notes ("R-102 tank showing corrosion", "extinguishers need 6-year in 2027")
+- Scheduling constraints ("closed Mondays", "gate code 4455")
+- Billing notes ("always pays by check, net 30")
+- Pending items ("send insurance docs by May 1")
+- Standing orders Jon issued (phrased "from now on", "that's an order", etc.) → priority 10, never expire
+
+SKIP:
+- Conversational filler ("hi", "thanks", "ok")
+- One-off request details that are already captured as jobs/invoices
+- Things Riker already knew (in the context block)
+
+OUTPUT — JSON ARRAY, nothing else. Each item:
+  {
+    "scope": "global" | "location" | "customer" | "job",
+    "category": "preference" | "relationship" | "equipment_note" | "scheduling" | "billing" | "compliance" | "action_pending" | "route_note" | "internal",
+    "content": "natural-language fact — start with STANDING ORDER: if Jon issued a directive",
+    "priority": 1-10,
+    "expires_at": "YYYY-MM-DDThh:mm:ssZ (optional, only for time-sensitive action_pending)"
+  }
+For scope="location", the server will fill location_id from the session. Do not include it yourself.
+
+If nothing worth remembering, output [].
+
+CONVERSATION TRANSCRIPT:
+${transcript}`
+
+    const claudeKey = process.env.CLAUDE_KEY
+    if (!claudeKey) return { skipped: 'no CLAUDE_KEY' }
+
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': claudeKey, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({
+        model: CLAUDE_MODEL,
+        max_tokens: 1024,
+        system: 'You extract durable facts from conversations. You output JSON arrays only. No prose, no markdown fences.',
+        messages: [{ role: 'user', content: extractionPrompt }]
+      })
+    })
+    const data = await res.json()
+    if (!res.ok) { console.error('[extract-memory] claude err:', data); return { error: data } }
+    let text = data.content?.[0]?.text || '[]'
+    // Strip markdown fences if model wrapped despite instruction
+    text = text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim()
+
+    let entries
+    try { entries = JSON.parse(text) }
+    catch (e) { console.warn('[extract-memory] parse failed:', text.slice(0, 200)); return { error: 'parse_failed' } }
+    if (!Array.isArray(entries)) return { error: 'not_array' }
+
+    let written = 0
+    for (const e of entries) {
+      if (!e || !e.scope || !e.category || !e.content) continue
+      const row = {
+        scope: e.scope,
+        category: e.category,
+        content: String(e.content).slice(0, 4000),
+        priority: Math.max(1, Math.min(10, Number(e.priority) || 5)),
+        expires_at: e.expires_at || null,
+        auto_generated: true,
+        source: 'memory_extraction:' + session.context,
+        source_session_id: sessionId
+      }
+      // Fill scope keys from session
+      if (e.scope === 'location' || (e.scope !== 'global' && !e.scope && session.location_id)) {
+        row.location_id = session.location_id
+      }
+      if (session.billing_account_id) row.billing_account_id = session.billing_account_id
+      if (session.tech_id) row.tech_id = session.tech_id
+
+      // Dedup against same content in same scope/category
+      const { data: dup } = await supabase
+        .from('riker_memory')
+        .select('id, priority')
+        .eq('archived', false)
+        .eq('scope', row.scope)
+        .eq('category', row.category)
+        .eq('content', row.content)
+        .limit(1).maybeSingle()
+      if (dup) {
+        // Bump priority if new is higher
+        if (row.priority > dup.priority) {
+          await supabase.from('riker_memory').update({ priority: row.priority, updated_at: new Date().toISOString() }).eq('id', dup.id)
+        }
+        continue
+      }
+      const { error: insErr } = await supabase.from('riker_memory').insert(row)
+      if (!insErr) written++
+      else console.warn('[extract-memory] insert err:', insErr.message)
+    }
+
+    // Note on session: last extraction timestamp (avoid re-running on same turns)
+    await supabase.from('riker_sessions').update({ updated_at: new Date().toISOString() }).eq('id', sessionId)
+    return { written, total_proposed: entries.length }
+  } catch (e) {
+    console.error('[extract-memory] error:', e)
+    return { error: e.message }
+  }
+}
+
 // ═══ SESSION ADAPTER ═══
 // Bridges two storage patterns: riker_sessions (website/portal/app) and
 // conversations/messages (sms/email).
@@ -210,12 +416,29 @@ function makeSessionAdapter({ storage, supabase, sessionKey }) {
 
 // ═══ CONTEXT DATA BUILDER ═══
 
-async function buildLiveData({ supabase, context, identity }) {
+async function buildLiveData({ supabase, context, identity, rikerSessionId }) {
   const parts = []
   const today = new Date().toISOString().split('T')[0]
   parts.push(`TODAY: ${today}`)
   let calEvents = []
   let jobs = []
+
+  // Session continuity — for SMS/email, surface turn count and recent context
+  // so Riker doesn't have to reconstruct from the Claude messages array alone.
+  if (rikerSessionId && ['sms_jon', 'sms_customer', 'email_customer'].includes(context)) {
+    const { data: sess } = await supabase.from('riker_sessions').select('*').eq('id', rikerSessionId).maybeSingle()
+    if (sess) {
+      const msgs = Array.isArray(sess.messages) ? sess.messages : []
+      const inboundCount = msgs.filter(m => m.role === 'user').length
+      const ageMin = Math.round((Date.now() - new Date(sess.created_at).getTime()) / 60000)
+      parts.push(`SESSION: ${sess.id.slice(0, 8)} · ${inboundCount} turn${inboundCount === 1 ? '' : 's'} in · ${ageMin}m old${sess.customer_name ? ' · ' + sess.customer_name : ''}`)
+      if (msgs.length > 2) {
+        // Surface a brief tail of the conversation for quick recall without bloating the system prompt
+        const tail = msgs.slice(-6).map(m => `  ${m.role === 'user' ? '→' : '←'} ${String(m.content).slice(0, 140)}${String(m.content).length > 140 ? '…' : ''}`).join('\n')
+        parts.push('SESSION_TAIL:\n' + tail)
+      }
+    }
+  }
 
   // Available slots — relevant for any context that might schedule
   if (['website', 'portal', 'app', 'sms_customer', 'sms_jon', 'email_customer'].includes(context)) {
@@ -408,7 +631,8 @@ async function processMessage({
   identity = {},               // { location_id, billing_account_id, tech_id, phone, email }
   message,                     // current inbound text (may be empty when just building proactive output)
   attachments,                 // Claude content blocks (images)
-  inboundAlreadyLogged = true  // webhook should log inbound before calling this
+  inboundAlreadyLogged = true, // webhook should log inbound before calling this
+  rikerSessionId               // optional riker_sessions PK when mirroring SMS/email — feeds session continuity block
 }) {
   const adapter = makeSessionAdapter({ storage: sessionStorage, supabase, sessionKey })
   const session = await adapter.load()
@@ -429,8 +653,12 @@ async function processMessage({
   })
   const notebook = memory.renderMemoriesForPrompt(memories)
 
+  // For SMS/email, sessionStorage is 'conversations' but we also have a
+  // mirrored riker_sessions row — use its id for the session continuity block.
+  const effectiveRikerSessionId = rikerSessionId || (sessionStorage === 'riker_sessions' ? sessionKey : null)
+
   // Live data (returns block + raw data for action handlers)
-  const { block: liveData, calEvents, jobs } = await buildLiveData({ supabase, context, identity })
+  const { block: liveData, calEvents, jobs } = await buildLiveData({ supabase, context, identity, rikerSessionId: effectiveRikerSessionId })
 
   // Assemble prompt
   const systemPrompt = assemblePrompt({ context, notebook, liveData })
@@ -567,5 +795,11 @@ module.exports = {
   processMessage,
   generateProactive,
   makeSessionAdapter,
+  upsertRikerSessionForChannel,
+  appendToRikerSession,
+  bumpSessionStats,
+  countInboundTurns,
+  extractMemoryFromSession,
+  MEMORY_EXTRACT_EVERY_N_INBOUND,
   CLAUDE_MODEL
 }
