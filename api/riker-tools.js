@@ -913,6 +913,232 @@ const lookup_business = {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// TOOL: update_client
+// ═══════════════════════════════════════════════════════════════
+const update_client = {
+  schema: {
+    name: 'update_client',
+    description: "Edit an existing client location. Pass location_id and any subset of fields to change — fields omitted stay unchanged. Use when Jon says 'update ABC Corp's phone', 'change Dave's address', 'fix the zip on Look Cinemas'. Call lookup_client first if Jon gave a name.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        location_id: { type: 'string', description: 'Location UUID. Required.' },
+        business_name: { type: 'string' },
+        address: { type: 'string' },
+        city: { type: 'string' },
+        state: { type: 'string' },
+        zip: { type: 'string' },
+        contact_name: { type: 'string' },
+        contact_phone: { type: 'string' },
+        contact_email: { type: 'string' },
+        notes: { type: 'string' }
+      },
+      required: ['location_id']
+    }
+  },
+  async handler(input, ctx) {
+    const patch = {}
+    if (input.business_name !== undefined) patch.name = input.business_name
+    if (input.address !== undefined) patch.address = input.address
+    if (input.city !== undefined) patch.city = input.city
+    if (input.state !== undefined) patch.state = input.state
+    if (input.zip !== undefined) patch.zip = input.zip
+    if (input.contact_name !== undefined) patch.contact_name = input.contact_name
+    if (input.contact_phone !== undefined) patch.contact_phone = input.contact_phone
+    if (input.contact_email !== undefined) patch.contact_email = input.contact_email
+    if (input.notes !== undefined) patch.notes = input.notes
+    if (Object.keys(patch).length === 0) return { error: 'Nothing to update — pass at least one field.' }
+    if (patch.city) {
+      const cityLc = patch.city.toLowerCase()
+      patch.is_brycer_jurisdiction = BRYCER_CITIES.includes(cityLc)
+      patch.brycer_ahj_name = patch.is_brycer_jurisdiction ? patch.city + ' Fire Department' : null
+    }
+    const reGeocode = patch.address || patch.city || patch.zip
+    const { data: loc, error } = await ctx.supabase.from('locations').update(patch).eq('id', input.location_id).select().single()
+    if (error) return { error: error.message }
+    if (reGeocode && loc) {
+      const geo = await geocode([loc.address, loc.city, loc.state || 'TX', loc.zip].filter(Boolean).join(', '))
+      if (geo) await ctx.supabase.from('locations').update({ lat: geo.lat, lng: geo.lng }).eq('id', loc.id)
+    }
+    return { ok: true, location_id: loc?.id, name: loc?.name, updated: Object.keys(patch) }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOOL: delete_client
+// ═══════════════════════════════════════════════════════════════
+const delete_client = {
+  schema: {
+    name: 'delete_client',
+    description: "Permanently delete a client location. SAFETY: must pass confirm_name that matches the stored client name (echo back what Jon typed). By default fails if related jobs/invoices exist; pass confirm_cascade=true to also delete those. For accidental duplicates prefer merge_clients.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        location_id: { type: 'string' },
+        confirm_name: { type: 'string', description: "Must match the stored name (case-insensitive, partial OK). Echo back what Jon called the client. Safety gate against accidental deletes." },
+        confirm_cascade: { type: 'boolean', description: 'If true, deletes all jobs/invoices/reports tied to this location first. Default false.' }
+      },
+      required: ['location_id', 'confirm_name']
+    }
+  },
+  async handler(input, ctx) {
+    const { data: loc } = await ctx.supabase.from('locations').select('id, name').eq('id', input.location_id).maybeSingle()
+    if (!loc) return { error: 'Location not found' }
+    const a = (input.confirm_name || '').toLowerCase().trim()
+    const b = (loc.name || '').toLowerCase().trim()
+    const match = a && b && (a.includes(b.slice(0, Math.min(4, b.length))) || b.includes(a.slice(0, Math.min(4, a.length))))
+    if (!match) return { error: `Safety check failed: confirm_name "${input.confirm_name}" doesn't overlap the stored name "${loc.name}". Echo back what Jon named.` }
+    if (input.confirm_cascade) {
+      await ctx.supabase.from('invoices').delete().eq('location_id', loc.id)
+      await ctx.supabase.from('jobs').delete().eq('location_id', loc.id)
+      await ctx.supabase.from('reports').delete().eq('location_id', loc.id)
+    }
+    const { error } = await ctx.supabase.from('locations').delete().eq('id', loc.id)
+    if (error) {
+      const hint = /foreign key|constraint/i.test(error.message) ? ' — related records block the delete. Try confirm_cascade=true or merge_clients.' : ''
+      return { error: 'Delete failed: ' + error.message + hint }
+    }
+    return { ok: true, location_id: loc.id, name: loc.name, cascaded: !!input.confirm_cascade }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOOL: merge_clients
+// ═══════════════════════════════════════════════════════════════
+const merge_clients = {
+  schema: {
+    name: 'merge_clients',
+    description: "Merge a duplicate client into another. Moves all jobs and invoices from source to target, then deletes source. Use for dedup — 'merge Dave's Hot Chicken into Daves Hot Chicken'.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        source_id: { type: 'string', description: 'The duplicate to absorb (will be deleted).' },
+        target_id: { type: 'string', description: 'The client to keep.' }
+      },
+      required: ['source_id', 'target_id']
+    }
+  },
+  async handler(input, ctx) {
+    if (input.source_id === input.target_id) return { error: 'source_id and target_id are the same' }
+    const { data: src } = await ctx.supabase.from('locations').select('id, name').eq('id', input.source_id).maybeSingle()
+    const { data: tgt } = await ctx.supabase.from('locations').select('id, name').eq('id', input.target_id).maybeSingle()
+    if (!src) return { error: 'source location not found' }
+    if (!tgt) return { error: 'target location not found' }
+    const moved = {}
+    for (const t of ['jobs', 'invoices']) {
+      const { data, error } = await ctx.supabase.from(t).update({ location_id: tgt.id }).eq('location_id', src.id).select('id')
+      if (error) return { error: `${t} move failed: ${error.message}`, moved }
+      moved[t] = data?.length || 0
+    }
+    const { error: delErr } = await ctx.supabase.from('locations').delete().eq('id', src.id)
+    if (delErr) return { error: 'source delete failed after moves: ' + delErr.message + ' — other tables may still reference source.', moved }
+    return { ok: true, source: src.name, target: tgt.name, moved }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOOL: update_invoice
+// ═══════════════════════════════════════════════════════════════
+const update_invoice = {
+  schema: {
+    name: 'update_invoice',
+    description: "Edit fields on an existing invoice. Use to fix amounts, change due dates, update status, correct invoice numbers, add notes. For only marking paid, use mark_invoice_paid instead.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        invoice_id: { type: 'string' },
+        invoice_number: { type: 'string', description: 'Lookup alternative to invoice_id.' },
+        total: { type: 'number' },
+        status: { type: 'string', enum: ['draft', 'sent', 'paid', 'void', 'overdue', 'record', 'factored'] },
+        due_date: { type: 'string', description: 'YYYY-MM-DD' },
+        date: { type: 'string', description: 'YYYY-MM-DD invoice date' },
+        notes: { type: 'string' },
+        new_invoice_number: { type: 'string', description: 'Rename the invoice number itself.' }
+      }
+    }
+  },
+  async handler(input, ctx) {
+    let invoiceId = input.invoice_id
+    if (!invoiceId && input.invoice_number) {
+      const { data } = await ctx.supabase.from('invoices').select('id').eq('invoice_number', input.invoice_number).maybeSingle()
+      invoiceId = data?.id
+    }
+    if (!invoiceId) return { error: 'invoice_id or invoice_number required' }
+    const patch = {}
+    if (input.total !== undefined) patch.total = input.total
+    if (input.status !== undefined) patch.status = input.status
+    if (input.due_date !== undefined) patch.due_date = input.due_date
+    if (input.date !== undefined) patch.date = input.date
+    if (input.notes !== undefined) patch.notes = input.notes
+    if (input.new_invoice_number !== undefined) patch.invoice_number = input.new_invoice_number
+    if (Object.keys(patch).length === 0) return { error: 'Nothing to update — pass at least one field.' }
+    const { error } = await ctx.supabase.from('invoices').update(patch).eq('id', invoiceId)
+    if (error) return { error: error.message }
+    return { ok: true, invoice_id: invoiceId, updated: Object.keys(patch) }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOOL: void_invoice
+// ═══════════════════════════════════════════════════════════════
+const void_invoice = {
+  schema: {
+    name: 'void_invoice',
+    description: "Mark an invoice void without deleting — preserves audit trail, sets status='void'. Preferred over delete_invoice for invoices that were sent but are legitimately wrong.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        invoice_id: { type: 'string' },
+        invoice_number: { type: 'string' },
+        reason: { type: 'string', description: 'Short note recording why it was voided.' }
+      }
+    }
+  },
+  async handler(input, ctx) {
+    let invoiceId = input.invoice_id
+    if (!invoiceId && input.invoice_number) {
+      const { data } = await ctx.supabase.from('invoices').select('id').eq('invoice_number', input.invoice_number).maybeSingle()
+      invoiceId = data?.id
+    }
+    if (!invoiceId) return { error: 'invoice_id or invoice_number required' }
+    const patch = { status: 'void' }
+    if (input.reason) patch.notes = input.reason
+    const { error } = await ctx.supabase.from('invoices').update(patch).eq('id', invoiceId)
+    if (error) return { error: error.message }
+    return { ok: true, invoice_id: invoiceId }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOOL: delete_invoice
+// ═══════════════════════════════════════════════════════════════
+const delete_invoice = {
+  schema: {
+    name: 'delete_invoice',
+    description: "Permanently delete an invoice. Use for test invoices or duplicates. For production invoices that were sent but are wrong, prefer void_invoice (preserves audit trail).",
+    input_schema: {
+      type: 'object',
+      properties: {
+        invoice_id: { type: 'string' },
+        invoice_number: { type: 'string' }
+      }
+    }
+  },
+  async handler(input, ctx) {
+    let invoiceId = input.invoice_id
+    let invNum = input.invoice_number
+    if (!invoiceId && invNum) {
+      const { data } = await ctx.supabase.from('invoices').select('id, invoice_number').eq('invoice_number', invNum).maybeSingle()
+      invoiceId = data?.id
+    }
+    if (!invoiceId) return { error: 'invoice_id or invoice_number required and must match a row' }
+    const { error } = await ctx.supabase.from('invoices').delete().eq('id', invoiceId)
+    if (error) return { error: error.message }
+    return { ok: true, invoice_id: invoiceId }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // REGISTRY + CONTEXT FILTERING
 // ═══════════════════════════════════════════════════════════════
 
@@ -922,7 +1148,9 @@ const ALL_TOOLS = {
   get_todos, read_memory, get_rate_card,
   schedule_job, approve_pending, reject_pending, send_sms,
   add_client, add_todo, write_memory, delete_memory, mark_invoice_paid,
-  lookup_business
+  lookup_business,
+  update_client, delete_client, merge_clients,
+  update_invoice, void_invoice, delete_invoice
 }
 
 // null = all tools. Keeps Jon contexts unrestricted; trims customer contexts.
