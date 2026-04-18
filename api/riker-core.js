@@ -326,6 +326,19 @@ ${transcript}`
 // Bridges two storage patterns: riker_sessions (website/portal/app) and
 // conversations/messages (sms/email).
 
+// Poisoned replies like bare "Done." or "Ok." from previous buggy runs leak into
+// Claude's context and cause it to mimic the pattern. Filter them so the model
+// sees clean history. User turns always pass through unchanged.
+function isPoisonedAssistant(content) {
+  if (!content) return true
+  const t = String(content).trim()
+  if (t.length <= 5 && /^(done\.?|ok\.?|k\.?)$/i.test(t)) return true
+  return false
+}
+function sanitizeHistory(msgs) {
+  return (msgs || []).filter(m => m.role === 'user' || !isPoisonedAssistant(m.content))
+}
+
 function makeSessionAdapter({ storage, supabase, sessionKey }) {
   if (storage === 'riker_sessions') {
     return {
@@ -335,7 +348,7 @@ function makeSessionAdapter({ storage, supabase, sessionKey }) {
         return data
       },
       async loadHistoryAsMessages(session) {
-        return (session.messages || []).map(m => ({ role: m.role, content: m.content }))
+        return sanitizeHistory((session.messages || []).map(m => ({ role: m.role, content: m.content })))
       },
       async appendInbound(session, body) {
         const msgs = [...(session.messages || []), { role: 'user', content: body, ts: new Date().toISOString() }]
@@ -381,9 +394,11 @@ function makeSessionAdapter({ storage, supabase, sessionKey }) {
         .select('direction, body')
         .eq('conversation_id', sessionKey)
         .order('created_at', { ascending: true })
+      // Drop poisoned one-word assistant turns so Claude doesn't copycat.
+      const filtered = (msgs || []).filter(m => m.direction === 'inbound' || !isPoisonedAssistant(m.body))
       // Collapse consecutive same-role messages for Claude alternation
       const out = []
-      for (const m of (msgs || [])) {
+      for (const m of filtered) {
         const role = m.direction === 'inbound' ? 'user' : 'assistant'
         if (out.length && out[out.length - 1].role === role) {
           out[out.length - 1].content += '\n' + m.body
@@ -726,21 +741,22 @@ async function processMessage({
     if (replyInject.append && !clean.includes(replyInject.value)) clean += '\n\n' + replyInject.append
   }
 
-  // NEVER return empty reply — the client UI falls back to literal "Done." and
-  // looks broken. If Claude emitted only action blocks (or truly nothing),
-  // synthesize something honest based on what happened.
-  if (!clean || !clean.trim()) {
+  // Never return empty reply, and never return the one-word "Done." — both
+  // make the app chat look broken. Synthesize something honest instead.
+  const isUseless = !clean || !clean.trim() || /^done\.?$/i.test(clean.trim())
+  if (isUseless) {
     const okActions = taken.filter(a => a.ok).map(a => a.type)
     if (okActions.length) {
-      // Summarize successful actions
       const summary = okActions.map(t => {
-        if (t === 'lookup_client' || t === 'lookup_invoice') return 'Looked it up'
+        if (t === 'lookup_client') return 'Pulled up the client'
+        if (t === 'lookup_invoice') return 'Pulled up the invoice'
         if (t === 'open_screen') return 'Opened'
         if (t === 'open_client') return 'Opened client'
         if (t === 'open_job') return 'Opened job'
         if (t === 'toast') return null
-        if (t === 'memory_write' || t === 'memory_delete') return null
-        if (t === 'schedule_job') return 'Scheduled'
+        if (t === 'memory_write') return 'Noted to memory'
+        if (t === 'memory_delete') return null
+        if (t === 'schedule_job') return 'Scheduled it'
         if (t === 'add_client') return 'Client added'
         if (t === 'mark_paid') return 'Marked paid'
         if (t === 'send_sms') return 'Text sent'
@@ -749,16 +765,17 @@ async function processMessage({
         if (t === 'add_suppression') return 'System added'
         if (t === 'add_contact') return 'Contact added'
         if (t === 'build_route' || t === 'modify_route') return 'Route updated'
+        if (t === 'suggest_job') return 'Job suggested'
         return t
       }).filter(Boolean)
-      clean = summary.length ? (summary.join('. ') + '.') : 'Done.'
+      clean = summary.length ? (summary.join('. ') + '.') : 'Ok.'
     } else if (taken.length) {
-      // Actions attempted but none ok
       const failMsgs = taken.filter(a => !a.ok).map(a => a.detail || a.type).slice(0, 3)
       clean = 'Hit a snag: ' + failMsgs.join('; ')
     } else {
-      // No actions, no text — Claude returned empty. Honest surface.
-      clean = "I didn't catch that — try again?"
+      // Claude returned nothing (or a useless "Done.") with no actions. Greet back
+      // with a useful prompt so the user can see Riker is alive and ready.
+      clean = "I'm here. What do you need — schedule something, look up a client, check an invoice?"
     }
   }
 

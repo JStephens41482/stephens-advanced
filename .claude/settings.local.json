@@ -12,7 +12,14 @@
       "Bash(node -c api/mazon/stamp-invoice.js)",
       "Bash(node -c api/mazon/submit-batch.js)",
       "Bash(node -c api/mazon/friday-check.js)",
-      "Bash(node -c src/config/mazon.js)"
+      "Bash(node -c src/config/mazon.js)",
+      "Bash(node -c api/riker-core.js)",
+      "Bash(node -c api/riker-prompts.js)",
+      "Bash(node -c api/sms-inbound.js)",
+      "Bash(node -c api/email-inbound.js)",
+      "Bash(node -c api/claude.js)",
+      "Bash(grep -n *)",
+      "Bash(node -e 'const s = require\\('\\\\''fs'\\\\''\\).readFileSync\\('\\\\''__TRACKED_VAR__'\\\\'','\\\\''utf-8'\\\\''\\); const hit = s.match\\(/SUPABASE_SERVICE_ROLE_KEY[^S]+SUPABASE_ANON_KEY/\\) ? '\\\\''MATCH'\\\\'' : '\\\\''NO-MATCH'\\\\''; console.log\\('\\\\''__TRACKED_VAR__:'\\\\'', hit\\)')"
     ]
   }
 }
