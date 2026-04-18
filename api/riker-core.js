@@ -726,6 +726,42 @@ async function processMessage({
     if (replyInject.append && !clean.includes(replyInject.value)) clean += '\n\n' + replyInject.append
   }
 
+  // NEVER return empty reply — the client UI falls back to literal "Done." and
+  // looks broken. If Claude emitted only action blocks (or truly nothing),
+  // synthesize something honest based on what happened.
+  if (!clean || !clean.trim()) {
+    const okActions = taken.filter(a => a.ok).map(a => a.type)
+    if (okActions.length) {
+      // Summarize successful actions
+      const summary = okActions.map(t => {
+        if (t === 'lookup_client' || t === 'lookup_invoice') return 'Looked it up'
+        if (t === 'open_screen') return 'Opened'
+        if (t === 'open_client') return 'Opened client'
+        if (t === 'open_job') return 'Opened job'
+        if (t === 'toast') return null
+        if (t === 'memory_write' || t === 'memory_delete') return null
+        if (t === 'schedule_job') return 'Scheduled'
+        if (t === 'add_client') return 'Client added'
+        if (t === 'mark_paid') return 'Marked paid'
+        if (t === 'send_sms') return 'Text sent'
+        if (t === 'add_todo') return 'To-do added'
+        if (t === 'add_extinguisher') return 'Extinguisher added'
+        if (t === 'add_suppression') return 'System added'
+        if (t === 'add_contact') return 'Contact added'
+        if (t === 'build_route' || t === 'modify_route') return 'Route updated'
+        return t
+      }).filter(Boolean)
+      clean = summary.length ? (summary.join('. ') + '.') : 'Done.'
+    } else if (taken.length) {
+      // Actions attempted but none ok
+      const failMsgs = taken.filter(a => !a.ok).map(a => a.detail || a.type).slice(0, 3)
+      clean = 'Hit a snag: ' + failMsgs.join('; ')
+    } else {
+      // No actions, no text — Claude returned empty. Honest surface.
+      clean = "I didn't catch that — try again?"
+    }
+  }
+
   // Save assistant message
   await adapter.appendOutbound(session, clean, {
     channel: session.channel || (context === 'sms_customer' || context === 'sms_jon' ? 'sms' : context === 'email_customer' ? 'email' : 'web')
