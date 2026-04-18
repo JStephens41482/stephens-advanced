@@ -181,16 +181,35 @@ const lookup_client = {
     const s = String(input.search || '').trim()
     if (!s) return { error: 'search required' }
     const limit = Math.min(25, Number(input.limit) || 10)
-    const wildcard = '%' + s.replace(/[%_]/g, '') + '%'
     const phoneDigits = s.replace(/\D/g, '')
     let q = ctx.supabase.from('locations')
       .select('id, name, address, city, state, zip, contact_name, contact_email, contact_phone, billing_account_id, is_brycer_jurisdiction')
       .limit(limit)
+
     if (phoneDigits.length >= 7) {
-      q = q.or(`name.ilike.${wildcard},city.ilike.${wildcard},contact_phone.ilike.%${phoneDigits}%`)
+      // phone search — dashes/parens stripped, match digits anywhere
+      q = q.ilike('contact_phone', '%' + phoneDigits + '%')
     } else {
-      q = q.or(`name.ilike.${wildcard},city.ilike.${wildcard}`)
+      // Tokenize so "Amigos Grocery Store Irving" matches name="Amigos
+      // Grocery Store" city="Irving". Each token must appear in name OR
+      // city. Strip stopwords that show up in noisy business names.
+      const stopwords = new Set(['the', 'a', 'an', 'of', 'in', 'at', 'on', 'to', 'for', 'and', 'or', 'store', 'shop', 'restaurant', 'llc', 'inc', 'co', 'company'])
+      const tokens = s.toLowerCase()
+        .split(/\s+/)
+        .map(t => t.replace(/[^a-z0-9]/gi, ''))
+        .filter(t => t.length >= 2 && !stopwords.has(t))
+        .slice(0, 5)
+      if (tokens.length === 0) {
+        const wc = '%' + s.replace(/[%_]/g, '') + '%'
+        q = q.or(`name.ilike.${wc},city.ilike.${wc}`)
+      } else {
+        for (const tok of tokens) {
+          const wc = '%' + tok + '%'
+          q = q.or(`name.ilike.${wc},city.ilike.${wc}`)
+        }
+      }
     }
+
     const { data, error } = await q
     if (error) return { error: error.message }
     return { count: data.length, matches: data }
