@@ -101,13 +101,29 @@ module.exports = async function handler(req, res) {
       inboundAlreadyLogged: false  // riker_sessions adapter will append
     })
 
-    return res.status(200).json({
+    // DIAGNOSTIC (2026-04-18, per Data's ask #1): log the exact response
+    // shape and reply length for every app-context turn so we can verify
+    // the server is returning non-empty {reply,...} before the client's
+    // `|| 'Done.'` fallback can fire. Remove once we've confirmed.
+    const outbound = {
       reply: result.reply,
       session_id: result.session_id,
       actions_taken: result.actions_taken,
       client_hints: result.client_hints,
       cost_usd: result.cost
-    })
+    }
+    if (context === 'app') {
+      console.log('[riker:app] response_shape', {
+        reply_len: (result.reply || '').length,
+        reply_preview: (result.reply || '').slice(0, 80),
+        actions_count: (result.actions_taken || []).length,
+        client_hints_count: (result.client_hints || []).length,
+        session_id: result.session_id,
+        cost_usd: result.cost,
+        keys: Object.keys(outbound)
+      })
+    }
+    return res.status(200).json(outbound)
 
   } catch (e) {
     console.error('[riker] error:', e)
