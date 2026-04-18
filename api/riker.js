@@ -78,7 +78,7 @@ module.exports = async function handler(req, res) {
     // Resolve or create session
     let sessionId = body.session_id
     if (!sessionId) {
-      const { data: session } = await supabase.from('riker_sessions').insert({
+      const insertRow = {
         context,
         tech_id: identity.tech_id || null,
         location_id: identity.location_id || null,
@@ -86,7 +86,32 @@ module.exports = async function handler(req, res) {
         portal_token: context === 'portal' ? body.auth?.portal_token : null,
         messages: [],
         status: 'active'
-      }).select().single()
+      }
+      const { data: session, error: insErr } = await supabase
+        .from('riker_sessions')
+        .insert(insertRow)
+        .select()
+        .single()
+      if (insErr || !session) {
+        console.error('[riker] session insert failed:', {
+          error: insErr?.message,
+          code: insErr?.code,
+          details: insErr?.details,
+          hint: insErr?.hint,
+          context
+        })
+        // Return 200 with a diagnostic reply so the client shows the
+        // message instead of falling through to the 'Done.' fallback.
+        return res.status(200).json({
+          reply: "Something blocked my session setup — check Vercel logs for `[riker] session insert failed`. Pass your existing session_id and try again.",
+          session_id: null,
+          actions_taken: [],
+          client_hints: [],
+          cost_usd: 0,
+          error: 'session_insert_failed',
+          error_detail: insErr?.message || 'insert returned null'
+        })
+      }
       sessionId = session.id
     }
 
