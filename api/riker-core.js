@@ -267,17 +267,54 @@ async function buildLiveData({ supabase, context, identity }) {
     }
   }
 
-  // For app context, include a few summary stats
-  if (context === 'app') {
-    const [overdue, unpaid, todayJobs] = await Promise.all([
-      supabase.from('jobs').select('id', { count: 'exact', head: true }).lt('scheduled_date', today).eq('status', 'scheduled'),
-      supabase.from('invoices').select('total', { count: 'exact' }).not('status', 'in', '(paid,void)').limit(1000),
-      supabase.from('jobs').select('id, scheduled_time, scope, location:locations(name,city)').eq('scheduled_date', today).in('status', ['scheduled', 'en_route', 'active']).order('scheduled_time')
+  // App + SMS-Jon: summary stats, today's jobs, overdue list, unpaid list, clients index.
+  // Jon over SMS gets the same operational picture he has in the app — otherwise he
+  // can't ask "what's overdue" or "who owes me money" and get a real answer.
+  if (['app', 'sms_jon'].includes(context)) {
+    const [overdueRows, unpaidRows, todayJobsRows, clientsRows] = await Promise.all([
+      supabase.from('jobs')
+        .select('id, scheduled_date, scope, location:locations(name,city)')
+        .lt('scheduled_date', today).eq('status', 'scheduled')
+        .order('scheduled_date', { ascending: false }).limit(20),
+      supabase.from('invoices')
+        .select('id, invoice_number, total, date, status, location:locations(name,city)')
+        .not('status', 'in', '(paid,void,record,factored)')
+        .order('date', { ascending: true }).limit(20),
+      supabase.from('jobs')
+        .select('id, scheduled_time, scope, estimated_value, location:locations(name,city,address)')
+        .eq('scheduled_date', today).in('status', ['scheduled', 'en_route', 'active'])
+        .order('scheduled_time'),
+      supabase.from('locations')
+        .select('id, name, city, contact_name, contact_phone')
+        .order('updated_at', { ascending: false }).limit(60)
     ])
-    const unpaidTotal = (unpaid.data || []).reduce((s, i) => s + Number(i.total || 0), 0)
-    parts.push(`TODAY_SUMMARY: ${todayJobs.data?.length || 0} jobs, ${overdue.count || 0} overdue, $${unpaidTotal.toFixed(0)} outstanding`)
-    if (todayJobs.data?.length) {
-      parts.push('TODAY_JOBS:\n' + todayJobs.data.map(j => `- ${j.scheduled_time || ''} ${j.location?.name || '?'} (${j.location?.city || ''}) — ${(j.scope || []).join(',')}`).join('\n'))
+    const unpaidTotal = (unpaidRows.data || []).reduce((s, i) => s + Number(i.total || 0), 0)
+    const overdueCount = (overdueRows.data || []).length
+
+    parts.push(`TODAY_SUMMARY: ${todayJobsRows.data?.length || 0} jobs today, ${overdueCount} overdue, $${unpaidTotal.toFixed(0)} outstanding (${(unpaidRows.data || []).length} invoices)`)
+
+    if (todayJobsRows.data?.length) {
+      parts.push('TODAY_JOBS:\n' + todayJobsRows.data.map(j =>
+        `- ${j.scheduled_time || ''} ${j.location?.name || '?'} (${j.location?.city || ''}) — ${(j.scope || []).join(',')}${j.estimated_value ? ' · $' + Number(j.estimated_value).toFixed(0) : ''} [id:${j.id}]`
+      ).join('\n'))
+    }
+
+    if (overdueRows.data?.length) {
+      parts.push('OVERDUE_JOBS:\n' + overdueRows.data.slice(0, 10).map(j =>
+        `- ${j.scheduled_date} ${j.location?.name || '?'} (${j.location?.city || ''}) — ${(j.scope || []).join(',')} [id:${j.id}]`
+      ).join('\n'))
+    }
+
+    if (unpaidRows.data?.length) {
+      parts.push('UNPAID_INVOICES:\n' + unpaidRows.data.slice(0, 10).map(i =>
+        `- ${i.invoice_number || '?'} ${i.location?.name || '?'} $${Number(i.total).toFixed(2)} dated ${String(i.date).slice(0,10)} [status:${i.status}]`
+      ).join('\n'))
+    }
+
+    if (clientsRows.data?.length) {
+      parts.push('CLIENTS_RECENT (most recent 60 — use lookup_client for anything not listed):\n' + clientsRows.data.map(l =>
+        `- ${l.name}${l.city ? ' (' + l.city + ')' : ''}${l.contact_phone ? ' · ' + l.contact_phone : ''} [id:${l.id}]`
+      ).join('\n'))
     }
   }
 

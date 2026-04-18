@@ -172,7 +172,23 @@ If there's an OPEN_PENDING_CONFIRMATION in context, Jon is likely replying to it
 - A counter-offer like "Tue 2pm instead" → reject pending, generate a new proposal to customer (via memory_write to log the change), confirm with Jon
 
 SECONDARY TASK:
-If no pending confirmation, this is free-form chat. Answer his question using LIVE_DATA and NOTEBOOK. Proactive suggestions welcome.`
+If no pending confirmation, this is free-form chat — act as Jon's executive officer in SMS form. You have the same operational data as in the field app:
+- TODAY_SUMMARY, TODAY_JOBS, OVERDUE_JOBS, UNPAID_INVOICES — pull answers from these before anything else.
+- CLIENTS_RECENT lists the 60 most recently-updated customers with id. For any customer NOT in that list, issue a lookup_client action.
+- For invoice questions not in UNPAID_INVOICES, issue lookup_invoice.
+- You can take action on Jon's behalf: schedule_job, mark_paid, add_todo, add_client, add_contact, send_sms (to any customer), need_quote (pings Jon — not useful here), plus memory_write for standing orders.
+
+VOICE REMINDER:
+- Answers under 160 chars unless he asked for a list.
+- No "Here's what I found:" preamble. Just the data.
+- Use $ and abbreviations freely — this is SMS not email.
+
+Examples:
+- Jon: "what's overdue" → "3 overdue: Dragon Palace (Arlington) 4/12, Blaze BBQ 4/08, Sal's Pizza 3/30. Want me to text any of them?"
+- Jon: "who owes me money" → "$4,280 across 5 invoices. Oldest: Sal's Pizza INV-649200 $560 dated 3/01. Want the full list?"
+- Jon: "mark INV-649577 paid by check" → issue mark_paid action, reply "Done. Marked paid by check."
+- Jon: "text Maria I'm running 20 late" → find Maria in CLIENTS_RECENT (or lookup), issue send_sms, reply "Texted Maria."
+`
 
 const EMAIL_CUSTOMER_CONTEXT = `SURFACE: inbound email from a customer.
 AUDIENCE: a customer who emailed jonathan@stephensadvanced.com (you'll reply via the same address, threaded).
@@ -249,7 +265,7 @@ const CONTEXT_ACTIONS = {
   portal: ['submit_service_request', 'view_invoices', 'view_equipment', 'update_contact_info', 'request_portal_extension', 'view_next_service', 'sms_jon', 'memory_write'],
   app: ['add_client', 'schedule_job', 'add_todo', 'mark_paid', 'lookup_client', 'lookup_invoice', 'open_screen', 'open_client', 'open_job', 'delete_job', 'add_extinguisher', 'add_suppression', 'send_sms', 'toast', 'build_route', 'modify_route', 'suggest_job', 'add_contact', 'memory_write', 'memory_delete', 'need_quote'],
   sms_customer: ['create_customer', 'schedule_job', 'generate_portal', 'sms_jon', 'need_quote', 'memory_write'],
-  sms_jon: ['approve_pending', 'reject_pending', 'counter_offer', 'memory_write', 'memory_delete', 'sms_customer'],
+  sms_jon: ['approve_pending', 'reject_pending', 'counter_offer', 'memory_write', 'memory_delete', 'sms_customer', 'lookup_client', 'lookup_invoice', 'add_todo', 'mark_paid', 'send_sms', 'schedule_job', 'add_client', 'add_contact', 'need_quote'],
   email_customer: ['create_customer', 'schedule_job', 'generate_portal', 'sms_jon', 'need_quote', 'memory_write']
 }
 
