@@ -15,11 +15,9 @@
 const { createClient } = require('@supabase/supabase-js')
 const crypto = require('crypto')
 
-const SB = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY,
-  { auth: { persistSession: false, autoRefreshToken: false } }
-)
+const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || 'https://motjasdokoxwiodwzyps.supabase.co'
+const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY
+const SB = SB_KEY ? createClient(SB_URL, SB_KEY, { auth: { persistSession: false, autoRefreshToken: false } }) : null
 
 const JON_PHONE = '+12149944799'
 const ALLOWED = (process.env.AUTH_ALLOWED_PHONES || JON_PHONE)
@@ -225,6 +223,10 @@ async function handleLogout(req, res) {
 }
 
 module.exports = async function handler(req, res) {
+  if (!SB) {
+    console.error('auth-sms: no Supabase service key in env')
+    return res.status(500).json({ error: 'Server auth not configured (no service key)' })
+  }
   const action = (req.query?.action || req.body?.action || '').toString()
   try {
     if (req.method === 'GET' && action === 'check') return handleCheck(req, res)
