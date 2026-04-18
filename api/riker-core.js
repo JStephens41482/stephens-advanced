@@ -507,9 +507,12 @@ async function buildLiveData({ supabase, context, identity, rikerSessionId }) {
         .select('id, scheduled_time, scope, estimated_value, location:locations(name,city,address)')
         .eq('scheduled_date', today).in('status', ['scheduled', 'en_route', 'active'])
         .order('scheduled_time'),
+      // Full client roster — Jon texts asking about any customer, not just the recent few.
+      // Ordered by last-updated so most-relevant-first if we ever hit the cap. Cap set
+      // high enough (3000) that SMB-scale customer lists won't be truncated.
       supabase.from('locations')
         .select('id, name, city, contact_name, contact_phone')
-        .order('updated_at', { ascending: false }).limit(60)
+        .order('updated_at', { ascending: false }).limit(3000)
     ])
     const unpaidTotal = (unpaidRows.data || []).reduce((s, i) => s + Number(i.total || 0), 0)
     const overdueCount = (overdueRows.data || []).length
@@ -535,7 +538,8 @@ async function buildLiveData({ supabase, context, identity, rikerSessionId }) {
     }
 
     if (clientsRows.data?.length) {
-      parts.push('CLIENTS_RECENT (most recent 60 — use lookup_client for anything not listed):\n' + clientsRows.data.map(l =>
+      const total = clientsRows.data.length
+      parts.push(`CLIENTS (all ${total} — ordered by most recently updated; use lookup_client if the exact match isn't obvious):\n` + clientsRows.data.map(l =>
         `- ${l.name}${l.city ? ' (' + l.city + ')' : ''}${l.contact_phone ? ' · ' + l.contact_phone : ''} [id:${l.id}]`
       ).join('\n'))
     }
