@@ -181,7 +181,7 @@ gtag('config', 'G-JH63B98JLB');
       <a href="#services">Services</a>
       <a href="#contractors">Contractors</a>
       <a href="/apply">Apply</a>
-      <a href="#request" class="nav-cta">Request Service</a>
+      <a href="#request" class="nav-cta" onclick="return rikerRequestService('request_service')">Request Service</a>
     </div>
     <button class="nav-menu-btn" onclick="document.querySelector('.nav-links').style.display=document.querySelector('.nav-links').style.display==='flex'?'none':'flex'">&#9776;</button>
   </div>
@@ -195,7 +195,7 @@ gtag('config', 'G-JH63B98JLB');
     <p>Licensed inspections, installations, and service for kitchen hood suppression systems, fire extinguishers, clean agent systems, and emergency lighting across the Dallas-Fort Worth metroplex.</p>
     <div class="hero-btns">
       <a href="tel:2149944799" class="btn-primary" onclick="return gtag_report_phone_tap()">Call (214) 994-4799</a>
-      <a href="#request" class="btn-secondary">Request Service</a>
+      <a href="#request" class="btn-secondary" onclick="return rikerRequestService('request_service')">Request Service</a>
     </div>
     <div class="hero-stats">
       <div class="hero-stat"><div class="hero-stat-n">18,000+</div><div class="hero-stat-l">Systems Serviced</div></div>
@@ -367,17 +367,17 @@ gtag('config', 'G-JH63B98JLB');
 
     <!-- LOCATION TYPE SELECTOR -->
     <div id="loc-type-picker" style="display:flex;gap:16px;justify-content:center;margin-bottom:32px">
-      <button onclick="showSingleForm()" style="flex:1;max-width:260px;padding:20px;border:2px solid #eee;border-radius:var(--radius);background:#fff;cursor:pointer;transition:all .2s" id="pick-single">
+      <button onclick="rikerRequestService('request_service')" style="flex:1;max-width:260px;padding:20px;border:2px solid #eee;border-radius:var(--radius);background:#fff;cursor:pointer;transition:all .2s" id="pick-single">
         <div style="font-size:28px;margin-bottom:8px">&#127970;</div>
         <div style="font-size:15px;font-weight:800;color:var(--dark)">I Have One Location</div>
         <div style="font-size:12px;color:#888;margin-top:4px">Single restaurant, business, or facility</div>
       </button>
-      <button onclick="showMultiForm()" style="flex:1;max-width:260px;padding:20px;border:2px solid #eee;border-radius:var(--radius);background:#fff;cursor:pointer;transition:all .2s" id="pick-multi">
+      <button onclick="rikerRequestService('multi_location')" style="flex:1;max-width:260px;padding:20px;border:2px solid #eee;border-radius:var(--radius);background:#fff;cursor:pointer;transition:all .2s" id="pick-multi">
         <div style="font-size:28px;margin-bottom:8px">&#127959;</div>
         <div style="font-size:15px;font-weight:800;color:var(--dark)">I Manage Multiple Locations</div>
         <div style="font-size:12px;color:#888;margin-top:4px">Franchise group, management company, or multi-site</div>
       </button>
-      <button onclick="showExistingForm()" style="flex:1;max-width:260px;padding:20px;border:2px solid #eee;border-radius:var(--radius);background:#fff;cursor:pointer;transition:all .2s" id="pick-existing">
+      <button onclick="rikerRequestService('existing')" style="flex:1;max-width:260px;padding:20px;border:2px solid #eee;border-radius:var(--radius);background:#fff;cursor:pointer;transition:all .2s" id="pick-existing">
         <div style="font-size:28px;margin-bottom:8px">&#128100;</div>
         <div style="font-size:15px;font-weight:800;color:var(--dark)">I'm an Existing Customer</div>
         <div style="font-size:12px;color:#888;margin-top:4px">Look up your account to schedule service or access your portal</div>
@@ -599,7 +599,7 @@ gtag('config', 'G-JH63B98JLB');
   <p>Call us today. We'll get you scheduled.</p>
   <a href="tel:2149944799" class="cta-phone" onclick="return gtag_report_phone_tap()">(214) 994-4799</a>
   <div class="cta-row">
-    <a href="#request" class="btn-primary" style="background:#fff;color:var(--fire)">Request Service</a>
+    <a href="#request" class="btn-primary" style="background:#fff;color:var(--fire)" onclick="return rikerRequestService('request_service')">Request Service</a>
     <a href="/portal" class="btn-secondary" style="border-color:rgba(255,255,255,.4)">Customer Portal</a>
   </div>
 </section>
@@ -627,7 +627,7 @@ gtag('config', 'G-JH63B98JLB');
       <ul>
         <li><a href="#about">About Us</a></li>
         <li><a href="#contractors">Contractors</a></li>
-        <li><a href="#request">Request Service</a></li>
+        <li><a href="#request" onclick="return rikerRequestService('request_service')">Request Service</a></li>
         <li><a href="/portal">Customer Portal</a></li>
       </ul>
     </div>
@@ -1123,18 +1123,51 @@ async function _disabledSendSchMsg(){
 const RIKER_SESSION_KEY='riker_web_session'
 let _rikerOpen=false,_rikerMsgs=[],_rikerLastSend=0,_rikerBusy=false
 
-function rikerChatToggle(){
+// Intent-aware opener — each entry point on the page can tee up a different
+// greeting so Riker starts the conversation already in the right mode.
+const RIKER_GREETINGS={
+  default:"Hey, how can I help? Looking to schedule an inspection or got a question?",
+  request_service:"Hey — let's get you scheduled. What's the business name and city?",
+  quote:"Sure, I can put a quote together. What kind of setup — extinguishers, hood system, both? And how many?",
+  existing:"Welcome back. What's the business name or the phone number on your account?",
+  multi_location:"Got it, multiple locations. Start with the parent business name and how many sites you're looking to cover.",
+  new_install:"Nice, a new installation. What type of system are you looking at — kitchen hood, paint booth, clean agent, extinguishers? And what city?",
+  emergency:"Got it — emergency service. What's happening, and what's the business name and address?"
+}
+
+function rikerChatToggle(intent){
   _rikerOpen=!_rikerOpen
   const p=document.getElementById('csPanel')
   if(!p)return
   p.classList.toggle('open',_rikerOpen)
   if(_rikerOpen){
     if(!_rikerMsgs.length){
-      _rikerMsgs.push({role:'assistant',content:"Hey, how can I help? Looking to schedule an inspection or got a question?"})
+      const greeting=RIKER_GREETINGS[intent]||RIKER_GREETINGS.default
+      _rikerMsgs.push({role:'assistant',content:greeting})
       rikerRender()
     }
     setTimeout(()=>{const i=document.getElementById('rikerInput');if(i)i.focus()},120)
   }
+}
+
+// Public entry point for "Request Service" CTAs. Opens chat even if already
+// open, and tees up the request_service greeting (unless a conversation is
+// already in flight — don't overwrite real messages).
+function rikerRequestService(intent){
+  const p=document.getElementById('csPanel')
+  const wasOpen=_rikerOpen
+  if(!wasOpen){
+    rikerChatToggle(intent||'request_service')
+  }else{
+    // Already open — if no user turns yet, swap greeting; otherwise leave alone
+    const hasUserTurn=_rikerMsgs.some(m=>m.role==='user')
+    if(!hasUserTurn && (intent||'request_service')){
+      _rikerMsgs=[{role:'assistant',content:RIKER_GREETINGS[intent||'request_service']||RIKER_GREETINGS.default}]
+      rikerRender()
+    }
+    setTimeout(()=>{const i=document.getElementById('rikerInput');if(i)i.focus()},120)
+  }
+  return false
 }
 
 function rikerRender(){
