@@ -831,6 +831,88 @@ const mark_invoice_paid = {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// TOOL: lookup_business — Google Places Text Search for customer addresses
+// ═══════════════════════════════════════════════════════════════
+// Used when a user mentions a business by name and city but hasn't given a
+// full address. Returns up to 5 candidate matches with formatted_address,
+// lat/lng, phone, and website (top result auto-enriched with Place Details).
+// Cost per call: ~$0.05. Call before add_client whenever the user
+// referenced the business by name.
+const lookup_business = {
+  schema: {
+    name: 'lookup_business',
+    description: "Search the web (Google Places) for a real business by name and city, returning verified addresses, phone numbers, and websites. ALWAYS call this before add_client when the user gave you a business name + city but not a full street address. The top result is auto-enriched with phone and website. Do not invent addresses.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        business_name: { type: 'string', description: 'Name of the business to look up. Required.' },
+        city: { type: 'string', description: 'City name — helps disambiguate chain matches. Strongly recommended.' },
+        state: { type: 'string', description: 'State — default TX.' },
+        limit: { type: 'integer', description: 'Max candidates to return (default 5, cap 10).' }
+      },
+      required: ['business_name']
+    }
+  },
+  async handler(input) {
+    const key = process.env.GOOGLE_MAPS_API_KEY
+    if (!key) return { error: 'GOOGLE_MAPS_API_KEY not configured' }
+    const name = String(input.business_name || '').trim()
+    if (!name) return { error: 'business_name required' }
+    const city = String(input.city || '').trim()
+    const state = String(input.state || 'TX').trim()
+    const limit = Math.max(1, Math.min(10, Number(input.limit) || 5))
+
+    const query = [name, city, state].filter(Boolean).join(' ')
+
+    // Text Search — returns candidates with formatted_address
+    const searchUrl = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(query)}&key=${key}`
+    try {
+      const sres = await fetch(searchUrl)
+      const sdata = await sres.json()
+      if (!sres.ok || sdata.status === 'REQUEST_DENIED' || sdata.status === 'INVALID_REQUEST') {
+        return { error: 'Places search failed: ' + (sdata.error_message || sdata.status || sres.status) }
+      }
+      if (sdata.status === 'ZERO_RESULTS') return { query, count: 0, candidates: [] }
+      if (sdata.status !== 'OK') return { error: 'Places status: ' + sdata.status, query }
+
+      const raw = (sdata.results || []).slice(0, limit)
+      const candidates = raw.map(r => ({
+        name: r.name,
+        formatted_address: r.formatted_address,
+        place_id: r.place_id,
+        lat: r.geometry?.location?.lat,
+        lng: r.geometry?.location?.lng,
+        types: r.types || [],
+        rating: r.rating,
+        user_ratings_total: r.user_ratings_total,
+        business_status: r.business_status
+      }))
+
+      // Enrich top candidate with Place Details (phone, website, hours)
+      if (candidates.length) {
+        const fields = 'name,formatted_address,formatted_phone_number,international_phone_number,website,opening_hours'
+        const detailUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${encodeURIComponent(candidates[0].place_id)}&fields=${fields}&key=${key}`
+        try {
+          const dres = await fetch(detailUrl)
+          const ddata = await dres.json()
+          if (dres.ok && ddata.status === 'OK' && ddata.result) {
+            candidates[0].phone = ddata.result.formatted_phone_number || ddata.result.international_phone_number || null
+            candidates[0].website = ddata.result.website || null
+            if (ddata.result.opening_hours?.weekday_text) {
+              candidates[0].hours = ddata.result.opening_hours.weekday_text
+            }
+          }
+        } catch (e) { /* details enrichment is best-effort */ }
+      }
+
+      return { query, count: candidates.length, candidates }
+    } catch (e) {
+      return { error: 'Places API error: ' + e.message }
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // REGISTRY + CONTEXT FILTERING
 // ═══════════════════════════════════════════════════════════════
 
@@ -839,17 +921,18 @@ const ALL_TOOLS = {
   get_schedule_slots, get_equipment, get_pending_confirmations,
   get_todos, read_memory, get_rate_card,
   schedule_job, approve_pending, reject_pending, send_sms,
-  add_client, add_todo, write_memory, delete_memory, mark_invoice_paid
+  add_client, add_todo, write_memory, delete_memory, mark_invoice_paid,
+  lookup_business
 }
 
 // null = all tools. Keeps Jon contexts unrestricted; trims customer contexts.
 const CONTEXT_TOOLS = {
-  website: ['lookup_client', 'get_schedule_slots', 'get_rate_card', 'schedule_job', 'add_client'],
+  website: ['lookup_client', 'lookup_business', 'get_schedule_slots', 'get_rate_card', 'schedule_job', 'add_client'],
   portal: ['lookup_client', 'get_invoices', 'get_equipment', 'get_schedule_slots', 'schedule_job', 'write_memory'],
   app: null,
   sms_jon: null,
-  sms_customer: ['lookup_client', 'get_schedule_slots', 'get_rate_card', 'schedule_job', 'add_client'],
-  email_customer: ['lookup_client', 'get_schedule_slots', 'schedule_job', 'add_client', 'send_sms']
+  sms_customer: ['lookup_client', 'lookup_business', 'get_schedule_slots', 'get_rate_card', 'schedule_job', 'add_client'],
+  email_customer: ['lookup_client', 'lookup_business', 'get_schedule_slots', 'schedule_job', 'add_client', 'send_sms']
 }
 
 function getToolsForContext(context) {
