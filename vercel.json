@@ -39,6 +39,8 @@
     { "src": "/privacy", "dest": "/privacy.html" },
     { "src": "/terms", "dest": "/terms.html" },
     { "src": "/apply", "dest": "/apply.html" },
+    { "src": "/team", "dest": "/team.html" },
+    { "src": "/crew", "dest": "/team.html" },
     { "src": "/buy-extinguishers", "dest": "/buy-extinguishers.html" },
     { "src": "/store/extinguishers", "dest": "/buy-extinguishers.html" },
     { "src": "/services/fire-extinguisher-inspection", "dest": "/services/fire-extinguisher-inspection.html" },

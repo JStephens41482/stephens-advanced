@@ -7,6 +7,10 @@ function App() {
       <window.AppSection />
       <window.PortalSection />
       <window.ChatSection />
+      <window.ReportsSection />
+      <window.RikerAgenticSection />
+      <window.HiddenNavSection />
+      <window.CorrectionsSection />
       <window.Roadmap />
     </>
   );

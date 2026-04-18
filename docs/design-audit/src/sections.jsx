@@ -317,16 +317,18 @@ function Roadmap() {
     <section id="roadmap">
       <div className="page">
         <div className="eyebrow"><span className="num">08</span> Roadmap</div>
-        <h2>If you fix nothing else, <em>fix these five.</em></h2>
+        <h2>If you fix nothing else, <em>fix these seven.</em></h2>
         <p className="lede">Ordered by effort-to-impact ratio. Items 1–3 are a week of focused work and will change how the whole product feels.</p>
 
         <div style={{marginTop:40, display:'grid', gap:0, borderTop:'1px solid var(--rule)'}}>
           {[
-            ['Week 1', 'Unify the portal on the dark system', 'Port the portal to the dark palette with full brand mark, support phone, and security cues. Single highest-impact fix.', 'Design + 2 days eng'],
-            ['Week 1', 'Rebuild the home screen of the field app', 'Replace month-calendar-first layout with Today-card-first. Demote calendar to tab. Ship bigger touch targets and clearer labels.', '3 days design + 3 days eng'],
-            ['Week 2', 'Redesign the job-complete flow', 'Group invoicing into one block, spell out the primary action, clarify toggle/checkbox relationships. Stop mis-invoices at the UI level.', '2 days design + 3 days eng'],
-            ['Week 2', 'Adopt a type system + supporting palette', 'Add Fraunces (display), keep Inter (UI), add JetBrains Mono (codes/invoices). Introduce 2 neutral-tinted supporting colors so orange can breathe.', '3 days design'],
-            ['Week 3', 'Rethink the chat entry point + opening state', 'Replace the bubble with a support bar. Open with 4 tappable starter actions. Rename external chat to plain language.', '2 days design + 4 days eng'],
+            ['Week 1', 'Surface Reports as a real destination', 'Remove the hidden logo-tap gesture. Add Reports to the bottom nav or profile menu. Flag the AR-aging anomaly at the top of the view.', '1 day design + 1 day eng'],
+            ['Week 1', 'Unify the portal on the dark system', 'Port the portal to the dark palette with full brand mark, support phone, and security cues. Single highest-impact public-facing fix.', 'Design + 2 days eng'],
+            ['Week 2', 'Rebuild the home screen of the field app', 'Replace month-calendar-first layout with Today-card-first. Demote calendar to tab. Ship bigger touch targets and clearer labels.', '3 days design + 3 days eng'],
+            ['Week 2', 'Render Riker\'s structured responses as cards, not markdown', 'Detect tabular responses server-side, render as tappable cards. Add 1–3 action buttons when Riker proposes actions.', '2 days design + 4 days eng'],
+            ['Week 3', 'Redesign the job-complete flow', 'Group invoicing into one block, spell out the primary action, clarify toggle/checkbox relationships. Stop mis-invoices at the UI level.', '2 days design + 3 days eng'],
+            ['Week 3', 'Adopt a type system + supporting palette', 'Add Fraunces (display), keep Inter (UI), add JetBrains Mono (codes/invoices). Introduce 2 neutral-tinted supporting colors so orange can breathe.', '3 days design'],
+            ['Week 4', 'Rethink the chat entry point + opening state', 'Replace the bubble with a support bar. Open with 4 tappable starter actions. Split into "Stephens Support" (customer) and "Riker" (operator).', '2 days design + 4 days eng'],
           ].map(([when, title, desc, effort], i) => (
             <div key={i} style={{display:'grid', gridTemplateColumns:'100px 1fr 200px', gap:32, padding:'24px 0', borderBottom:'1px solid var(--rule)', alignItems:'start'}}>
               <div style={{fontFamily:'JetBrains Mono, monospace', fontSize:11, color:'var(--bad)', letterSpacing:'0.1em'}}>{when.toUpperCase()}</div>
@@ -360,3 +362,5 @@ window.AppSection = AppSection;
 window.PortalSection = PortalSection;
 window.ChatSection = ChatSection;
 window.Roadmap = Roadmap;
+window.BeforeAfter = BeforeAfter;
+window.IssueRow = IssueRow;
