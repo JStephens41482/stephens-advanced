@@ -1182,10 +1182,23 @@ const CONTEXT_TOOLS = {
   email_customer: ['lookup_client', 'lookup_business', 'get_schedule_slots', 'schedule_job', 'add_client', 'send_sms']
 }
 
+// Anthropic-hosted server tool. No handler needed — the API executes it
+// during the turn and returns both the query and results inline. We just
+// include the spec in the tools array when the context should have web
+// access.
+const WEB_SEARCH_TOOL = {
+  type: 'web_search_20250305',
+  name: 'web_search',
+  max_uses: 3
+}
+const WEB_SEARCH_CONTEXTS = new Set(['app', 'sms_jon'])
+
 function getToolsForContext(context) {
   const allowed = CONTEXT_TOOLS[context]
   const names = allowed === null || allowed === undefined ? Object.keys(ALL_TOOLS) : allowed
-  return names.filter(n => ALL_TOOLS[n]).map(n => ALL_TOOLS[n].schema)
+  const schemas = names.filter(n => ALL_TOOLS[n]).map(n => ALL_TOOLS[n].schema)
+  if (WEB_SEARCH_CONTEXTS.has(context)) schemas.push(WEB_SEARCH_TOOL)
+  return schemas
 }
 
 async function executeToolCall(name, input, ctx) {

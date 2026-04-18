@@ -320,7 +320,7 @@ async function callClaudeWithTools({ systemBlocks, messages, toolSchemas, toolCt
         'Content-Type': 'application/json',
         'x-api-key': claudeKey,
         'anthropic-version': '2023-06-01',
-        'anthropic-beta': 'prompt-caching-2024-07-31'
+        'anthropic-beta': 'prompt-caching-2024-07-31,web-search-2025-03-05'
       },
       body: JSON.stringify({
         model: CLAUDE_MODEL,
