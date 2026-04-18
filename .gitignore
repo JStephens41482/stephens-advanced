@@ -34,3 +34,4 @@ next-env.d.ts
 test-results/
 node_modules/
 playwright-report/
+.design-audit-tmp/

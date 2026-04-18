@@ -4,72 +4,94 @@
 <meta name="theme-color" content="#0d0f14"><link rel="apple-touch-icon" sizes="180x180" href="/icon-180.png"><link rel="apple-touch-icon" sizes="167x167" href="/icon-167.png"><link rel="apple-touch-icon" sizes="152x152" href="/icon-152.png"><link rel="apple-touch-icon" sizes="120x120" href="/icon-120.png"><link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png"><link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png"><link rel="manifest" href="/manifest.json"><meta name="apple-mobile-web-app-title" content="Stephens Advanced">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
-<meta name="theme-color" content="#ffffff">
+<meta name="theme-color" content="#0A0A10">
 <title>Stephens Advanced — Customer Portal</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-:root{--fire:#f05a28;--ok:#10b981;--warn:#f59e0b;--bad:#ef4444;--r:12px;--rs:8px}
-body{font-family:'Inter',system-ui,sans-serif;background:#f8f9fb;color:#1a1a2e;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+:root{
+  --fire:#f05a28;--fire-2:#c94f14;
+  --ok:#4ADE80;--warn:#f59e0b;--bad:#ef4444;
+  --bg:#0A0A10;--surface:#14141E;--surface-2:#1A1A2A;--surface-3:#232334;
+  --border:rgba(255,255,255,.08);--border-2:rgba(255,255,255,.06);--border-strong:rgba(255,255,255,.14);
+  --text:#E8E8EE;--text-2:#B8B8C4;--muted:#9A9AA8;--muted-2:#6A6A78;
+  --r:4px;--rs:3px;
+  --font-sans:'Inter',system-ui,sans-serif;
+  --font-display:'Fraunces',Georgia,serif;
+  --font-mono:'JetBrains Mono',ui-monospace,Menlo,monospace;
+}
+body{font-family:var(--font-sans);background:var(--bg);color:var(--text);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
 .wrap{max-width:640px;margin:0 auto;padding:0 16px 80px}
-.hdr{background:#fff;border-bottom:1px solid #e8eaed;padding:20px 16px;margin-bottom:24px}
+.hdr{background:var(--surface);border-bottom:1px solid var(--border);padding:20px 16px;margin-bottom:24px}
 .hdr-inner{max-width:640px;margin:0 auto;display:flex;align-items:center;gap:12px}
-.logo{display:flex;align-items:center;gap:8px;font-size:18px;font-weight:900;letter-spacing:-.5px;color:#1a1a2e}
+.logo{display:flex;align-items:center;gap:10px;font-family:var(--font-display);font-weight:500;font-size:18px;letter-spacing:-.02em;color:var(--text)}
 .logo span{color:var(--fire)}
-.cust-name{font-size:12px;color:#888;margin-top:2px}
-.card{background:#fff;border:1px solid #e8eaed;border-radius:var(--r);padding:20px;margin-bottom:16px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
-.card-t{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:#999;margin-bottom:12px}
-.welcome{background:linear-gradient(135deg,var(--fire),#d44a1a);border-radius:var(--r);padding:24px;margin-bottom:20px;color:#fff}
-.welcome h1{font-size:22px;font-weight:900;margin-bottom:4px}
-.welcome p{font-size:13px;opacity:.85;line-height:1.5}
+.logo-mark{width:22px;height:22px;border:2px solid var(--fire);border-radius:3px;position:relative;flex-shrink:0}
+.logo-mark::after{content:'';position:absolute;inset:3px;background:var(--fire);border-radius:1px}
+.logo-tag{margin-left:auto;font-family:var(--font-mono);font-size:10px;color:var(--muted);letter-spacing:.12em;text-transform:uppercase}
+.cust-name{font-size:12px;color:var(--muted);margin-top:2px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:20px;margin-bottom:16px}
+.card-t{font-family:var(--font-mono);font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin-bottom:12px}
+.welcome{background:linear-gradient(135deg,var(--fire),var(--fire-2));border-radius:var(--r);padding:24px;margin-bottom:20px;color:#fff}
+.welcome h1{font-family:var(--font-display);font-size:26px;font-weight:500;letter-spacing:-.02em;margin-bottom:4px}
+.welcome p{font-size:13px;opacity:.9;line-height:1.5}
 .stat-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px}
-.stat{background:#fff;border:1px solid #e8eaed;border-radius:var(--r);padding:16px;text-align:center}
-.stat-n{font-size:24px;font-weight:900;color:var(--fire)}
-.stat-l{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#999;margin-top:4px}
-.loc{border-bottom:1px solid #f0f0f0;padding:14px 0}
+.stat{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:16px;text-align:center}
+.stat-n{font-family:var(--font-display);font-size:28px;font-weight:500;letter-spacing:-.02em;color:var(--text)}
+.stat-l{font-family:var(--font-mono);font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-top:4px}
+.loc{border-bottom:1px solid var(--border-2);padding:14px 0}
 .loc:last-child{border-bottom:none}
-.loc-nm{font-size:15px;font-weight:700}
-.loc-addr{font-size:12px;color:#888;margin-top:2px}
+.loc-nm{font-size:15px;font-weight:600;color:var(--text)}
+.loc-addr{font-size:12px;color:var(--muted);margin-top:2px}
 .loc-eq{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
-.eq-tag{font-size:10px;font-weight:700;padding:4px 10px;border-radius:20px;background:#f0f4f8;color:#555}
-.inv-row{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #f0f0f0}
+.eq-tag{font-family:var(--font-mono);font-size:10px;font-weight:500;padding:4px 10px;border-radius:2px;background:var(--surface-2);color:var(--text-2);border:1px solid var(--border-2);letter-spacing:.06em;text-transform:uppercase}
+.inv-row{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--border-2)}
 .inv-row:last-child{border-bottom:none}
-.inv-num{font-size:13px;font-weight:700}
-.inv-date{font-size:11px;color:#888}
-.inv-amt{font-size:16px;font-weight:800}
-/* Universal status palette (Commander Data 2026-04-14) — matches the main app */
-.badge{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;padding:3px 10px;border-radius:20px}
-.b-paid{background:rgba(39,174,96,.12);color:#27AE60}
-.b-sent{background:rgba(52,152,219,.12);color:#3498DB}
-.b-draft{background:rgba(127,140,141,.1);color:#7F8C8D}
-.b-over{background:rgba(231,76,60,.12);color:#E74C3C}
-.b-unpaid{background:rgba(243,156,18,.12);color:#F39C12}
-.b-partial{background:rgba(243,156,18,.12);color:#F39C12}
-.b-void{background:rgba(127,140,141,.1);color:#7F8C8D}
-.job-row{padding:12px 0;border-bottom:1px solid #f0f0f0}
+.inv-num{font-family:var(--font-mono);font-size:13px;font-weight:500;color:var(--text)}
+.inv-date{font-size:11px;color:var(--muted)}
+.inv-amt{font-family:var(--font-display);font-size:17px;font-weight:500}
+.badge{font-family:var(--font-mono);font-size:9.5px;font-weight:500;text-transform:uppercase;letter-spacing:.08em;padding:3px 9px;border-radius:2px}
+.b-paid{background:rgba(74,222,128,.1);color:#4ADE80;border:1px solid rgba(74,222,128,.25)}
+.b-sent{background:rgba(96,165,250,.1);color:#60A5FA;border:1px solid rgba(96,165,250,.25)}
+.b-draft{background:rgba(154,154,168,.1);color:var(--muted);border:1px solid var(--border)}
+.b-over{background:rgba(239,68,68,.1);color:#EF4444;border:1px solid rgba(239,68,68,.25)}
+.b-unpaid{background:rgba(245,158,11,.1);color:#F59E0B;border:1px solid rgba(245,158,11,.25)}
+.b-partial{background:rgba(245,158,11,.1);color:#F59E0B;border:1px solid rgba(245,158,11,.25)}
+.b-void{background:rgba(154,154,168,.08);color:var(--muted-2);border:1px solid var(--border-2)}
+.job-row{padding:12px 0;border-bottom:1px solid var(--border-2)}
 .job-row:last-child{border-bottom:none}
-.job-date{font-size:14px;font-weight:700}
-.job-scope{font-size:11px;color:#888;margin-top:2px}
-.eq-item{padding:10px 0;border-bottom:1px solid #f0f0f0;display:flex;justify-content:space-between;align-items:center}
+.job-date{font-size:14px;font-weight:600;color:var(--text)}
+.job-scope{font-size:11px;color:var(--muted);margin-top:2px}
+.eq-item{padding:10px 0;border-bottom:1px solid var(--border-2);display:flex;justify-content:space-between;align-items:center}
 .eq-item:last-child{border-bottom:none}
-.eq-name{font-size:13px;font-weight:600}
-.eq-detail{font-size:11px;color:#888}
+.eq-name{font-size:13px;font-weight:500;color:var(--text)}
+.eq-detail{font-size:11px;color:var(--muted)}
 .req-form{margin-top:12px}
-.req-form input,.req-form textarea,.req-form select{width:100%;padding:12px;border:1.5px solid #e0e0e0;border-radius:var(--rs);font-size:14px;font-family:inherit;margin-bottom:10px;background:#fff;color:#1a1a2e}
-.req-form input:focus,.req-form textarea:focus{border-color:var(--fire);outline:none}
+.req-form input,.req-form textarea,.req-form select{width:100%;padding:12px;border:1px solid var(--border);border-radius:var(--rs);font-size:14px;font-family:inherit;margin-bottom:10px;background:var(--surface-2);color:var(--text)}
+.req-form input:focus,.req-form textarea:focus,.req-form select:focus{border-color:var(--fire);outline:none;background:var(--surface)}
+.req-form input::placeholder,.req-form textarea::placeholder{color:var(--muted-2)}
 .req-form textarea{min-height:80px;resize:none}
-.btn{width:100%;padding:14px;border-radius:var(--r);background:var(--fire);color:#fff;font-size:15px;font-weight:800;border:none;cursor:pointer;min-height:50px}
+.req-form label{display:block;font-family:var(--font-mono);font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:6px}
+.btn{width:100%;padding:14px;border-radius:var(--rs);background:var(--fire);color:#fff;font-size:14px;font-weight:600;letter-spacing:.01em;border:none;cursor:pointer;min-height:50px;transition:background .12s}
+.btn:hover{background:var(--fire-2)}
 .btn:active{opacity:.9}
-.btn-dim{width:100%;padding:12px;border-radius:var(--r);background:#f3f4f6;color:#555;font-size:13px;font-weight:700;border:none;cursor:pointer;margin-top:8px}
-.footer{text-align:center;padding:32px 16px;font-size:11px;color:#bbb}
+.btn-dim{width:100%;padding:12px;border-radius:var(--rs);background:var(--surface-2);color:var(--text-2);font-size:13px;font-weight:500;border:1px solid var(--border);cursor:pointer;margin-top:8px}
+.btn-dim:hover{background:var(--surface-3)}
+.footer{text-align:center;padding:28px 16px 40px;font-size:11.5px;color:var(--muted);line-height:1.7}
 .footer a{color:var(--fire);text-decoration:none}
-.empty{text-align:center;padding:40px;color:#ccc;font-size:13px}
-.tab-bar{display:flex;gap:4px;margin-bottom:16px;background:#fff;border:1px solid #e8eaed;border-radius:var(--r);padding:4px;overflow-x:auto}
-.tab{flex:1;padding:10px 8px;border-radius:var(--rs);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;text-align:center;color:#888;cursor:pointer;white-space:nowrap;border:none;background:none}
-.tab.on{background:var(--fire);color:#fff}
-.note{background:#fffbf5;border:1px solid #fed7aa;border-radius:var(--rs);padding:14px;margin-bottom:16px;font-size:12px;color:#92400e;line-height:1.6}
-.loading{text-align:center;padding:80px;color:#999;font-size:14px}
+.footer-trust{display:flex;justify-content:center;align-items:center;gap:18px;flex-wrap:wrap;margin-bottom:10px;font-family:var(--font-mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.footer-trust-dot{width:6px;height:6px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 3px rgba(74,222,128,.15);display:inline-block}
+.footer-trust-phone{color:var(--text-2)}
+.empty{text-align:center;padding:40px;color:var(--muted-2);font-size:13px}
+.tab-bar{display:flex;gap:0;margin-bottom:16px;border-bottom:1px solid var(--border);padding:0}
+.tab{padding:10px 16px;border-radius:0;font-size:12px;font-weight:600;letter-spacing:.01em;color:var(--muted);cursor:pointer;white-space:nowrap;border:none;background:none;border-bottom:2px solid transparent;margin-bottom:-1px}
+.tab.on{color:var(--text);border-bottom-color:var(--fire)}
+.tab:hover:not(.on){color:var(--text-2)}
+.note{background:rgba(240,90,40,.06);border:1px solid rgba(240,90,40,.25);border-radius:var(--rs);padding:14px;margin-bottom:16px;font-size:12.5px;color:var(--text-2);line-height:1.6}
+.loading{text-align:center;padding:80px;color:var(--muted);font-size:14px}
 @media(max-width:480px){
   .stat-row{grid-template-columns:1fr 1fr 1fr}.stat-n{font-size:20px}
   .wrap{padding:0 10px 80px}
@@ -105,8 +127,11 @@ body{font-family:'Inter',system-ui,sans-serif;background:#f8f9fb;color:#1a1a2e;f
 </div>
 
 <div class="footer">
-  Stephens Advanced LLC · Fire Suppression & Safety<br>
-  <a href="tel:2149944799">(214) 994-4799</a>
+  <div class="footer-trust">
+    <span><span class="footer-trust-dot"></span> Encrypted · no password needed</span>
+    <span>Need help? <a href="tel:2149944799" class="footer-trust-phone">(214) 994-4799</a></span>
+  </div>
+  Stephens Advanced LLC · Fire Suppression &amp; Safety · Euless, TX
 </div>
 
 <script>
@@ -917,30 +942,37 @@ async function submitRequest(){
 function showPortalLanding(){
   document.getElementById('portalContent').innerHTML=`
     <div style="max-width:420px;margin:0 auto">
-      <div class="welcome" style="text-align:center;margin-bottom:24px">
-        <h1 style="font-size:20px">Customer Portal</h1>
-        <p>Access your equipment, invoices, and reports</p>
+      <div style="padding:8px 0 20px">
+        <div style="font-family:var(--font-mono);font-size:10.5px;color:var(--fire);letter-spacing:.14em;text-transform:uppercase;margin-bottom:10px">Secure customer portal</div>
+        <h1 style="font-family:var(--font-display);font-size:34px;font-weight:500;letter-spacing:-.025em;line-height:1.05;color:var(--text);margin-bottom:10px">Welcome back.</h1>
+        <p style="font-size:13.5px;color:var(--text-2);line-height:1.55;max-width:420px">Text yourself a sign-in link, or look up an invoice directly by number.</p>
       </div>
 
-      <div class="card">
-        <div class="card-t">Access Your Portal</div>
-        <div style="font-size:13px;color:#888;margin-bottom:12px">Enter your phone number and we'll text you a link</div>
-        <input id="pl-phone" type="tel" placeholder="(214) 555-1234" style="width:100%;padding:14px;border:1.5px solid #e0e0e0;border-radius:var(--rs);font-size:16px;font-family:inherit;margin-bottom:10px;background:#fff;color:#1a1a2e" onkeydown="if(event.key==='Enter')portalPhoneLookup()">
-        <button id="pl-btn" onclick="portalPhoneLookup()" style="width:100%;padding:14px;border-radius:var(--r);background:var(--fire);color:#fff;font-size:15px;font-weight:800;border:none;cursor:pointer;min-height:50px">Send Me My Link →</button>
-        <div id="pl-status" style="text-align:center;margin-top:10px;font-size:13px;min-height:20px"></div>
+      <div class="tab-bar" role="tablist" id="pl-tabs">
+        <button class="tab on" role="tab" aria-selected="true" id="pl-tab-signin" onclick="plSwitchTab('signin')">Sign in</button>
+        <button class="tab" role="tab" aria-selected="false" id="pl-tab-invoice" onclick="plSwitchTab('invoice')">Pay an invoice</button>
       </div>
 
-      <div style="text-align:center;padding:16px 0;color:#bbb;font-size:13px">— or —</div>
-
-      <div class="card">
-        <div class="card-t">Pay an Invoice</div>
-        <input id="inv-lookup" type="text" placeholder="INV-123456" style="width:100%;padding:14px;border:1.5px solid #e0e0e0;border-radius:var(--rs);font-size:16px;font-family:inherit;margin-bottom:10px;background:#fff;color:#1a1a2e" onkeydown="if(event.key==='Enter')portalInvLookup()">
-        <button id="inv-btn" onclick="portalInvLookup()" style="width:100%;padding:14px;border-radius:var(--r);background:#333;color:#fff;font-size:15px;font-weight:800;border:none;cursor:pointer;min-height:50px">Look Up Invoice →</button>
-        <div id="inv-result" style="margin-top:12px"></div>
+      <div id="pl-pane-signin">
+        <div class="req-form">
+          <label for="pl-phone">Mobile number</label>
+          <input id="pl-phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="(214) 555-1234" onkeydown="if(event.key==='Enter')portalPhoneLookup()">
+          <button id="pl-btn" onclick="portalPhoneLookup()" class="btn">Text me a sign-in link →</button>
+          <div id="pl-status" style="text-align:center;margin-top:10px;font-size:13px;min-height:20px;color:var(--text-2)"></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:14px;font-family:var(--font-mono);font-size:10.5px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase">
+          <span style="width:6px;height:6px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 3px rgba(74,222,128,.15);display:inline-block"></span>
+          Encrypted · no password needed
+        </div>
       </div>
 
-      <div style="text-align:center;padding:24px 0;font-size:13px;color:#999">
-        Questions? <a href="tel:2149944799" style="color:var(--fire);text-decoration:none;font-weight:700">(214) 994-4799</a>
+      <div id="pl-pane-invoice" style="display:none">
+        <div class="req-form">
+          <label for="inv-lookup">Invoice number</label>
+          <input id="inv-lookup" type="text" inputmode="text" placeholder="INV-123456" onkeydown="if(event.key==='Enter')portalInvLookup()">
+          <button id="inv-btn" onclick="portalInvLookup()" class="btn">Look up invoice →</button>
+          <div id="inv-result" style="margin-top:12px"></div>
+        </div>
       </div>
     </div>`
 }
@@ -1033,9 +1065,27 @@ function showError(msg){
   document.getElementById('portalContent').innerHTML=`
     <div style="text-align:center;padding:60px 24px">
       <div style="font-size:48px;margin-bottom:16px;opacity:.3">🔒</div>
-      <div style="font-size:15px;color:#666;line-height:1.6;max-width:400px;margin:0 auto">${msg}</div>
-      <div style="margin-top:24px"><a href="tel:2149944799" style="color:#f05a28;font-weight:700;text-decoration:none;font-size:16px">(214) 994-4799</a></div>
+      <div style="font-size:15px;color:var(--text-2);line-height:1.6;max-width:400px;margin:0 auto">${msg}</div>
+      <div style="margin-top:24px"><a href="tel:2149944799" style="color:var(--fire);font-weight:600;text-decoration:none;font-size:16px">(214) 994-4799</a></div>
     </div>`
+}
+
+// Landing-page tab switch (sign-in ↔ pay-an-invoice)
+function plSwitchTab(which){
+  const si=document.getElementById('pl-pane-signin'),inv=document.getElementById('pl-pane-invoice')
+  const tsi=document.getElementById('pl-tab-signin'),tinv=document.getElementById('pl-tab-invoice')
+  if(!si||!inv)return
+  if(which==='invoice'){
+    si.style.display='none';inv.style.display=''
+    tsi.classList.remove('on');tsi.setAttribute('aria-selected','false')
+    tinv.classList.add('on');tinv.setAttribute('aria-selected','true')
+    const i=document.getElementById('inv-lookup');if(i)setTimeout(()=>i.focus(),60)
+  }else{
+    si.style.display='';inv.style.display='none'
+    tsi.classList.add('on');tsi.setAttribute('aria-selected','true')
+    tinv.classList.remove('on');tinv.setAttribute('aria-selected','false')
+    const i=document.getElementById('pl-phone');if(i)setTimeout(()=>i.focus(),60)
+  }
 }
 
 initPortal()

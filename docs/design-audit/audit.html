@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=1440, initial-scale=1" />
+<title>Design Audit — Stephens Advanced LLC</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: oklch(98% 0.004 80);
+    --bg-2: oklch(96% 0.006 80);
+    --bg-3: oklch(92% 0.008 80);
+    --ink: oklch(18% 0.01 80);
+    --ink-2: oklch(38% 0.01 80);
+    --ink-3: oklch(58% 0.01 80);
+    --rule: oklch(88% 0.008 80);
+    --rule-2: oklch(82% 0.01 80);
+    --bad: oklch(52% 0.14 25);
+    --bad-bg: oklch(95% 0.025 25);
+    --good: oklch(48% 0.09 150);
+    --good-bg: oklch(95% 0.02 150);
+    --warn: oklch(62% 0.12 70);
+    --warn-bg: oklch(95% 0.03 70);
+    --orange: #E8601C;          /* Stephens brand */
+    --orange-2: #C94F14;
+    --sa-dark: #14141E;
+    --sa-dark-2: #1A1A2A;
+    --sa-dark-3: #232334;
+    --sa-text: #E8E8EE;
+    --sa-muted: #9A9AA8;
+  }
+  html,body { margin:0; background:var(--bg); color:var(--ink); }
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+  .serif { font-family: 'Fraunces', Georgia, serif; font-feature-settings: "ss01","ss02"; }
+
+  /* ——— layout ——— */
+  .page { max-width: 1320px; margin: 0 auto; padding: 0 48px; }
+  .rule { border-top: 1px solid var(--rule); }
+
+  /* ——— cover ——— */
+  .cover { padding: 96px 0 64px; border-bottom: 1px solid var(--rule); }
+  .cover .tag { font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3); }
+  .cover h1 { font-family: 'Fraunces', serif; font-weight: 500; font-size: 96px; line-height: 0.96; letter-spacing: -0.035em; margin: 24px 0 0; }
+  .cover h1 em { font-style: italic; font-weight: 400; color: var(--bad); }
+  .cover .meta { display: grid; grid-template-columns: repeat(4, 1fr); gap: 40px; margin-top: 56px; padding-top: 32px; border-top: 1px solid var(--rule); }
+  .cover .meta > div .k { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 8px;}
+  .cover .meta > div .v { font-size: 15px; color: var(--ink); }
+
+  /* ——— navbar ——— */
+  .topbar {
+    position: sticky; top:0; z-index: 50;
+    background: color-mix(in oklch, var(--bg), transparent 10%);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--rule);
+  }
+  .topbar .inner {
+    max-width: 1320px; margin: 0 auto; padding: 14px 48px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .topbar .brand { display:flex; align-items:center; gap:10px; font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-2);}
+  .topbar .brand .dot { width: 10px; height: 10px; background: var(--bad); border-radius: 2px;}
+  .topbar nav { display: flex; gap: 26px; }
+  .topbar nav a { color: var(--ink-2); text-decoration: none; font-size: 13px; }
+  .topbar nav a:hover { color: var(--ink);}
+
+  /* ——— section ——— */
+  section { padding: 96px 0; border-bottom: 1px solid var(--rule); }
+  .eyebrow { font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--bad); margin-bottom: 14px; display: flex; align-items: center; gap: 10px; }
+  .eyebrow .num { background: var(--bad); color: white; padding: 3px 8px; border-radius: 2px; font-size: 10px;}
+  h2 { font-family: 'Fraunces', serif; font-weight: 500; font-size: 56px; line-height: 1.02; letter-spacing: -0.025em; margin: 0 0 18px; }
+  h2 em { font-style: italic; font-weight: 400; }
+  .lede { font-size: 19px; line-height: 1.5; color: var(--ink-2); max-width: 760px; margin: 0 0 48px; }
+
+  /* ——— two-col ——— */
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; align-items: start; }
+  .ba-card { border: 1px solid var(--rule); background: white; border-radius: 4px; overflow: hidden; }
+  .ba-card .label { display: flex; align-items: center; gap: 10px; padding: 12px 18px; border-bottom: 1px solid var(--rule); font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; }
+  .ba-card.before .label { background: var(--bad-bg); color: var(--bad); }
+  .ba-card.after .label { background: var(--good-bg); color: var(--good); }
+  .ba-card .label .pill { margin-left: auto; font-size: 10px; padding: 2px 8px; border-radius: 10px; background: white; border: 1px solid currentColor;}
+  .ba-card .frame { background: #e8e8ec; padding: 28px; display: flex; justify-content: center; }
+
+  /* ——— issue cards ——— */
+  .issues { display: grid; grid-template-columns: 1fr; gap: 0; margin-top: 40px; border-top: 1px solid var(--rule);}
+  .issue {
+    display: grid; grid-template-columns: 80px 1fr 1fr 1fr;
+    gap: 32px; padding: 32px 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .issue .n { font-family: 'Fraunces', serif; font-size: 56px; line-height: 1; color: var(--ink-3); font-weight: 400; }
+  .issue h3 { font-family: 'Fraunces', serif; font-size: 26px; font-weight: 500; line-height: 1.15; margin: 0 0 10px; letter-spacing: -0.01em;}
+  .issue .where { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 10px;}
+  .issue .severity { display: inline-flex; align-items: center; gap: 6px; font-family: 'JetBrains Mono', monospace; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em; padding: 3px 8px; border-radius: 2px; }
+  .issue .severity.crit { background: var(--bad-bg); color: var(--bad); }
+  .issue .severity.high { background: var(--warn-bg); color: var(--warn); }
+  .issue .severity.med  { background: var(--bg-3); color: var(--ink-2); }
+  .issue h4 { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3); margin: 0 0 8px; font-weight: 500;}
+  .issue p { margin: 0 0 12px; color: var(--ink-2); font-size: 14.5px; line-height: 1.55; }
+  .issue .fix { border-left: 2px solid var(--good); padding-left: 16px; }
+  .issue .fix h4 { color: var(--good); }
+
+  /* ——— callout pins ——— */
+  .pinned { position: relative; }
+  .pin {
+    position: absolute; z-index: 5;
+    width: 26px; height: 26px; border-radius: 50%;
+    background: var(--bad); color: white;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700;
+    box-shadow: 0 0 0 3px rgba(232,96,28,0), 0 4px 14px rgba(0,0,0,0.25);
+    border: 2px solid white;
+  }
+
+  /* ——— scorecard ——— */
+  .scorecard { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 16px;}
+  .score {
+    border: 1px solid var(--rule); background: white; padding: 22px;
+    border-radius: 4px;
+  }
+  .score .name { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 16px;}
+  .score .grade { font-family: 'Fraunces', serif; font-size: 64px; line-height: 1; font-weight: 500; }
+  .score .grade.d { color: var(--bad); }
+  .score .grade.c { color: var(--warn); }
+  .score .grade.b { color: var(--ink-2); }
+  .score .grade.a { color: var(--good); }
+  .score .sub { font-size: 13px; color: var(--ink-2); margin-top: 14px; line-height: 1.4;}
+
+  /* ——— exec summary top issues ——— */
+  .summary-list { margin-top: 40px; border-top: 1px solid var(--rule);}
+  .summary-row {
+    display: grid; grid-template-columns: 48px 1fr 120px 140px; gap: 24px;
+    padding: 20px 0; border-bottom: 1px solid var(--rule);
+    align-items: center;
+  }
+  .summary-row .idx { font-family: 'Fraunces', serif; font-size: 28px; color: var(--ink-3);}
+  .summary-row .t { font-size: 16px; font-weight: 500; color: var(--ink); letter-spacing: -0.005em; }
+  .summary-row .t span { display:block; font-weight: 400; color: var(--ink-2); font-size: 13.5px; margin-top: 3px;}
+  .summary-row .w { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3);}
+
+  /* ——— footer ——— */
+  footer { padding: 80px 0; border-bottom: none; text-align: center; }
+  footer .sig { font-family: 'Fraunces', serif; font-style: italic; font-size: 32px; color: var(--ink-2); }
+  footer .meta { font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); margin-top: 24px;}
+
+  /* ——— swatches ——— */
+  .swatches { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px;}
+  .sw { width: 56px; }
+  .sw .chip { height: 56px; border-radius: 2px; border: 1px solid rgba(0,0,0,0.06); }
+  .sw .hex { font-family: 'JetBrains Mono', monospace; font-size: 9.5px; color: var(--ink-3); margin-top: 4px; text-align: center;}
+
+  /* ——— annotation box ——— */
+  .anno {
+    background: white; border: 1px solid var(--rule);
+    padding: 20px 22px; border-radius: 4px;
+    font-size: 14px; color: var(--ink-2); line-height: 1.55;
+  }
+  .anno .head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .anno .head .marker { width: 22px; height: 22px; border-radius: 50%; background: var(--bad); color: white; display: flex; align-items: center; justify-content: center; font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700; flex-shrink: 0;}
+  .anno .head .title { font-family: 'Inter', sans-serif; font-size: 14px; font-weight: 600; color: var(--ink);}
+  .anno.good .marker { background: var(--good); }
+
+  .stack { display: flex; flex-direction: column; gap: 10px;}
+
+  /* ——— frame wrappers ——— */
+  .phone-frame {
+    width: 360px; height: 720px; background: #000; border-radius: 44px;
+    padding: 10px; box-shadow: 0 30px 60px -30px rgba(0,0,0,0.4);
+    position: relative;
+  }
+  .phone-frame .screen { width: 100%; height: 100%; background: var(--sa-dark); border-radius: 34px; overflow: hidden; position: relative; }
+  .phone-frame .notch { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); width: 100px; height: 26px; background: #000; border-radius: 14px; z-index: 40; }
+
+  .browser-frame {
+    width: 100%; max-width: 580px;
+    background: #2a2a36; border-radius: 8px; overflow: hidden;
+    box-shadow: 0 30px 60px -30px rgba(0,0,0,0.35);
+  }
+  .browser-frame .chrome { padding: 10px 14px; display: flex; align-items: center; gap: 6px; border-bottom: 1px solid #1a1a24;}
+  .browser-frame .chrome .dot { width: 11px; height: 11px; border-radius: 50%; background: #444;}
+  .browser-frame .chrome .url { flex: 1; margin-left: 14px; background: #1a1a24; border-radius: 4px; padding: 5px 10px; font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: #8b8b9a; }
+  .browser-frame .screen { background: var(--sa-dark); aspect-ratio: 16/10; overflow: hidden; position: relative; }
+
+  /* ——— misc ——— */
+  .kicker { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-3);}
+  a { color: inherit; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="inner">
+    <div class="brand"><span class="dot"></span> Design Audit · Stephens Advanced</div>
+    <nav>
+      <a href="#summary">Summary</a>
+      <a href="#scorecard">Scorecard</a>
+      <a href="#cohesion">Cohesion</a>
+      <a href="#website">Website</a>
+      <a href="#app">Field App</a>
+      <a href="#portal">Portal</a>
+      <a href="#chat">Riker</a>
+      <a href="#roadmap">Roadmap</a>
+    </nav>
+  </div>
+</div>
+
+<div class="page cover">
+  <div class="tag">Confidential · Prepared for Founder · v1.0 · April 2026</div>
+  <h1>A <em>direct</em> design critique<br/>of Stephens Advanced.</h1>
+  <div class="meta">
+    <div><div class="k">Surfaces reviewed</div><div class="v">Public site · Field app · Customer portal · Riker chat</div></div>
+    <div><div class="k">Method</div><div class="v">Heuristic eval · WCAG 2.2 AA pass · Field-use simulation</div></div>
+    <div><div class="k">Total findings</div><div class="v">34 — 9 critical · 14 high · 11 medium</div></div>
+    <div><div class="k">Redesigns included</div><div class="v">5 screens, side-by-side</div></div>
+  </div>
+</div>
+
+<!-- Executive summary -->
+<section id="summary">
+  <div class="page">
+    <div class="eyebrow"><span class="num">01</span> Executive summary</div>
+    <h2>The product works. The <em>design</em> is actively fighting it.</h2>
+    <p class="lede">Stephens Advanced has built an impressive operational platform — 18,000+ systems under management, a real field app, a real portal, a real AI assistant. The functionality is ahead of most competitors in this vertical. But the <em>visual and interaction design</em> across these surfaces is a patchwork of three half-systems, two themes, one chat widget that no technician will talk to, and a field UI that punishes the person it's supposed to help. None of this is unfixable. Most of it is a week of disciplined design work away from being genuinely good.</p>
+
+    <div class="summary-list">
+      <div class="summary-row"><div class="idx">01</div><div class="t">Portal breaks the brand in half<span>Light portal vs. dark everything else reads as two different companies</span></div><div class="w">All surfaces</div><div class="w" style="color:var(--bad)">Critical</div></div>
+      <div class="summary-row"><div class="idx">02</div><div class="t">Field app density is wrong for the field<span>Small tap targets, fussy controls, calendar that buries today</span></div><div class="w">Field app</div><div class="w" style="color:var(--bad)">Critical</div></div>
+      <div class="summary-row"><div class="idx">03</div><div class="t">The "Complete Job" flow is a minefield<span>Build Invoice toggle, prompt-pay checkbox, and CTA all compete</span></div><div class="w">Job detail</div><div class="w" style="color:var(--bad)">Critical</div></div>
+      <div class="summary-row"><div class="idx">04</div><div class="t">CTA hierarchy is flat — everything is orange<span>The orange loses all meaning when half the UI wears it</span></div><div class="w">Website, app</div><div class="w" style="color:var(--warn)">High</div></div>
+      <div class="summary-row"><div class="idx">05</div><div class="t">"Chat with Riker" is a mystery, not an invitation<span>No one knows what Riker does. A chatbot named Riker with no context is friction.</span></div><div class="w">Website, app</div><div class="w" style="color:var(--warn)">High</div></div>
+      <div class="summary-row"><div class="idx">06</div><div class="t">Typography has no system<span>No consistent scale, weights, or hierarchy rules across surfaces</span></div><div class="w">All surfaces</div><div class="w" style="color:var(--warn)">High</div></div>
+      <div class="summary-row"><div class="idx">07</div><div class="t">Status tags are noise, not signal<span>SUPPRESSION / EXT / E-LIGHTS / OVERDUE / JON mixed together with no visual grammar</span></div><div class="w">Field app</div><div class="w" style="color:var(--warn)">High</div></div>
+      <div class="summary-row"><div class="idx">08</div><div class="t">Phone auth flow has no trust cues<span>Light page, orange button, zero indication this is a legitimate customer portal</span></div><div class="w">Portal</div><div class="w" style="color:var(--warn)">High</div></div>
+      <div class="summary-row"><div class="idx">09</div><div class="t">Accessibility is failing in multiple places<span>Contrast on muted text, tap target sizes, form labels, focus states</span></div><div class="w">All surfaces</div><div class="w" style="color:var(--warn)">High</div></div>
+      <div class="summary-row"><div class="idx">10</div><div class="t">"12 Overdue Jobs" uses alarm design for a recurring state<span>If something is always red, nothing is red</span></div><div class="w">Field app home</div><div class="w" style="color:var(--ink-2)">Medium</div></div>
+    </div>
+  </div>
+</section>
+
+<div id="root"></div>
+
+<footer class="page">
+  <div class="sig">End of audit.</div>
+  <div class="meta">Stephens Advanced LLC · Euless, TX · Design audit v1.0 · April 2026</div>
+</footer>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="src/mockups_website.jsx"></script>
+<script type="text/babel" src="src/mockups_app.jsx"></script>
+<script type="text/babel" src="src/mockups_portal.jsx"></script>
+<script type="text/babel" src="src/mockups_chat.jsx"></script>
+<script type="text/babel" src="src/sections.jsx"></script>
+<script type="text/babel" src="src/main.jsx"></script>
+
+</body>
+</html>
