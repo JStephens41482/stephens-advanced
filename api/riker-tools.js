@@ -479,12 +479,14 @@ const schedule_job = {
   },
   async handler(input, ctx) {
     const AUTO_CONFIRM = process.env.RIKER_AUTO_CONFIRM === 'true'
-    const CUSTOMER_CONTEXTS = new Set(['website', 'sms_customer', 'email_customer'])
+    // SMS/email customer channels route through Jon's approval gate.
+    // Website gets direct job creation (availability already verified via get_schedule_slots).
+    const CUSTOMER_CONTEXTS = new Set(['sms_customer', 'email_customer'])
 
     if (CUSTOMER_CONTEXTS.has(ctx.context)) {
-      // Route through pending confirmation
+      // Route through pending confirmation (SMS/email customer channels)
       const locationId = input.location_id || ctx.lastLocationId || null
-      const sourceChannel = ctx.context === 'email_customer' ? 'email' : (ctx.context === 'sms_customer' ? 'sms' : null)
+      const sourceChannel = ctx.context === 'email_customer' ? 'email' : 'sms'
       const { data: pending, error: pErr } = await ctx.supabase.from('pending_confirmations').insert({
         source_conversation_id: ctx.sessionId,
         source_channel: sourceChannel,
@@ -493,7 +495,7 @@ const schedule_job = {
         customer_name: input.contact_name || ctx.identity?.customer_name || null,
         location_id: locationId,
         proposed_action: { type: 'schedule_job', ...input },
-        proposed_reply: input.proposed_reply || ctx.rawReply || "We're set — I'll confirm the time shortly.",
+        proposed_reply: input.proposed_reply || ctx.rawReply || "Got your request in — Jon will confirm the time shortly.",
         reasoning: AUTO_CONFIRM ? 'Auto-confirm mode off for first pass' : 'Manual confirm'
       }).select().single()
       if (pErr) return { error: 'pending insert failed: ' + pErr.message }
@@ -508,10 +510,56 @@ const schedule_job = {
         ].filter(Boolean).join('\n')
         await sendSMSRaw(JON_PHONE, lines)
       } catch (e) { console.warn('[schedule_job] sms_jon failed:', e.message) }
-      return { ok: true, waiting_for_jon_approval: true, pending_id: pending?.id, message_to_customer: 'Let them know you\'ll confirm shortly — Jon still has to approve.' }
+      return { ok: true, waiting_for_jon_approval: true, pending_id: pending?.id, message_to_customer: "Got your request in — Jon will confirm the time shortly." }
     }
 
-    // Jon's own context — execute directly
+    // Website context — create job directly (availability pre-verified via get_schedule_slots)
+    // + notify Jon so he knows about the booking.
+    if (ctx.context === 'website') {
+      const locationId = input.location_id || ctx.lastLocationId
+      if (!locationId) return { error: 'location_id required (call add_client first)' }
+      const { data: job, error } = await ctx.supabase.from('jobs').insert({
+        location_id: locationId,
+        scheduled_date: input.date,
+        scheduled_time: input.time,
+        scope: input.scope,
+        status: 'scheduled',
+        estimated_duration_hours: input.duration_hours || 1.5,
+        notes: input.notes || 'Booked via website chat'
+      }).select().single()
+      if (error) return { error: error.message }
+      // Calendar event
+      const startDt = new Date(input.date + 'T' + input.time + ':00')
+      const endDt = new Date(startDt.getTime() + (input.duration_hours || 1.5) * 3600000)
+      await ctx.supabase.from('calendar_events').insert({
+        title: input.notes || 'Website booking',
+        event_type: 'job',
+        start_time: startDt.toISOString(),
+        end_time: endDt.toISOString(),
+        location_id: locationId,
+        job_id: job.id,
+        color: '#3b82f6'
+      })
+      const { data: locInfo } = await ctx.supabase.from('locations')
+        .select('name, is_brycer_jurisdiction, city').eq('id', locationId).single()
+      if (locInfo?.is_brycer_jurisdiction) {
+        await ctx.supabase.from('brycer_queue').insert({
+          location_id: locationId, location_name: locInfo.name, submitted: false
+        })
+      }
+      // Notify Jon
+      try {
+        const nameStr = input.business_name || locInfo?.name || 'Customer'
+        const cityStr = locInfo?.city ? ` · ${locInfo.city}` : ''
+        const brycer = locInfo?.is_brycer_jurisdiction ? ' (Brycer)' : ''
+        const line1 = `New website booking: ${nameStr}${cityStr}${brycer}`
+        const line2 = `${input.date} at ${input.time} · ${(input.scope || []).join(', ')}`
+        await sendSMSRaw(JON_PHONE, line1 + '\n' + line2)
+      } catch (e) { console.warn('[schedule_job:website] jon notification failed:', e.message) }
+      return { ok: true, job_id: job.id, scheduled_date: input.date, scheduled_time: input.time }
+    }
+
+    // Jon's own context (app, sms_jon, portal) — execute directly
     const locationId = input.location_id || ctx.lastLocationId
     if (!locationId) return { error: 'location_id required (use lookup_client or add_client first)' }
     const { data: job, error } = await ctx.supabase.from('jobs').insert({
@@ -1875,6 +1923,49 @@ const mazon_void = {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// TOOL: escalate_to_jon  (website context only)
+// ═══════════════════════════════════════════════════════════════
+// When the bot can't answer something and needs Jon's input, call
+// this instead of fabricating a response. It creates a chat_escalations
+// row and texts Jon. Jon can reply "RELAY: [answer]" via SMS and the
+// reply is pushed back into the customer's website chat session.
+const escalate_to_jon = {
+  schema: {
+    name: 'escalate_to_jon',
+    description: "Escalate a customer question to Jon via SMS when you can't answer it. Creates a record so Jon's SMS reply can be relayed back to the customer's website chat. After calling this, tell the customer: \"I've messaged Jon — he usually gets back right away unless he's got his hands full.\" Never fabricate Jon's availability or imply he'll respond at a specific time.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        question: { type: 'string', description: "The customer's question or situation to relay to Jon, verbatim or summarized." },
+        customer_name: { type: 'string', description: "Customer's name if already collected." },
+        context: { type: 'string', description: "Any relevant background Jon needs (what service, what was already collected, etc.)." }
+      },
+      required: ['question']
+    }
+  },
+  async handler(input, ctx) {
+    const sessionId = ctx.rikerSessionId || ctx.sessionId
+    // Log the escalation
+    const { error: escErr } = await ctx.supabase.from('chat_escalations').insert({
+      web_session_id: sessionId,
+      customer_name: input.customer_name || null,
+      question: input.question
+    })
+    if (escErr) console.warn('[escalate_to_jon] insert failed:', escErr.message)
+    // Text Jon — include RELAY instructions so he knows how to respond cross-channel
+    try {
+      const nameStr = input.customer_name || 'Website visitor'
+      const ctxLine = input.context ? `\nContext: ${input.context}` : ''
+      const body = `🌐 Web chat\n${nameStr} asks: ${input.question}${ctxLine}\n\nReply: RELAY: [your answer]`
+      await sendSMSRaw(JON_PHONE, body)
+    } catch (e) {
+      return { error: 'Failed to notify Jon: ' + e.message }
+    }
+    return { ok: true, escalated: true }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // REGISTRY + CONTEXT FILTERING
 // ═══════════════════════════════════════════════════════════════
 
@@ -1891,12 +1982,13 @@ const ALL_TOOLS = {
   get_job_activity, add_job_note,
   update_job, cancel_job,
   send_email, get_conversation_history, create_invoice, list_job_documents,
-  mazon_list_queue, mazon_mark_funded, mazon_void
+  mazon_list_queue, mazon_mark_funded, mazon_void,
+  escalate_to_jon
 }
 
 // null = all tools. Keeps Jon contexts unrestricted; trims customer contexts.
 const CONTEXT_TOOLS = {
-  website: ['lookup_client', 'lookup_business', 'get_schedule_slots', 'get_rate_card', 'schedule_job', 'add_client'],
+  website: ['lookup_client', 'lookup_business', 'get_schedule_slots', 'get_rate_card', 'schedule_job', 'add_client', 'escalate_to_jon'],
   portal: ['lookup_client', 'get_invoices', 'get_equipment', 'get_schedule_slots', 'schedule_job', 'write_memory'],
   app: null,
   sms_jon: null,

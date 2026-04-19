@@ -113,6 +113,67 @@ module.exports = async function handler(req, res) {
     const context = isJon ? 'sms_jon' : 'sms_customer'
     const party = isJon ? 'jon' : 'customer'
 
+    // ── Admin OTP ────────────────────────────────────────────────────
+    // Jon texts the magic word → Riker generates a 6-digit OTP and SMS's
+    // it back. Jon replies with the 6 digits → admin session confirmed.
+    // This is the identity verification gate for elevated SMS commands.
+    if (isJon) {
+      const bodyLower = body.toLowerCase().trim()
+      if (bodyLower === 'antidisestablishmentarianism' || /\badmin\s+access\b/i.test(body)) {
+        const otp = String(Math.floor(100000 + Math.random() * 900000))
+        const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString()
+        await supabase.from('admin_otps').insert({ phone: from, code: otp, expires_at: expiresAt, used: false })
+        await sendAckSMS(from, `Admin code: ${otp}\n(Expires in 10 min — reply with just the 6 digits)`)
+        return res.status(200).send('<Response/>')
+      }
+
+      if (/^\d{6}$/.test(body.trim())) {
+        const { data: otpRow } = await supabase.from('admin_otps')
+          .select('id')
+          .eq('phone', from)
+          .eq('code', body.trim())
+          .eq('used', false)
+          .gt('expires_at', new Date().toISOString())
+          .order('created_at', { ascending: false })
+          .limit(1).maybeSingle()
+        if (otpRow) {
+          await supabase.from('admin_otps').update({ used: true }).eq('id', otpRow.id)
+          await sendAckSMS(from, 'Admin verified. Full access active.')
+          return res.status(200).send('<Response/>')
+        }
+        // Not a valid OTP — fall through to normal Riker processing
+      }
+    }
+
+    // ── Cross-channel relay: Jon texting "RELAY: [answer]" ────────────
+    // When the website bot escalated to Jon via escalate_to_jon, it texts
+    // him with instructions to "Reply: RELAY: [answer]". This intercepts
+    // that pattern, pushes Jon's answer into the customer's web session,
+    // and marks the escalation resolved. Falls through if no open escalation.
+    if (isJon) {
+      const relayMatch = body.match(/^RELAY:\s*(.+)/si)
+      if (relayMatch) {
+        const answer = relayMatch[1].trim()
+        const { data: esc } = await supabase.from('chat_escalations')
+          .select('id, web_session_id')
+          .eq('resolved', false)
+          .order('created_at', { ascending: false })
+          .limit(1).maybeSingle()
+        if (esc) {
+          // Push Jon's answer as an outbound assistant message in the web session
+          await core.appendToRikerSession(supabase, esc.web_session_id, 'assistant', answer)
+          await supabase.from('chat_escalations').update({
+            resolved: true,
+            jon_replied_at: new Date().toISOString(),
+            jon_reply: answer
+          }).eq('id', esc.id)
+          await sendAckSMS(from, 'Sent — the customer will see your reply on the website.')
+          return res.status(200).send('<Response/>')
+        }
+        // No open escalation — fall through so Riker handles it normally
+      }
+    }
+
     // ── Feedback signal ─────────────────────────────────────────────
     // Jon texting 👍 / 👎 / "thumbs up" / "thumbs down" (optionally with
     // a note) logs feedback against his most recent Riker interaction
