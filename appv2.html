@@ -2649,12 +2649,12 @@ function rTodayCard(){
   if(ovAll.length){
     const oldest=ovAll.reduce((a,b)=>a.scheduled_date<b.scheduled_date?a:b)
     const ageDays=Math.max(1,Math.floor((new Date(tLocal)-new Date(oldest.scheduled_date))/86400000))
-    h+=`<div style="background:var(--warns);border-left:3px solid var(--warn);border-radius:var(--rs);padding:12px 14px;margin-bottom:12px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:12px" onclick="openCalDay('overdue')">
+    h+=`<div style="background:var(--warns);border-left:3px solid var(--warn);border-radius:var(--rs);padding:12px 14px;margin-bottom:12px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:12px" onclick="askRikerAboutOverdue()">
       <div>
         <div style="font-size:12px;font-weight:800;color:var(--warn);letter-spacing:.3px">${ovAll.length} Overdue Job${ovAll.length>1?'s':''}</div>
-        <div style="font-size:11px;color:var(--g1);margin-top:3px">Oldest: ${ageDays} day${ageDays>1?'s':''} overdue</div>
+        <div style="font-size:11px;color:var(--g1);margin-top:3px">Oldest: ${ageDays} day${ageDays>1?'s':''} overdue · Tap to ask Riker</div>
       </div>
-      <span style="font-size:18px;color:var(--warn)">›</span>
+      <span style="font-size:12px;font-weight:800;color:var(--warn);white-space:nowrap">💬 Ask Riker ›</span>
     </div>`
   }
 
@@ -2781,12 +2781,12 @@ function rJobsCal(){
   if(ovAll.length){
     const oldest=ovAll.reduce((a,b)=>a.scheduled_date<b.scheduled_date?a:b)
     const ageDays=Math.max(1,Math.floor((new Date(t)-new Date(oldest.scheduled_date))/86400000))
-    h+=`<div style="background:var(--warns);border-left:3px solid var(--warn);border-radius:var(--rs);padding:12px 14px;margin-top:12px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:12px" onclick="openCalDay('overdue')">
+    h+=`<div style="background:var(--warns);border-left:3px solid var(--warn);border-radius:var(--rs);padding:12px 14px;margin-top:12px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:12px" onclick="askRikerAboutOverdue()">
       <div>
         <div style="font-size:12px;font-weight:800;color:var(--warn);letter-spacing:.3px">${ovAll.length} Overdue Job${ovAll.length>1?'s':''}</div>
-        <div style="font-size:11px;color:var(--g1);margin-top:3px">Oldest: ${ageDays} day${ageDays>1?'s':''} overdue</div>
+        <div style="font-size:11px;color:var(--g1);margin-top:3px">Oldest: ${ageDays} day${ageDays>1?'s':''} overdue · Tap to ask Riker</div>
       </div>
-      <span style="font-size:18px;color:var(--warn)">›</span>
+      <span style="font-size:12px;font-weight:800;color:var(--warn);white-space:nowrap">💬 Ask Riker ›</span>
     </div>`
   }
 
@@ -9575,6 +9575,18 @@ function openChat(){
     renderChat()
   }
   setTimeout(()=>$('chatInput')?.focus(),100)
+}
+
+// Tap-through from the overdue banner (per design audit issue C2).
+// Opens Riker chat and immediately sends "handle my overdue jobs" so he
+// returns a tabular card list with tappable ::ACTIONS:: buttons — instead
+// of the old "here's a generic list" flow.
+function askRikerAboutOverdue(){
+  openChat()
+  setTimeout(()=>{
+    const input=$('chatInput')
+    if(input){input.value='Handle my overdue jobs — which ones should I reschedule or call about?';sendChat()}
+  },150)
 }
 
 function closeChat(){
