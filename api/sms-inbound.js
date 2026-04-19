@@ -113,38 +113,6 @@ module.exports = async function handler(req, res) {
     const context = isJon ? 'sms_jon' : 'sms_customer'
     const party = isJon ? 'jon' : 'customer'
 
-    // ── Admin OTP ────────────────────────────────────────────────────
-    // Jon texts the magic word → Riker generates a 6-digit OTP and SMS's
-    // it back. Jon replies with the 6 digits → admin session confirmed.
-    // This is the identity verification gate for elevated SMS commands.
-    if (isJon) {
-      const bodyLower = body.toLowerCase().trim()
-      if (bodyLower === 'antidisestablishmentarianism' || /\badmin\s+access\b/i.test(body)) {
-        const otp = String(Math.floor(100000 + Math.random() * 900000))
-        const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString()
-        await supabase.from('admin_otps').insert({ phone: from, code: otp, expires_at: expiresAt, used: false })
-        await sendAckSMS(from, `Admin code: ${otp}\n(Expires in 10 min — reply with just the 6 digits)`)
-        return res.status(200).send('<Response/>')
-      }
-
-      if (/^\d{6}$/.test(body.trim())) {
-        const { data: otpRow } = await supabase.from('admin_otps')
-          .select('id')
-          .eq('phone', from)
-          .eq('code', body.trim())
-          .eq('used', false)
-          .gt('expires_at', new Date().toISOString())
-          .order('created_at', { ascending: false })
-          .limit(1).maybeSingle()
-        if (otpRow) {
-          await supabase.from('admin_otps').update({ used: true }).eq('id', otpRow.id)
-          await sendAckSMS(from, 'Admin verified. Full access active.')
-          return res.status(200).send('<Response/>')
-        }
-        // Not a valid OTP — fall through to normal Riker processing
-      }
-    }
-
     // ── Cross-channel relay: Jon texting "RELAY: [answer]" ────────────
     // When the website bot escalated to Jon via escalate_to_jon, it texts
     // him with instructions to "Reply: RELAY: [answer]". This intercepts

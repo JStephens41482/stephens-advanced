@@ -1923,6 +1923,66 @@ const mazon_void = {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// TOOL: request_owner_otp  (website context only)
+// ═══════════════════════════════════════════════════════════════
+// When someone on the website chat claims to be Jon / the owner and
+// wants to verify their identity, send a 6-digit code to Jon's
+// registered phone number. They then type it back into the chat.
+const request_owner_otp = {
+  schema: {
+    name: 'request_owner_otp',
+    description: "Send a one-time verification code to Jon's registered phone number so the person can prove they're the owner. Call this when someone says they're Jon, claims to be the owner, or asks for admin/owner access. After calling it, tell them: 'I just texted a verification code to your registered number — type it here when you get it.'",
+    input_schema: { type: 'object', properties: {} }
+  },
+  async handler(_input, ctx) {
+    const otp = String(Math.floor(100000 + Math.random() * 900000))
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString()
+    const { error } = await ctx.supabase.from('admin_otps').insert({
+      phone: JON_PHONE, code: otp, expires_at: expiresAt, used: false
+    })
+    if (error) return { error: 'Failed to generate code: ' + error.message }
+    try {
+      await sendSMSRaw(JON_PHONE, `Verification code: ${otp}\n(Requested from website chat — expires in 10 min)`)
+    } catch (e) {
+      return { error: 'Code created but SMS failed: ' + e.message }
+    }
+    return { ok: true, sent: true }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOOL: verify_owner_otp  (website context only)
+// ═══════════════════════════════════════════════════════════════
+const verify_owner_otp = {
+  schema: {
+    name: 'verify_owner_otp',
+    description: "Verify the 6-digit code the person typed to confirm they're the owner. Call after request_owner_otp when the user provides a code.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        code: { type: 'string', description: 'The 6-digit code the user typed.' }
+      },
+      required: ['code']
+    }
+  },
+  async handler(input, ctx) {
+    const code = String(input.code || '').trim()
+    if (!/^\d{6}$/.test(code)) return { verified: false, reason: 'invalid_format' }
+    const { data: row } = await ctx.supabase.from('admin_otps')
+      .select('id')
+      .eq('phone', JON_PHONE)
+      .eq('code', code)
+      .eq('used', false)
+      .gt('expires_at', new Date().toISOString())
+      .order('created_at', { ascending: false })
+      .limit(1).maybeSingle()
+    if (!row) return { verified: false, reason: 'invalid_or_expired' }
+    await ctx.supabase.from('admin_otps').update({ used: true }).eq('id', row.id)
+    return { verified: true }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // TOOL: escalate_to_jon  (website context only)
 // ═══════════════════════════════════════════════════════════════
 // When the bot can't answer something and needs Jon's input, call
@@ -1983,12 +2043,13 @@ const ALL_TOOLS = {
   update_job, cancel_job,
   send_email, get_conversation_history, create_invoice, list_job_documents,
   mazon_list_queue, mazon_mark_funded, mazon_void,
-  escalate_to_jon
+  escalate_to_jon,
+  request_owner_otp, verify_owner_otp
 }
 
 // null = all tools. Keeps Jon contexts unrestricted; trims customer contexts.
 const CONTEXT_TOOLS = {
-  website: ['lookup_client', 'lookup_business', 'get_schedule_slots', 'get_rate_card', 'schedule_job', 'add_client', 'escalate_to_jon'],
+  website: ['lookup_client', 'lookup_business', 'get_schedule_slots', 'get_rate_card', 'schedule_job', 'add_client', 'escalate_to_jon', 'request_owner_otp', 'verify_owner_otp'],
   portal: ['lookup_client', 'get_invoices', 'get_equipment', 'get_schedule_slots', 'schedule_job', 'write_memory'],
   app: null,
   sms_jon: null,
