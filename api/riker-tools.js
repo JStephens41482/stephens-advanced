@@ -167,7 +167,7 @@ const query_jobs = {
 const lookup_client = {
   schema: {
     name: 'lookup_client',
-    description: "Search clients by business name, city, or phone. Fuzzy match. Use whenever Jon mentions a business you need to act on. Returns up to 10 matches with ids.",
+    description: "Search clients by business name, city, or phone. Fuzzy match. Returns up to 10 matches with location details AND last_job (date, scope, status of the most recent job). Always call this first when a customer gives you a business name — before asking for address/city info they may already have on file.",
     input_schema: {
       type: 'object',
       properties: {
@@ -212,7 +212,30 @@ const lookup_client = {
 
     const { data, error } = await q
     if (error) return { error: error.message }
-    return { count: data.length, matches: data }
+    if (!data || !data.length) return { count: 0, matches: [] }
+
+    // Enrich each match with last completed/scheduled job so callers know
+    // when the location was last serviced without needing a separate query.
+    const ids = data.map(r => r.id)
+    const { data: jobs } = await ctx.supabase.from('jobs')
+      .select('location_id, scheduled_date, scheduled_time, scope, status')
+      .in('location_id', ids)
+      .in('status', ['completed', 'scheduled'])
+      .order('scheduled_date', { ascending: false })
+    const lastJobByLoc = {}
+    for (const j of (jobs || [])) {
+      if (!lastJobByLoc[j.location_id]) lastJobByLoc[j.location_id] = j
+    }
+
+    return {
+      count: data.length,
+      matches: data.map(r => ({
+        ...r,
+        last_job: lastJobByLoc[r.id]
+          ? { date: lastJobByLoc[r.id].scheduled_date, scope: lastJobByLoc[r.id].scope, status: lastJobByLoc[r.id].status }
+          : null
+      }))
+    }
   }
 }
 
