@@ -1184,6 +1184,210 @@ const delete_invoice = {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// TOOL: build_route
+// ═══════════════════════════════════════════════════════════════
+// Server-side port of routeJobs() from appv2.html. Same filter rules
+// (reject TEST/DEMO, require street number in address), same pool
+// behavior (overdue + today + tomorrow + day-after-tomorrow when no
+// explicit filter given), same Directions-API call with
+// waypoints=optimize:true, same Haversine fallback.
+//
+// Returned shape mirrors what openRouteView renders — stop order +
+// per-leg miles/duration + totals. No ETA synthesis in v1; that was
+// never in the client logic either.
+
+const BASE_ADDR = '3801 Alder Trail, Euless, TX 76040'
+const BASE_LATLNG = { lat: 32.837, lng: -97.082 }
+const CITY_COORDS = {
+  'euless': { lat: 32.837, lng: -97.082 }, 'bedford': { lat: 32.844, lng: -97.143 },
+  'hurst': { lat: 32.823, lng: -97.188 }, 'colleyville': { lat: 32.900, lng: -97.150 },
+  'grapevine': { lat: 32.934, lng: -97.078 }, 'irving': { lat: 32.814, lng: -96.949 },
+  'grand prairie': { lat: 32.746, lng: -96.994 }, 'arlington': { lat: 32.735, lng: -97.108 },
+  'mansfield': { lat: 32.563, lng: -97.141 }, 'fort worth': { lat: 32.755, lng: -97.333 },
+  'dallas': { lat: 32.779, lng: -96.800 }, 'garland': { lat: 32.912, lng: -96.638 },
+  'mesquite': { lat: 32.767, lng: -96.599 }, 'carrollton': { lat: 32.954, lng: -96.890 },
+  'lewisville': { lat: 33.046, lng: -96.994 }, 'denton': { lat: 33.215, lng: -97.133 },
+  'plano': { lat: 33.020, lng: -96.699 }, 'frisco': { lat: 33.150, lng: -96.824 },
+  'mckinney': { lat: 33.197, lng: -96.640 }, 'allen': { lat: 33.103, lng: -96.671 },
+  'richardson': { lat: 32.948, lng: -96.730 }, 'sachse': { lat: 32.970, lng: -96.578 },
+  'wylie': { lat: 33.015, lng: -96.539 }, 'melissa': { lat: 33.284, lng: -96.571 },
+  'weatherford': { lat: 32.760, lng: -97.797 }, 'glen rose': { lat: 32.233, lng: -97.757 },
+  'cleburne': { lat: 32.350, lng: -97.386 }, 'burleson': { lat: 32.542, lng: -97.321 }
+}
+function _cityCoords(city) {
+  if (!city) return BASE_LATLNG
+  return CITY_COORDS[String(city).toLowerCase().trim()] || BASE_LATLNG
+}
+function _haversine(a, b) {
+  const R = 3959
+  const dLat = (b.lat - a.lat) * Math.PI / 180
+  const dLng = (b.lng - a.lng) * Math.PI / 180
+  const x = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * Math.PI / 180) * Math.cos(b.lat * Math.PI / 180) * Math.sin(dLng / 2) ** 2
+  return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x))
+}
+function _locAddr(l) {
+  return [l.address, l.city, l.state || 'TX', l.zip].filter(Boolean).join(', ')
+}
+function _fallbackRoute(jobs) {
+  let remaining = [...jobs], route = [], cur = BASE_LATLNG
+  while (remaining.length) {
+    let best = null, bestD = Infinity, bestI = 0
+    remaining.forEach((j, i) => {
+      const c = _cityCoords(j.location?.city)
+      const d = _haversine(cur, c)
+      if (d < bestD) { bestD = d; best = j; bestI = i }
+    })
+    route.push({ job: best, address: _locAddr(best.location || {}), dist: Math.round(bestD), duration: Math.round(bestD * 2.2), durationText: Math.round(bestD * 2.2) + ' min' })
+    cur = _cityCoords(best.location?.city)
+    remaining.splice(bestI, 1)
+  }
+  return route
+}
+
+const build_route = {
+  schema: {
+    name: 'build_route',
+    description: "Build an optimized driving route through Jon's scheduled jobs. Uses the same logic as the app's Route Plan button (Google Maps directions with waypoint optimization, Haversine fallback if the API fails, skips TEST/DEMO rows and anything without a street number). Default pool is overdue + today + tomorrow + day-after. Pass date for a specific day, or job_ids for an arbitrary subset. Returns stops in drive order with per-leg miles/minutes and totals.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        date: { type: 'string', description: 'YYYY-MM-DD. If given alone, route just this date.' },
+        job_ids: { type: 'array', items: { type: 'string' }, description: 'Explicit job UUID list — overrides date/pool logic.' },
+        include_overdue: { type: 'boolean', description: 'When routing today (default), include overdue scheduled jobs. Default true.' }
+      }
+    }
+  },
+  async handler(input, ctx) {
+    const key = process.env.GOOGLE_MAPS_API_KEY
+    const today = new Date().toISOString().split('T')[0]
+
+    // 1. Pick the job pool.
+    let pool = []
+    if (Array.isArray(input.job_ids) && input.job_ids.length) {
+      const { data, error } = await ctx.supabase.from('jobs')
+        .select('id, status, scheduled_date, scheduled_time, scope, location_id, location:locations(id,name,address,city,state,zip,lat,lng)')
+        .in('id', input.job_ids)
+      if (error) return { error: error.message }
+      pool = data || []
+    } else if (input.date) {
+      const { data, error } = await ctx.supabase.from('jobs')
+        .select('id, status, scheduled_date, scheduled_time, scope, location_id, location:locations(id,name,address,city,state,zip,lat,lng)')
+        .eq('scheduled_date', input.date)
+        .eq('status', 'scheduled')
+      if (error) return { error: error.message }
+      pool = data || []
+    } else {
+      // Default pool: overdue + today + tomorrow + day-after. Mirrors openRouteView.
+      const tom = new Date(Date.now() + 86400000).toISOString().split('T')[0]
+      const dat2 = new Date(Date.now() + 172800000).toISOString().split('T')[0]
+      const { data, error } = await ctx.supabase.from('jobs')
+        .select('id, status, scheduled_date, scheduled_time, scope, location_id, location:locations(id,name,address,city,state,zip,lat,lng)')
+        .eq('status', 'scheduled')
+        .lte('scheduled_date', dat2)
+      if (error) return { error: error.message }
+      pool = (data || []).filter(j => {
+        if (j.scheduled_date < today && input.include_overdue === false) return false
+        return j.scheduled_date < today || j.scheduled_date === today || j.scheduled_date === tom || j.scheduled_date === dat2
+      })
+    }
+
+    // 2. Filter out test rows and addresses without a street number.
+    pool = pool.filter(j => {
+      const name = (j.location?.name || '').toUpperCase()
+      if (name.includes('TEST') || name.includes('DEMO') || name.includes('SAMPLE')) return false
+      const a = _locAddr(j.location || {})
+      return a.length > 5 && /\d/.test(a)
+    })
+
+    if (!pool.length) return { ok: true, date: input.date || today, count: 0, stops: [], note: 'No routable jobs in the selected pool.' }
+
+    // 3. Build stops in the order the client would.
+    const stops = pool.map(j => ({ job: j, address: _locAddr(j.location || {}) }))
+
+    // 4. One-stop fast path — distance_matrix for the single leg, no optimization needed.
+    if (stops.length === 1) {
+      if (key) {
+        try {
+          const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${encodeURIComponent(BASE_ADDR)}&destinations=${encodeURIComponent(stops[0].address)}&key=${key}`
+          const r = await fetch(url)
+          const d = await r.json()
+          const el = d.rows?.[0]?.elements?.[0]
+          if (el?.status === 'OK') {
+            const routed = [{ job: stops[0].job, address: stops[0].address, dist: Math.round(el.distance.value / 1609.34), duration: Math.round(el.duration.value / 60), durationText: el.duration.text }]
+            return _formatRoute(routed, 'google')
+          }
+        } catch (e) { /* fall through */ }
+      }
+      return _formatRoute(_fallbackRoute(pool), 'haversine')
+    }
+
+    // 5. Multi-stop: Directions with waypoint optimization. Same call the
+    //    field app makes via cachedMapsCall('directions').
+    if (key) {
+      try {
+        const allAddr = stops.map(s => s.address)
+        const waypointStr = '&waypoints=optimize:true|' + allAddr.slice(0, -1).map(w => encodeURIComponent(w)).join('|')
+        const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${encodeURIComponent(BASE_ADDR)}&destination=${encodeURIComponent(allAddr[allAddr.length - 1])}${waypointStr}&key=${key}`
+        const r = await fetch(url)
+        const d = await r.json()
+        if (d.status === 'OK' && d.routes?.[0]) {
+          const route = d.routes[0]
+          const order = route.waypoint_order || []
+          const legs = route.legs || []
+          const optimized = []
+          if (order.length) {
+            const reordered = [...order.map(idx => stops[idx]), stops[stops.length - 1]]
+            reordered.forEach((s, i) => optimized.push({
+              job: s.job, address: s.address,
+              dist: Math.round((legs[i]?.distance?.value || 0) / 1609.34),
+              duration: Math.round((legs[i]?.duration?.value || 0) / 60),
+              durationText: legs[i]?.duration?.text || ''
+            }))
+          } else {
+            stops.forEach((s, i) => optimized.push({
+              job: s.job, address: s.address,
+              dist: Math.round((legs[i]?.distance?.value || 0) / 1609.34),
+              duration: Math.round((legs[i]?.duration?.value || 0) / 60),
+              durationText: legs[i]?.duration?.text || ''
+            }))
+          }
+          return _formatRoute(optimized, 'google')
+        }
+      } catch (e) { /* fall through */ }
+    }
+
+    return _formatRoute(_fallbackRoute(pool), 'haversine')
+  }
+}
+
+function _formatRoute(routed, source) {
+  const total_miles = routed.reduce((s, r) => s + (r.dist || 0), 0)
+  const total_minutes = routed.reduce((s, r) => s + (r.duration || 0), 0)
+  return {
+    ok: true,
+    source,
+    count: routed.length,
+    total_miles,
+    total_minutes,
+    origin: BASE_ADDR,
+    stops: routed.map((r, i) => ({
+      order: i + 1,
+      job_id: r.job.id,
+      location_id: r.job.location?.id || r.job.location_id,
+      name: r.job.location?.name || null,
+      city: r.job.location?.city || null,
+      address: r.address,
+      scope: r.job.scope || [],
+      scheduled_date: r.job.scheduled_date,
+      scheduled_time: r.job.scheduled_time,
+      miles_from_prev: r.dist,
+      minutes_from_prev: r.duration,
+      duration_text: r.durationText
+    }))
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // REGISTRY + CONTEXT FILTERING
 // ═══════════════════════════════════════════════════════════════
 
@@ -1195,7 +1399,8 @@ const ALL_TOOLS = {
   add_client, add_todo, write_memory, delete_memory, mark_invoice_paid,
   lookup_business,
   update_client, delete_client, merge_clients,
-  update_invoice, void_invoice, delete_invoice
+  update_invoice, void_invoice, delete_invoice,
+  build_route
 }
 
 // null = all tools. Keeps Jon contexts unrestricted; trims customer contexts.
