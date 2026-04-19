@@ -71,7 +71,7 @@ module.exports = async function handler(req, res) {
   }
 
   const sbUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || 'https://motjasdokoxwiodwzyps.supabase.co'
-  const sbKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY
+  const sbKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY
   if (!sbKey) return res.status(500).json({ error: 'Missing Supabase key' })
 
   const SB = createClient(sbUrl, sbKey)
@@ -79,6 +79,7 @@ module.exports = async function handler(req, res) {
 
   if (job === 'morning-digest') return morningDigest(req, res, SB)
   if (job === 'auto-reschedule') return autoReschedule(req, res, SB)
+  if (job === 'riker-feedback-review') return feedbackReview(req, res, SB)
   if (job === 'riker-morning-brief') return runProactive('morningBrief', res, SB)
   if (job === 'riker-invoice-aging') return runProactive('invoiceAging', res, SB)
   if (job === 'riker-compliance-alerts') return runProactive('complianceAlerts', res, SB)
@@ -281,6 +282,76 @@ async function morningDigest(req, res, SB) {
 //
 // Jobs that appear in a still-open pending proposal are skipped so
 // successive daily runs don't re-spam.
+// ═══════════════════════════════════════════════════════════════
+// FEEDBACK REVIEW — weekly digest of 👎 / 👍 signals
+// ═══════════════════════════════════════════════════════════════
+// Runs Sundays; pulls the last 7 days of unreviewed feedback, asks
+// Claude to synthesize patterns, texts Jon a one-SMS summary. Marks
+// the rows reviewed so they don't re-appear next week.
+async function feedbackReview(req, res, SB) {
+  try {
+    const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString()
+    const { data: fbs, error } = await SB.from('riker_feedback')
+      .select('id, rating, note, user_message, assistant_reply, context, created_at')
+      .gte('created_at', weekAgo)
+      .eq('reviewed', false)
+      .order('created_at', { ascending: true })
+    if (error) return res.status(500).json({ error: error.message })
+    if (!fbs || !fbs.length) return res.status(200).json({ ok: true, summary: 'No unreviewed feedback.' })
+
+    const ups = fbs.filter(f => f.rating === 'up').length
+    const downs = fbs.filter(f => f.rating === 'down')
+
+    let summary = `Riker weekly: ${ups}👍  ${downs.length}👎 this week.`
+    if (downs.length) {
+      const key = process.env.CLAUDE_KEY
+      if (key) {
+        try {
+          const reviewPrompt = `Jon flagged ${downs.length} Riker turns as "down" this week. For each, you have the user message, Riker's reply, and (sometimes) Jon's note. Identify the 1-3 patterns worth fixing and propose a concrete prompt-rule or tool-behavior change for each. Keep under 160 chars total — it goes in a single SMS to Jon. Lead with the most actionable.
+
+${downs.map((d, i) => `#${i+1} user:"${(d.user_message||'').slice(0,120)}" riker:"${(d.assistant_reply||'').slice(0,120)}"${d.note?` jon said:"${d.note.slice(0,120)}"`:''}`).join('\n\n')}`
+          const res2 = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+            body: JSON.stringify({
+              model: 'claude-sonnet-4-6',
+              max_tokens: 300,
+              messages: [{ role: 'user', content: reviewPrompt }]
+            })
+          })
+          if (res2.ok) {
+            const d2 = await res2.json()
+            const txt = (d2.content?.[0]?.text || '').trim()
+            if (txt) summary += '\n\n' + txt
+          }
+        } catch (e) { /* best effort */ }
+      }
+    }
+
+    // Send to Jon
+    const sid = process.env.TWILIO_ACCOUNT_SID
+    const token = process.env.TWILIO_AUTH_TOKEN
+    const from = process.env.TWILIO_PHONE_NUMBER || process.env.TWILIO_FROM_NUMBER
+    if (sid && token && from) {
+      try {
+        const auth = Buffer.from(sid + ':' + token).toString('base64')
+        await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
+          method: 'POST',
+          headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({ To: '+12149944799', From: from, Body: summary }).toString()
+        })
+      } catch (e) { console.error('[feedback-review] sms send:', e.message) }
+    }
+
+    // Mark rows reviewed
+    await SB.from('riker_feedback').update({ reviewed: true }).in('id', fbs.map(f => f.id))
+
+    return res.status(200).json({ ok: true, ups, downs: downs.length, summary })
+  } catch (e) {
+    return res.status(500).json({ error: e.message })
+  }
+}
+
 async function autoReschedule(req, res, SB) {
   const now = new Date()
   const log = []

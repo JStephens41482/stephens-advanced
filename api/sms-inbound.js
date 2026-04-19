@@ -16,6 +16,63 @@ function normalizePhone(raw) {
   return p
 }
 
+// ── Feedback detection ──────────────────────────────────────────────
+// Returns {rating, note} or null. Recognizes 👍 / 👎 / "thumbs up" /
+// "thumbs down" / ^(good|nice|perfect|nope|wrong|bad|missed)$ with an
+// optional note trailing. Keep the grammar loose since Jon texts fast.
+function detectFeedback(body) {
+  if (!body) return null
+  const t = String(body).trim()
+  if (!t) return null
+  // Emoji fast path
+  if (t.startsWith('👍')) return { rating: 'up', note: t.replace(/^👍\s*/, '').trim() || null }
+  if (t.startsWith('👎')) return { rating: 'down', note: t.replace(/^👎\s*/, '').trim() || null }
+  // "thumbs up/down" + optional note
+  const mUp = t.match(/^thumbs?\s*up\b[:.\-\s]*(.*)$/i)
+  if (mUp) return { rating: 'up', note: (mUp[1] || '').trim() || null }
+  const mDown = t.match(/^thumbs?\s*down\b[:.\-\s]*(.*)$/i)
+  if (mDown) return { rating: 'down', note: (mDown[1] || '').trim() || null }
+  // Single-word verdicts — only if the whole message is one of these
+  if (/^(perfect|nice work|good call|nailed it)\.?!?$/i.test(t)) return { rating: 'up', note: null }
+  if (/^(wrong|bad call|missed it|nope that's wrong|that was wrong)\.?!?$/i.test(t)) return { rating: 'down', note: null }
+  return null
+}
+
+async function recordFeedback(supabase, { phone, rating, note }) {
+  try {
+    // Find Jon's most recent Riker interaction on any sms_jon or app session
+    const { data: last } = await supabase.from('riker_interactions')
+      .select('id, session_id, context, user_message, reply')
+      .in('context', ['sms_jon', 'app'])
+      .order('created_at', { ascending: false }).limit(1).maybeSingle()
+    await supabase.from('riker_feedback').insert({
+      interaction_id: last?.id || null,
+      session_id: last?.session_id || null,
+      context: last?.context || null,
+      rating, note: note || null,
+      user_message: last?.user_message || null,
+      assistant_reply: last?.reply || null
+    })
+  } catch (e) {
+    console.error('[sms-inbound] recordFeedback failed:', e.message)
+  }
+}
+
+async function sendAckSMS(to, body) {
+  const sid = process.env.TWILIO_ACCOUNT_SID
+  const token = process.env.TWILIO_AUTH_TOKEN
+  const from = process.env.TWILIO_PHONE_NUMBER || process.env.TWILIO_FROM_NUMBER
+  if (!sid || !token || !from) return
+  try {
+    const auth = Buffer.from(sid + ':' + token).toString('base64')
+    await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
+      method: 'POST',
+      headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ To: to, From: from, Body: body }).toString()
+    })
+  } catch (e) { /* best effort */ }
+}
+
 function verifyTwilioSignature(req, url) {
   const authToken = process.env.TWILIO_AUTH_TOKEN
   const signature = req.headers['x-twilio-signature'] || req.headers['X-Twilio-Signature']
@@ -55,6 +112,21 @@ module.exports = async function handler(req, res) {
     const isJon = from === JON_PHONE
     const context = isJon ? 'sms_jon' : 'sms_customer'
     const party = isJon ? 'jon' : 'customer'
+
+    // ── Feedback signal ─────────────────────────────────────────────
+    // Jon texting 👍 / 👎 / "thumbs up" / "thumbs down" (optionally with
+    // a note) logs feedback against his most recent Riker interaction
+    // rather than firing a new Claude turn. Short-circuits before the
+    // normal message flow so we don't spend tokens processing the
+    // reaction itself.
+    if (isJon) {
+      const fb = detectFeedback(body)
+      if (fb) {
+        await recordFeedback(supabase, { phone: from, rating: fb.rating, note: fb.note })
+        await sendAckSMS(from, fb.rating === 'up' ? 'Noted — thanks.' : 'Noted. Logged the miss.')
+        return res.status(200).send('<Response/>')
+      }
+    }
 
     // Find or create conversation
     let { data: conv } = await supabase
