@@ -24,11 +24,24 @@ const memory = require('./riker-memory')
 const { RIKER_IDENTITY, buildIdentity } = require('./riker-prompts')
 const tools = require('./riker-tools')
 
-const CLAUDE_MODEL = 'claude-sonnet-4-6'
+// Two-tier model routing. Sonnet for simple CRUD / lookups / greetings
+// (fast + cheap), Opus for planning / routing / multi-step reasoning.
+// A tiny Haiku classifier picks per-turn. See classifyComplexity().
+const CLAUDE_MODEL_SIMPLE = 'claude-sonnet-4-6'
+const CLAUDE_MODEL_COMPLEX = 'claude-opus-4-7'
+const CLAUDE_MODEL_CLASSIFIER = 'claude-haiku-4-5-20251001'
+const CLAUDE_MODEL = CLAUDE_MODEL_SIMPLE  // default + back-compat for callers that import it
 const CLAUDE_PRICE_INPUT = 3.0 / 1_000_000
 const CLAUDE_PRICE_OUTPUT = 15.0 / 1_000_000
 const CLAUDE_PRICE_CACHE_READ = 0.30 / 1_000_000
 const CLAUDE_PRICE_CACHE_WRITE = 3.75 / 1_000_000
+// Opus is ~5x Sonnet input; keep the same accumulator keys but the ratio
+// skews cost higher when the classifier picks complex. Tracked in
+// riker_interactions for later tuning.
+const CLAUDE_PRICE_INPUT_OPUS = 15.0 / 1_000_000
+const CLAUDE_PRICE_OUTPUT_OPUS = 75.0 / 1_000_000
+const CLAUDE_PRICE_CACHE_READ_OPUS = 1.50 / 1_000_000
+const CLAUDE_PRICE_CACHE_WRITE_OPUS = 18.75 / 1_000_000
 const MAX_TOOL_TURNS = 10
 const MEMORY_EXTRACT_EVERY_N_INBOUND = 4
 
@@ -296,10 +309,137 @@ async function buildNotebookBlock({ supabase, context, identity }) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// COMPLEXITY CLASSIFIER — cheap Haiku picks which model to run
+// ═══════════════════════════════════════════════════════════════
+// Returns 'simple' or 'complex'. Short-circuits obvious cases via keyword
+// scan so most turns skip the network hop. For genuinely ambiguous cases
+// a ~4-token Haiku call decides.
+async function classifyComplexity(message) {
+  const m = String(message || '').toLowerCase().trim()
+  if (!m || m.length < 12) return 'simple'
+  // Hard signals → complex
+  if (/\b(build route|plan my|optimize|reshuffle|reschedule all|analy[sz]e|investigat|summari[sz]e|brief|draft|write up|walk me through|why (did|does|is|are)|should i|help me think|strateg)/.test(m)) return 'complex'
+  // Hard signals → simple
+  if (/^(y|yes|ok|no|k|sure|thx|thanks|cool|sounds good|perfect|great)\b/.test(m)) return 'simple'
+  if (m.length < 40 && /^(add|log|mark|delete|remove|cancel|show|list|what's|whats|who is|whos|where is|when is|find|look up|lookup|pull|get|check)\b/.test(m)) return 'simple'
+  // Long messages lean complex
+  if (m.length > 200) return 'complex'
+  // Ambiguous — ask Haiku
+  const key = process.env.CLAUDE_KEY
+  if (!key) return 'simple'
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': key,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: CLAUDE_MODEL_CLASSIFIER,
+        max_tokens: 4,
+        system: "Classify the complexity of an operator's message to their AI business assistant. Reply with exactly one word: 'simple' (CRUD, lookups, greetings, acks, single-step) or 'complex' (planning, routing, scheduling, multi-step reasoning, narrative generation, judgment calls).",
+        messages: [{ role: 'user', content: message }]
+      })
+    })
+    if (!res.ok) return 'simple'
+    const data = await res.json()
+    const txt = (data.content?.[0]?.text || '').toLowerCase().trim()
+    return txt.includes('complex') ? 'complex' : 'simple'
+  } catch {
+    return 'simple'
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ACTIVE MEMORY EXTRACTION — per-turn durable fact capture
+// ═══════════════════════════════════════════════════════════════
+// After each Jon-context turn, quietly ask Haiku whether the exchange
+// revealed anything worth remembering long-term (preferences, quirks,
+// relationships, facts about clients, gate codes, etc.). If yes, write
+// via riker-memory. If not, silent no-op. ~$0.002 per turn.
+//
+// Scoped to sms_jon + app only — customer phrasing is noisy and we
+// shouldn't auto-promote their language to standing memory.
+async function extractDurableMemory({ supabase, context, identity, userMessage, reply }) {
+  if (!['sms_jon', 'app'].includes(context)) return []
+  const key = process.env.CLAUDE_KEY
+  if (!key) return []
+  if (!userMessage) return []
+
+  const prompt = `You just observed an exchange between Jon Stephens (owner of a DFW fire-suppression company) and his AI assistant. Decide whether anything durable was revealed — a preference, a relationship, a client quirk, a gate code, a vendor note, a rule Jon follows, a person's role.
+
+If yes, return a JSON array of memory entries. Each entry shape:
+  {"scope":"global|location|billing_account|job","category":"preference|relationship|fact|gate_code|vendor|procedure","priority":1-9,"content":"<one short sentence, no quotes>"}
+
+Priority guidance: 1-3 nice-to-know, 4-6 standard, 7-9 important (but RESERVE priority 10 for explicit Jon-issued standing orders — the main prompt handles those separately).
+
+Do NOT extract:
+- Ephemeral task state ("I'm going to reschedule that one")
+- Data already in the database (job IDs, invoice amounts, dates)
+- Things you're unsure about
+- Explicit standing orders phrased "from now on / always / never" — the main prompt captures those
+
+If nothing durable, return [].
+
+USER: ${String(userMessage).slice(0, 500)}
+ASSISTANT: ${String(reply || '').slice(0, 500)}
+
+Return ONLY the JSON array, no prose.`
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': key,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: CLAUDE_MODEL_CLASSIFIER,
+        max_tokens: 400,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    })
+    if (!res.ok) return []
+    const data = await res.json()
+    const txt = (data.content?.[0]?.text || '').trim()
+    // Strip code fences if present
+    const jsonStr = txt.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim()
+    if (!jsonStr || jsonStr === '[]') return []
+    let parsed
+    try { parsed = JSON.parse(jsonStr) } catch { return [] }
+    if (!Array.isArray(parsed)) return []
+    const written = []
+    for (const entry of parsed.slice(0, 5)) {  // cap at 5 per turn
+      if (!entry?.content || typeof entry.content !== 'string') continue
+      if (!['global', 'location', 'billing_account', 'job'].includes(entry.scope)) continue
+      const category = entry.category || 'fact'
+      const priority = Math.min(9, Math.max(1, Number(entry.priority) || 5))
+      try {
+        const r = await memory.writeMemory(supabase, {
+          scope: entry.scope,
+          category,
+          content: entry.content.trim(),
+          priority,
+          location_id: entry.scope === 'location' ? identity.location_id : null,
+          billing_account_id: entry.scope === 'billing_account' ? identity.billing_account_id : null,
+          tech_id: identity.tech_id || null
+        }, { source: 'auto_extract' })
+        if (r) written.push({ content: entry.content, scope: entry.scope, priority })
+      } catch (e) { /* best effort */ }
+    }
+    return written
+  } catch (e) {
+    return []
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // CLAUDE TOOL-USE LOOP
 // ═══════════════════════════════════════════════════════════════
 
-async function callClaudeWithTools({ systemBlocks, messages, toolSchemas, toolCtx, maxTurns = MAX_TOOL_TURNS, onCost }) {
+async function callClaudeWithTools({ systemBlocks, messages, toolSchemas, toolCtx, maxTurns = MAX_TOOL_TURNS, onCost, model = CLAUDE_MODEL_SIMPLE }) {
   const claudeKey = process.env.CLAUDE_KEY
   if (!claudeKey) throw new Error('CLAUDE_KEY not set')
 
@@ -323,7 +463,7 @@ async function callClaudeWithTools({ systemBlocks, messages, toolSchemas, toolCt
         'anthropic-beta': 'prompt-caching-2024-07-31,web-search-2025-03-05'
       },
       body: JSON.stringify({
-        model: CLAUDE_MODEL,
+        model,
         max_tokens: 1500,
         system: systemBlocks,
         messages: convo,
@@ -521,6 +661,16 @@ async function processMessage({
     rawReply: null
   }
 
+  // Model routing: classify complexity, pick Sonnet vs Opus.
+  // Jon-side contexts only — customer contexts stay on Sonnet to keep
+  // cost/latency predictable.
+  let chosenModel = CLAUDE_MODEL_SIMPLE
+  let complexity = 'simple'
+  if (['sms_jon', 'app'].includes(context)) {
+    complexity = await classifyComplexity(message)
+    if (complexity === 'complex') chosenModel = CLAUDE_MODEL_COMPLEX
+  }
+
   // Run the tool-use loop
   let loopResult
   try {
@@ -528,7 +678,8 @@ async function processMessage({
       systemBlocks,
       messages: history,
       toolSchemas,
-      toolCtx
+      toolCtx,
+      model: chosenModel
     })
   } catch (e) {
     console.error('[riker-core] tool-use loop failed:', e)
@@ -559,21 +710,33 @@ async function processMessage({
     })
   } catch (e) { console.error('[riker-core] appendOutbound failed:', e.message) }
 
-  // Cost
+  // Cost — price varies by model tier
   const usage = loopResult.usage
-  const cost = (usage.input_tokens * CLAUDE_PRICE_INPUT)
-    + (usage.output_tokens * CLAUDE_PRICE_OUTPUT)
-    + (usage.cache_read_input_tokens * CLAUDE_PRICE_CACHE_READ)
-    + (usage.cache_creation_input_tokens * CLAUDE_PRICE_CACHE_WRITE)
+  const isOpus = chosenModel === CLAUDE_MODEL_COMPLEX
+  const cost = (usage.input_tokens * (isOpus ? CLAUDE_PRICE_INPUT_OPUS : CLAUDE_PRICE_INPUT))
+    + (usage.output_tokens * (isOpus ? CLAUDE_PRICE_OUTPUT_OPUS : CLAUDE_PRICE_OUTPUT))
+    + (usage.cache_read_input_tokens * (isOpus ? CLAUDE_PRICE_CACHE_READ_OPUS : CLAUDE_PRICE_CACHE_READ))
+    + (usage.cache_creation_input_tokens * (isOpus ? CLAUDE_PRICE_CACHE_WRITE_OPUS : CLAUDE_PRICE_CACHE_WRITE))
+
+  // Active memory extraction — fire and forget so it doesn't delay reply
+  // latency. Only runs on sms_jon + app contexts.
+  let memoryExtractPromise = Promise.resolve([])
+  if (['sms_jon', 'app'].includes(context)) {
+    memoryExtractPromise = extractDurableMemory({ supabase, context, identity, userMessage: message, reply })
+  }
+
+  // Await the extract before logging so we capture the auto-written count
+  const autoMemoryWritten = await memoryExtractPromise.catch(() => [])
 
   // Log interaction
-  await logInteraction(supabase, {
+  const interactionRow = await logInteraction(supabase, {
     context, sessionKey, sessionStorage,
     userMessage: message,
     reply,
+    model: chosenModel,
     actions_attempted: loopResult.actionsTaken.map(a => ({ type: a.type, input: a.input })),
     actions_succeeded: loopResult.actionsTaken,
-    memory_writes: loopResult.actionsTaken.filter(a => a.type === 'write_memory' && a.ok).length,
+    memory_writes: loopResult.actionsTaken.filter(a => a.type === 'write_memory' && a.ok).length + autoMemoryWritten.length,
     memory_reads: memCount,
     input_tokens: usage.input_tokens,
     output_tokens: usage.output_tokens,
@@ -589,8 +752,12 @@ async function processMessage({
     actions_taken: loopResult.actionsTaken,
     client_hints: loopResult.clientHints,
     session_id: sessionKey,
+    interaction_id: interactionRow?.id || null,
     cost,
     memories_read: memCount,
+    memories_auto_written: autoMemoryWritten.length,
+    model: chosenModel,
+    complexity,
     turns: loopResult.turns
   }
 }
@@ -624,12 +791,12 @@ async function generateProactive({ supabase, context, identity, instruction }) {
 
 async function logInteraction(supabase, row) {
   try {
-    await supabase.from('riker_interactions').insert({
+    const { data } = await supabase.from('riker_interactions').insert({
       session_id: row.sessionKey,
       session_source: row.sessionStorage,
       context: row.context,
       user_message: row.userMessage || null,
-      model: CLAUDE_MODEL,
+      model: row.model || CLAUDE_MODEL,
       reply: row.reply || null,
       actions_attempted: row.actions_attempted || [],
       actions_succeeded: row.actions_succeeded || [],
@@ -642,8 +809,9 @@ async function logInteraction(supabase, row) {
       cost_usd: row.cost || null,
       latency_ms: row.latency || null,
       error: row.error || null
-    })
-  } catch (e) { console.error('[riker-core] interaction log failed:', e) }
+    }).select('id').single()
+    return data
+  } catch (e) { console.error('[riker-core] interaction log failed:', e); return null }
 }
 
 module.exports = {
