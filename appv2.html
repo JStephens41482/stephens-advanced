@@ -2574,13 +2574,16 @@ function rCal(){
       <button onclick="event.stopPropagation();sessionStorage.setItem('route_dismissed_'+td(),1);rCal()" style="position:absolute;top:6px;right:6px;background:none;border:none;font-size:14px;color:var(--g2);cursor:pointer;padding:4px 8px">✕</button>
     </div>`
   }
-  const useV2=(new URLSearchParams(location.search).get('home')==='v2')||localStorage.getItem('home_v2')==='1'
-  if(useV2){
-    $('calC').innerHTML=top+'<div id="todayContent"></div><div id="calContent" style="display:none;margin-top:16px"></div>'
-    rTodayCard()
+  // Today card is the default home (audit #07). ?home=v1 is the escape
+  // hatch back to calendar-first if anything needs it.
+  const homeParam=new URLSearchParams(location.search).get('home')
+  const useV1=homeParam==='v1'||localStorage.getItem('home_v1')==='1'
+  if(useV1){
+    $('calC').innerHTML=top+'<div id="calContent"></div>'
     rJobsCal()
   }else{
-    $('calC').innerHTML=top+'<div id="calContent"></div>'
+    $('calC').innerHTML=top+'<div id="todayContent"></div><div id="calContent" style="display:none;margin-top:16px"></div>'
+    rTodayCard()
     rJobsCal()
   }
 }
