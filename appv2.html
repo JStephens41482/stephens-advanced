@@ -108,7 +108,9 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0d0f14">
 <title>Stephens Advanced</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <style>
@@ -404,7 +406,7 @@ select{-webkit-appearance:none;appearance:none}
 <div class="toast" id="toast"></div>
 <div id="lockScreen" style="position:fixed;inset:0;z-index:9999;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px">
   <img src="/icon-120.png" width="40" height="40" alt="Stephens Advanced" style="border-radius:8px;margin-bottom:14px">
-  <div style="font-family:Georgia,serif;font-size:26px;font-weight:500;letter-spacing:-.3px;margin-bottom:4px">Stephens <span style="color:var(--fire)">Advanced</span></div>
+  <div style="font-family:'Fraunces',Georgia,serif;font-size:26px;font-weight:500;letter-spacing:-.3px;margin-bottom:4px">Stephens <span style="color:var(--fire)">Advanced</span></div>
   <div style="font-size:11px;color:var(--g1);text-transform:uppercase;letter-spacing:.18em;margin-bottom:36px">Crew sign-in</div>
 
   <div id="authStep1" style="width:100%;max-width:280px;display:flex;flex-direction:column;align-items:stretch">
@@ -1789,28 +1791,28 @@ async function openReports(){
     return`<span style="font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;font-weight:700;color:${c};margin-top:6px;display:inline-block">${txt}${isPct?' YTD':''}</span>`
   }
   h+=`<div style="margin:4px 0 18px">
-    <div style="font-family:Georgia,serif;font-size:22px;font-weight:500;letter-spacing:-.3px">Business snapshot</div>
+    <div style="font-family:'Fraunces',Georgia,serif;font-size:22px;font-weight:500;letter-spacing:-.3px">Business snapshot</div>
     <div style="font-size:11px;color:var(--g1);font-family:'JetBrains Mono',ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase;margin-top:3px">FY ${thisYear} · As of ${now.toLocaleDateString('en-US',{month:'short',day:'numeric'})}</div>
   </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px">
     <div style="background:var(--c1);border:1px solid var(--b1);border-radius:var(--r);padding:16px 14px">
       <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:var(--g1);margin-bottom:8px">Revenue YTD</div>
-      <div style="font-family:Georgia,serif;font-size:26px;font-weight:500;color:var(--w);font-variant-numeric:tabular-nums;letter-spacing:-.3px;line-height:1">${fmt(ytdRev)}</div>
+      <div style="font-family:'Fraunces',Georgia,serif;font-size:26px;font-weight:500;color:var(--w);font-variant-numeric:tabular-nums;letter-spacing:-.3px;line-height:1">${fmt(ytdRev)}</div>
       ${deltaPill(revDeltaPct)}
     </div>
     <div style="background:var(--c1);border:1px solid var(--b1);border-radius:var(--r);padding:16px 14px">
       <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:var(--g1);margin-bottom:8px">Outstanding</div>
-      <div style="font-family:Georgia,serif;font-size:26px;font-weight:500;color:${totalOutstanding>0?'var(--status-yellow)':'var(--w)'};font-variant-numeric:tabular-nums;letter-spacing:-.3px;line-height:1">${fmt(totalOutstanding)}</div>
+      <div style="font-family:'Fraunces',Georgia,serif;font-size:26px;font-weight:500;color:${totalOutstanding>0?'var(--status-yellow)':'var(--w)'};font-variant-numeric:tabular-nums;letter-spacing:-.3px;line-height:1">${fmt(totalOutstanding)}</div>
       <div style="font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;color:var(--g1);margin-top:6px">${unpaid.length} open inv</div>
     </div>
     <div style="background:var(--c1);border:1px solid var(--b1);border-radius:var(--r);padding:16px 14px">
       <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:var(--g1);margin-bottom:8px">Jobs this month</div>
-      <div style="font-family:Georgia,serif;font-size:26px;font-weight:500;color:var(--w);font-variant-numeric:tabular-nums;letter-spacing:-.3px;line-height:1">${thisMonthJobs}</div>
+      <div style="font-family:'Fraunces',Georgia,serif;font-size:26px;font-weight:500;color:var(--w);font-variant-numeric:tabular-nums;letter-spacing:-.3px;line-height:1">${thisMonthJobs}</div>
       ${deltaPill(jobsDelta,false)}
     </div>
     <div style="background:var(--c1);border:1px solid var(--b1);border-radius:var(--r);padding:16px 14px">
       <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:var(--g1);margin-bottom:8px">Avg job value</div>
-      <div style="font-family:Georgia,serif;font-size:26px;font-weight:500;color:var(--w);font-variant-numeric:tabular-nums;letter-spacing:-.3px;line-height:1">${fmt(avgJobValue)}</div>
+      <div style="font-family:'Fraunces',Georgia,serif;font-size:26px;font-weight:500;color:var(--w);font-variant-numeric:tabular-nums;letter-spacing:-.3px;line-height:1">${fmt(avgJobValue)}</div>
       ${deltaPill(avgDelta)}
     </div>
   </div>`
@@ -2596,7 +2598,7 @@ function rTodayCard(){
   const completed=D.jobs.filter(j=>j.scheduled_date===tLocal&&j.status==='completed').length
 
   let h=`<div style="margin:4px 0 14px">
-    <div style="font-family:Georgia,serif;font-size:26px;font-weight:500;letter-spacing:-.4px;line-height:1.1">${greet}, ${esc(firstName)}.</div>
+    <div style="font-family:'Fraunces',Georgia,serif;font-size:26px;font-weight:500;letter-spacing:-.4px;line-height:1.1">${greet}, ${esc(firstName)}.</div>
     <div style="font-size:12px;color:var(--g1);margin-top:4px;font-variant-numeric:tabular-nums">${now.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})} · ${todayJobs.length} stop${todayJobs.length===1?'':'s'} scheduled${completed?' · '+completed+' done':''}</div>
   </div>`
 
@@ -2616,7 +2618,7 @@ function rTodayCard(){
       <div style="position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--fire)"></div>
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:4px">
         <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1.4px;color:var(--fire)">Next Stop</div>
-        <div style="font-family:Georgia,serif;font-size:22px;font-weight:500;color:var(--w);font-variant-numeric:tabular-nums;line-height:1">${esc(timeStr)}</div>
+        <div style="font-family:'Fraunces',Georgia,serif;font-size:22px;font-weight:500;color:var(--w);font-variant-numeric:tabular-nums;line-height:1">${esc(timeStr)}</div>
       </div>
       <div style="font-size:19px;font-weight:700;line-height:1.2;margin-bottom:4px;cursor:pointer" onclick="openCust('${next.location_id||l.id}')">${esc(l.name||'Unknown')}</div>
       <div style="font-size:13px;color:var(--g1);margin-bottom:12px">${esc(addr||'No address on file')}</div>
@@ -3300,7 +3302,7 @@ async function openJob(id){
       <div style="background:var(--c1);border:1.5px solid var(--b1);border-radius:var(--r);padding:14px;margin-bottom:10px">
         <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--b1)">
           <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1.4px;color:var(--g2)">Invoice</div>
-          <div style="font-family:Georgia,serif;font-size:22px;font-weight:500;color:var(--w);font-variant-numeric:tabular-nums" id="compInvTotal">${_invTotalStr||'—'}</div>
+          <div style="font-family:'Fraunces',Georgia,serif;font-size:22px;font-weight:500;color:var(--w);font-variant-numeric:tabular-nums" id="compInvTotal">${_invTotalStr||'—'}</div>
         </div>
         <label style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--c2);border:1px solid var(--b1);border-radius:var(--rs);margin-bottom:10px;cursor:pointer;font-size:13px;color:var(--w)">
           <input type="checkbox" id="pay-at-service" style="width:20px;height:20px;accent-color:var(--fire)" onchange="document.getElementById('compBtnLabel')&&(document.getElementById('compBtnLabel').textContent=this.checked?'Complete job \u00b7 Collect payment':'Complete job \u00b7 Send invoice')">

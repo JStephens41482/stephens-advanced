@@ -1345,7 +1345,9 @@ document.addEventListener('DOMContentLoaded',()=>{
 
 <!-- Riker Chat Widget — live AI scheduler backed by /api/riker?context=website -->
 <button id="csBtn" onclick="rikerChatToggle()" aria-label="Open chat — ask us anything" title="Ask us anything">
-  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+  <span class="cs-btn-dot" aria-hidden="true"></span>
+  <span>Ask us anything</span>
+  <span class="cs-btn-sub">&lt; 30 sec</span>
 </button>
 
 <div id="csPanel">
@@ -1372,12 +1374,21 @@ document.addEventListener('DOMContentLoaded',()=>{
 </div>
 
 <style>
-#csBtn{position:fixed;bottom:24px;right:24px;width:60px;height:60px;border-radius:50%;background:linear-gradient(135deg,#f05a28,#d44a1a);border:none;color:#fff;cursor:pointer;z-index:1000;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 24px rgba(240,90,40,.45);transition:transform .18s,box-shadow .18s;animation:csPulse 2.4s ease-in-out infinite}
-#csBtn:hover{transform:translateY(-2px) scale(1.05);box-shadow:0 8px 28px rgba(240,90,40,.55)}
-#csBtn:active{transform:scale(.94)}
-@keyframes csPulse{
-  0%,100%{box-shadow:0 6px 24px rgba(240,90,40,.45),0 0 0 0 rgba(240,90,40,.5)}
-  50%{box-shadow:0 6px 24px rgba(240,90,40,.5),0 0 0 10px rgba(240,90,40,0)}
+/* Per design audit #15: replaced the mystery-box bubble with a thin
+   support bar that carries its own affordance — green online dot,
+   "Ask us anything", response-time microcopy. Visible-at-rest. */
+#csBtn{position:fixed;bottom:20px;right:20px;height:46px;padding:0 18px 0 14px;border-radius:24px;background:#0d0f14;border:1px solid rgba(255,255,255,.08);color:#E8E8EE;cursor:pointer;z-index:1000;display:inline-flex;align-items:center;gap:10px;font-family:var(--font-sans);font-size:13px;font-weight:500;letter-spacing:.01em;box-shadow:0 10px 30px rgba(0,0,0,.35),0 0 0 1px rgba(240,90,40,.18);transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}
+#csBtn:hover{transform:translateY(-1px);box-shadow:0 14px 36px rgba(0,0,0,.45),0 0 0 1px rgba(240,90,40,.35);border-color:rgba(240,90,40,.35)}
+#csBtn:active{transform:scale(.97)}
+#csBtn .cs-btn-dot{width:8px;height:8px;border-radius:50%;background:#4ADE80;box-shadow:0 0 0 3px rgba(74,222,128,.2);animation:csBtnPulse 2.4s ease-in-out infinite;flex-shrink:0}
+#csBtn .cs-btn-sub{color:rgba(255,255,255,.5);font-size:11px;font-family:var(--font-mono);letter-spacing:.06em}
+@keyframes csBtnPulse{
+  0%,100%{box-shadow:0 0 0 3px rgba(74,222,128,.2)}
+  50%{box-shadow:0 0 0 6px rgba(74,222,128,0)}
+}
+@media(max-width:480px){
+  #csBtn{height:42px;padding:0 14px 0 12px;font-size:12.5px}
+  #csBtn .cs-btn-sub{display:none}
 }
 #csPanel{position:fixed;bottom:96px;right:24px;width:360px;max-width:calc(100vw - 48px);height:520px;max-height:calc(100vh - 140px);background:#0d0f14;border:1px solid rgba(240,90,40,.25);border-radius:16px;z-index:1001;box-shadow:0 20px 60px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.04);opacity:0;transform:translateY(12px) scale(.96);pointer-events:none;transition:opacity .22s ease,transform .22s ease;overflow:hidden;display:flex;flex-direction:column}
 #csPanel.open{opacity:1;transform:translateY(0) scale(1);pointer-events:auto}
@@ -1410,8 +1421,7 @@ document.addEventListener('DOMContentLoaded',()=>{
 .rk-foot{font-size:10.5px;color:rgba(255,255,255,.35);text-align:center;padding:6px 12px 10px;background:#0a0c10;border-top:1px solid rgba(255,255,255,.04);flex-shrink:0}
 .rk-foot a{color:#f05a28;text-decoration:none}
 @media(max-width:480px){
-  #csPanel{width:calc(100vw - 24px);right:12px;bottom:88px;height:calc(100vh - 120px);max-height:600px}
-  #csBtn{right:16px;bottom:16px}
+  #csPanel{width:calc(100vw - 24px);right:12px;bottom:80px;height:calc(100vh - 110px);max-height:600px}
 }
 </style>
 </body>
