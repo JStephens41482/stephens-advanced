@@ -1492,6 +1492,389 @@ const add_job_note = {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// TOOL: update_job — edit job fields
+// ═══════════════════════════════════════════════════════════════
+const update_job = {
+  schema: {
+    name: 'update_job',
+    description: "Edit fields on an existing job. Pass job_id and any subset of fields to change. For status changes prefer the specific tools (schedule_job, cancel_job). For marking completed, the app's complete-flow is required (captures signature + generates invoice).",
+    input_schema: {
+      type: 'object',
+      properties: {
+        job_id: { type: 'string' },
+        scope: { type: 'array', items: { type: 'string' }, description: "e.g. ['suppression','extinguishers','elights','hydro']" },
+        type: { type: 'string', description: "inspection, installation, repair, etc." },
+        notes: { type: 'string' },
+        estimated_value: { type: 'number' },
+        scheduled_date: { type: 'string', description: 'YYYY-MM-DD' },
+        scheduled_time: { type: 'string', description: 'HH:MM (24h)' },
+        assigned_to: { type: 'string', description: 'Tech UUID, or empty string to unassign.' }
+      },
+      required: ['job_id']
+    }
+  },
+  async handler(input, ctx) {
+    const patch = {}
+    if (input.scope !== undefined) patch.scope = input.scope
+    if (input.type !== undefined) patch.type = input.type
+    if (input.notes !== undefined) patch.notes = input.notes
+    if (input.estimated_value !== undefined) patch.estimated_value = Number(input.estimated_value)
+    if (input.scheduled_date !== undefined) patch.scheduled_date = input.scheduled_date
+    if (input.scheduled_time !== undefined) patch.scheduled_time = input.scheduled_time
+    if (input.assigned_to !== undefined) patch.assigned_to = input.assigned_to || null
+    if (Object.keys(patch).length === 0) return { error: 'Nothing to update — pass at least one field.' }
+    const { error } = await ctx.supabase.from('jobs').update(patch).eq('id', input.job_id)
+    if (error) return { error: error.message }
+    const fields = Object.keys(patch).join(', ')
+    await ctx.supabase.from('audit_log').insert({
+      action: 'updated', entity_type: 'job', entity_id: input.job_id,
+      actor: 'ai_chat', changes: patch, summary: 'Job updated: ' + fields
+    })
+    return { ok: true, job_id: input.job_id, updated: Object.keys(patch) }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOOL: cancel_job
+// ═══════════════════════════════════════════════════════════════
+const cancel_job = {
+  schema: {
+    name: 'cancel_job',
+    description: "Cancel a job (non-destructive — sets status='cancelled', keeps the record for audit). Use when the customer declines service, reschedules indefinitely, or the job was created in error. For hard delete, use update_job or ask Jon.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        job_id: { type: 'string' },
+        reason: { type: 'string', description: 'Short reason recorded in the activity log.' }
+      },
+      required: ['job_id']
+    }
+  },
+  async handler(input, ctx) {
+    const { data: job } = await ctx.supabase.from('jobs').select('id, status, location:locations(name)').eq('id', input.job_id).maybeSingle()
+    if (!job) return { error: 'Job not found' }
+    if (job.status === 'cancelled') return { error: 'Already cancelled' }
+    if (job.status === 'completed') return { error: 'Job is completed — cannot cancel a completed job' }
+    const { error } = await ctx.supabase.from('jobs').update({ status: 'cancelled' }).eq('id', job.id)
+    if (error) return { error: error.message }
+    const summary = 'Job cancelled for ' + (job.location?.name || 'client') + (input.reason ? ' — ' + input.reason : '')
+    await ctx.supabase.from('audit_log').insert({
+      action: 'cancelled', entity_type: 'job', entity_id: job.id,
+      actor: 'ai_chat', changes: { reason: input.reason || null }, summary
+    })
+    return { ok: true, job_id: job.id }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOOL: send_email
+// ═══════════════════════════════════════════════════════════════
+const send_email = {
+  schema: {
+    name: 'send_email',
+    description: "Send an email to a customer from jonathan@stephensadvanced.com. Use for reports, invoices, follow-ups, quotes. Logs the outbound in the conversation thread if one exists.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        to: { type: 'string', description: 'Recipient email.' },
+        subject: { type: 'string' },
+        body: { type: 'string', description: 'Plain text body. Double line-breaks become paragraphs in the HTML wrapper.' }
+      },
+      required: ['to', 'subject', 'body']
+    }
+  },
+  async handler(input, ctx) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.to)) return { error: 'Invalid email address' }
+    try {
+      await sendEmailRaw({ to: input.to, subject: input.subject, body: input.body })
+    } catch (e) {
+      return { error: e.message }
+    }
+    try {
+      const { data: conv } = await ctx.supabase.from('conversations')
+        .select('id').eq('channel', 'email').eq('email', input.to).eq('status', 'active')
+        .order('last_message_at', { ascending: false }).limit(1).maybeSingle()
+      if (conv) {
+        await ctx.supabase.from('messages').insert({
+          conversation_id: conv.id, direction: 'outbound', channel: 'email',
+          body: input.body, email_subject: input.subject
+        })
+      }
+    } catch (e) { /* best effort logging */ }
+    return { ok: true, to: input.to }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOOL: get_conversation_history
+// ═══════════════════════════════════════════════════════════════
+const get_conversation_history = {
+  schema: {
+    name: 'get_conversation_history',
+    description: "Read past SMS and email messages with a customer. Filter by location_id, phone, or email. Use before replying, calling, or rescheduling to build context — 'have we heard from them before', 'did we already notify about the reschedule', 'any prior complaints'. Returns messages in chronological order (oldest first) so it reads like a transcript.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        location_id: { type: 'string' },
+        phone: { type: 'string' },
+        email: { type: 'string' },
+        limit: { type: 'integer', description: 'Max messages (default 20, cap 100).' }
+      }
+    }
+  },
+  async handler(input, ctx) {
+    if (!input.location_id && !input.phone && !input.email) {
+      return { error: 'Must pass one of: location_id, phone, email' }
+    }
+    const limit = Math.min(100, Number(input.limit) || 20)
+    let convQ = ctx.supabase.from('conversations')
+      .select('id, channel, phone, email, customer_name, location_id, started_at, last_message_at')
+      .order('last_message_at', { ascending: false }).limit(10)
+    if (input.location_id) convQ = convQ.eq('location_id', input.location_id)
+    if (input.phone) {
+      let p = String(input.phone).replace(/[\s\-().]/g, '')
+      if (!p.startsWith('+')) p = '+1' + p.replace(/^1/, '')
+      convQ = convQ.eq('phone', p)
+    }
+    if (input.email) convQ = convQ.eq('email', input.email.toLowerCase())
+    const { data: convs, error: cErr } = await convQ
+    if (cErr) return { error: cErr.message }
+    if (!convs || !convs.length) return { count: 0, conversations: [], messages: [] }
+    const convIds = convs.map(c => c.id)
+    const { data: msgs, error: mErr } = await ctx.supabase.from('messages')
+      .select('conversation_id, direction, channel, body, created_at, email_subject')
+      .in('conversation_id', convIds)
+      .order('created_at', { ascending: false })
+      .limit(limit)
+    if (mErr) return { error: mErr.message }
+    return {
+      count: (msgs || []).length,
+      conversations: convs,
+      messages: (msgs || []).reverse()  // oldest first → reads like a transcript
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOOL: create_invoice
+// ═══════════════════════════════════════════════════════════════
+const create_invoice = {
+  schema: {
+    name: 'create_invoice',
+    description: "Generate a new invoice for a job from line items. Auto-generates an INV-XXXXXX number and puts it in draft status. Invoice is tied to the job's location + billing account. Use when Jon says 'invoice Wabi for Tuesday — 4 ext at 22.80 and 1 supp at 285'. Pair with send_email or mark_invoice_paid to close the loop.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        job_id: { type: 'string' },
+        line_items: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              description: { type: 'string' },
+              quantity: { type: 'number' },
+              unit_price: { type: 'number' }
+            },
+            required: ['description', 'quantity', 'unit_price']
+          }
+        },
+        notes: { type: 'string' },
+        date: { type: 'string', description: 'YYYY-MM-DD invoice date. Default today.' },
+        due_date: { type: 'string', description: 'YYYY-MM-DD. Default invoice date + 30 days.' }
+      },
+      required: ['job_id', 'line_items']
+    }
+  },
+  async handler(input, ctx) {
+    if (!Array.isArray(input.line_items) || !input.line_items.length) return { error: 'line_items required' }
+    const { data: job } = await ctx.supabase.from('jobs')
+      .select('id, location_id, billing_account_id, location:locations(name)')
+      .eq('id', input.job_id).maybeSingle()
+    if (!job) return { error: 'Job not found' }
+    const lines = input.line_items.map(l => {
+      const qty = Number(l.quantity) || 1
+      const up = Number(l.unit_price) || 0
+      return {
+        description: String(l.description || '').trim(),
+        quantity: qty,
+        unit_price: up,
+        total: Math.round(qty * up * 100) / 100
+      }
+    })
+    const sub = Math.round(lines.reduce((s, l) => s + l.total, 0) * 100) / 100
+    const today = new Date().toISOString().split('T')[0]
+    const invDate = input.date || today
+    const dueDefault = new Date(new Date(invDate + 'T12:00:00').getTime() + 30 * 86400000).toISOString().split('T')[0]
+    const invNum = 'INV-' + Date.now().toString().slice(-6)
+    const { data: inv, error } = await ctx.supabase.from('invoices').insert({
+      job_id: job.id,
+      location_id: job.location_id,
+      billing_account_id: job.billing_account_id,
+      invoice_number: invNum,
+      subtotal: sub,
+      total: sub,
+      status: 'draft',
+      date: invDate,
+      due_date: input.due_date || dueDefault,
+      notes: input.notes || null
+    }).select().single()
+    if (error) return { error: error.message }
+    const lineRows = lines.map((ln, i) => ({ invoice_id: inv.id, description: ln.description, quantity: ln.quantity, unit_price: ln.unit_price, total: ln.total, sort_order: i }))
+    const { error: lErr } = await ctx.supabase.from('invoice_lines').insert(lineRows)
+    if (lErr) return { ok: true, invoice_id: inv.id, invoice_number: invNum, total: sub, warning: 'Lines insert warning: ' + lErr.message }
+    await ctx.supabase.from('audit_log').insert({
+      action: 'created', entity_type: 'invoice', entity_id: inv.id,
+      actor: 'ai_chat', changes: { invoice_number: invNum, total: sub },
+      summary: `Invoice ${invNum} created for ${job.location?.name || 'job'} ($${sub.toFixed(2)})`
+    })
+    return { ok: true, invoice_id: inv.id, invoice_number: invNum, total: sub, line_count: lines.length }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOOL: list_job_documents
+// ═══════════════════════════════════════════════════════════════
+const list_job_documents = {
+  schema: {
+    name: 'list_job_documents',
+    description: "List photos, reports, signature flag, and extinguisher-report pages on a job. Useful for 'did I photograph the extinguisher tag', 'is the signature captured', 'what reports are on this job'.",
+    input_schema: {
+      type: 'object',
+      properties: { job_id: { type: 'string' } },
+      required: ['job_id']
+    }
+  },
+  async handler(input, ctx) {
+    const { data: job } = await ctx.supabase.from('jobs')
+      .select('id, photos, signature_data, ext_report_photos, location:locations(name)')
+      .eq('id', input.job_id).maybeSingle()
+    if (!job) return { error: 'Job not found' }
+    const { data: reports } = await ctx.supabase.from('reports')
+      .select('id, report_type, created_at').eq('job_id', input.job_id)
+    return {
+      job_id: job.id,
+      location_name: job.location?.name || null,
+      photo_count: (job.photos || []).length,
+      ext_report_page_count: (job.ext_report_photos || []).length,
+      signature_captured: !!job.signature_data,
+      reports: (reports || []).map(r => ({ id: r.id, type: r.report_type, created_at: r.created_at })),
+      report_count: (reports || []).length
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOOL: mazon_list_queue — read-only queue status
+// ═══════════════════════════════════════════════════════════════
+const mazon_list_queue = {
+  schema: {
+    name: 'mazon_list_queue',
+    description: "List the Mazon factoring queue filtered by status. Use for 'what's pending Mazon', 'how much is waiting to fund', 'anything rejected'.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        status: { type: 'string', enum: ['pending', 'submitted', 'funded', 'rejected', 'voided', 'all'], description: "Default 'pending'." }
+      }
+    }
+  },
+  async handler(input, ctx) {
+    const status = input.status || 'pending'
+    let q = ctx.supabase.from('mazon_queue')
+      .select('id, invoice_id, invoice_number, customer_name, amount, status, signed_at, submitted_at, funded_at, funded_amount, rejected_reason')
+      .order('created_at', { ascending: false }).limit(50)
+    if (status !== 'all') q = q.eq('status', status)
+    const { data, error } = await q
+    if (error) return { error: error.message }
+    const total = (data || []).reduce((s, r) => s + Number(r.amount || 0), 0)
+    return { count: data.length, total_usd: Math.round(total * 100) / 100, queue: data }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOOL: mazon_mark_funded
+// ═══════════════════════════════════════════════════════════════
+const mazon_mark_funded = {
+  schema: {
+    name: 'mazon_mark_funded',
+    description: "Mark a Mazon queue row funded after Jon confirms the deposit landed. Sets invoice status='paid' and records the funded amount. Use when Jon says 'Mazon funded Wabi for $342'.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        queue_id: { type: 'string' },
+        invoice_number: { type: 'string', description: 'Lookup alternative.' },
+        funded_amount: { type: 'number' },
+        reason: { type: 'string' }
+      },
+      required: ['funded_amount']
+    }
+  },
+  async handler(input, ctx) {
+    let qId = input.queue_id
+    if (!qId && input.invoice_number) {
+      const { data: inv } = await ctx.supabase.from('invoices').select('id, mazon_queue_id').eq('invoice_number', input.invoice_number).maybeSingle()
+      qId = inv?.mazon_queue_id
+    }
+    if (!qId) return { error: 'queue_id or invoice_number required' }
+    const { data: qr } = await ctx.supabase.from('mazon_queue').select('*').eq('id', qId).maybeSingle()
+    if (!qr) return { error: 'Queue row not found' }
+    const amt = Number(input.funded_amount)
+    if (!(amt > 0)) return { error: 'funded_amount must be > 0' }
+    const fundedAt = new Date().toISOString()
+    await ctx.supabase.from('mazon_queue').update({ status: 'funded', funded_at: fundedAt, funded_amount: amt }).eq('id', qId)
+    await ctx.supabase.from('invoices').update({ status: 'paid', paid_at: fundedAt, payment_method: 'mazon' }).eq('id', qr.invoice_id)
+    await ctx.supabase.from('mazon_audit_log').insert({
+      actor: 'ai_chat', entity_type: 'queue', entity_id: qId,
+      old_status: qr.status, new_status: 'funded',
+      reason: input.reason || 'Marked funded via Riker',
+      metadata: { funded_amount: amt }
+    })
+    await ctx.supabase.from('audit_log').insert({
+      action: 'paid', entity_type: 'invoice', entity_id: qr.invoice_id,
+      actor: 'ai_chat', changes: { amount: amt, method: 'mazon' },
+      summary: `Mazon funded — ${qr.customer_name} ($${amt.toFixed(2)})`
+    })
+    return { ok: true, queue_id: qId, invoice_id: qr.invoice_id, funded_amount: amt }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOOL: mazon_void
+// ═══════════════════════════════════════════════════════════════
+const mazon_void = {
+  schema: {
+    name: 'mazon_void',
+    description: "Void a pending or submitted Mazon queue row. Rolls the invoice status back to 'sent' so it can be collected normally. Use when the customer paid directly before Mazon funded.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        queue_id: { type: 'string' },
+        invoice_number: { type: 'string' },
+        reason: { type: 'string' }
+      }
+    }
+  },
+  async handler(input, ctx) {
+    let qId = input.queue_id
+    if (!qId && input.invoice_number) {
+      const { data: inv } = await ctx.supabase.from('invoices').select('id, mazon_queue_id').eq('invoice_number', input.invoice_number).maybeSingle()
+      qId = inv?.mazon_queue_id
+    }
+    if (!qId) return { error: 'queue_id or invoice_number required' }
+    const { data: qr } = await ctx.supabase.from('mazon_queue').select('*').eq('id', qId).maybeSingle()
+    if (!qr) return { error: 'Queue row not found' }
+    if (qr.status !== 'pending' && qr.status !== 'submitted') return { error: 'Only pending or submitted rows can be voided (current: ' + qr.status + ')' }
+    await ctx.supabase.from('mazon_queue').update({ status: 'voided', voided_reason: input.reason || null }).eq('id', qId)
+    await ctx.supabase.from('invoices').update({ status: 'sent', payment_method: null, mazon_queue_id: null }).eq('id', qr.invoice_id)
+    await ctx.supabase.from('mazon_audit_log').insert({
+      actor: 'ai_chat', entity_type: 'queue', entity_id: qId,
+      old_status: qr.status, new_status: 'voided',
+      reason: input.reason || 'Voided via Riker'
+    })
+    return { ok: true, queue_id: qId, invoice_id: qr.invoice_id }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // REGISTRY + CONTEXT FILTERING
 // ═══════════════════════════════════════════════════════════════
 
@@ -1505,7 +1888,10 @@ const ALL_TOOLS = {
   update_client, delete_client, merge_clients,
   update_invoice, void_invoice, delete_invoice,
   build_route,
-  get_job_activity, add_job_note
+  get_job_activity, add_job_note,
+  update_job, cancel_job,
+  send_email, get_conversation_history, create_invoice, list_job_documents,
+  mazon_list_queue, mazon_mark_funded, mazon_void
 }
 
 // null = all tools. Keeps Jon contexts unrestricted; trims customer contexts.
