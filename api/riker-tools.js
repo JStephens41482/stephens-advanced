@@ -2072,7 +2072,7 @@ const ALL_TOOLS = {
 
 // null = all tools. Keeps Jon contexts unrestricted; trims customer contexts.
 const CONTEXT_TOOLS = {
-  website: ['lookup_client', 'lookup_business', 'get_schedule_slots', 'get_rate_card', 'schedule_job', 'add_client', 'escalate_to_jon', 'request_owner_otp', 'verify_owner_otp'],
+  website: null,  // full tool access — owner verification via OTP gates destructive use
   portal: ['lookup_client', 'get_invoices', 'get_equipment', 'get_schedule_slots', 'schedule_job', 'write_memory'],
   app: null,
   sms_jon: null,

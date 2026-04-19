@@ -150,11 +150,26 @@ module.exports = async function handler(req, res) {
     // Invalid/expired OTP — fall through to Riker to handle naturally
   }
 
+  // ── Detect owner-verified session → switch to app context ────────────────
+  // After OTP verification a short-lived riker_memory entry is written.
+  // If it's present, treat this session as Jon so he gets the full Riker
+  // experience (terse, technical, all tools) rather than the receptionist.
+  let rikerContext = 'website'
+  const { data: ownerMem } = await supabase.from('riker_memory')
+    .select('id')
+    .eq('scope', 'global')
+    .eq('category', 'internal')
+    .eq('archived', false)
+    .ilike('content', `%OWNER VERIFIED: website session ${sessionId}%`)
+    .gt('expires_at', new Date().toISOString())
+    .limit(1).maybeSingle()
+  if (ownerMem) rikerContext = 'app'
+
   // ── Run through Riker core ────────────────────────────────────────────────
   try {
     const result = await core.processMessage({
       supabase,
-      context: 'website',
+      context: rikerContext,
       sessionKey: sessionId,
       sessionStorage: 'riker_sessions',
       identity: {},
