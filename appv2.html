@@ -3169,6 +3169,19 @@ async function openJob(id){
       ${a?`<button class="qa-btn" onclick="startNav('${j.id}')">🗺 Navigate</button>`:''}
       ${l.contact_phone?`<button class="qa-btn" onclick="window.open('tel:${l.contact_phone}')">📞 Call</button>`:''}
     </div>
+  </div>
+
+  <!-- ACTIVITY / JOB LOG -->
+  <div class="ds">
+    <div class="ds-t" style="display:flex;justify-content:space-between;align-items:center">
+      <span>Activity</span>
+      <span id="job-activity-count-${j.id}" style="font-size:10px;color:var(--g1);font-family:'JetBrains Mono',ui-monospace,monospace;letter-spacing:.08em;text-transform:none"></span>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <textarea id="job-note-${j.id}" placeholder="Add a note — anything that happened on this job..." rows="2" style="flex:1;font-size:13px;min-height:40px;padding:9px 11px" onkeydown="if(event.key==='Enter'&&(event.metaKey||event.ctrlKey)){event.preventDefault();addJobNote('${j.id}')}"></textarea>
+      <button onclick="addJobNote('${j.id}')" style="background:var(--fire);color:#fff;border:none;border-radius:var(--rs);padding:0 14px;font-size:12px;font-weight:700;cursor:pointer;min-height:44px;white-space:nowrap;letter-spacing:.3px">Log it</button>
+    </div>
+    <div id="job-activity-${j.id}" style="font-size:12px"></div>
   </div>`
 
   // Extinguisher status removed — handled in extinguisher report
@@ -3322,6 +3335,7 @@ async function openJob(id){
   }
 
   push(h,{jobId:id})
+  setTimeout(()=>renderJobActivity(id),90)
   if(isActive){
     setTimeout(()=>{renderJobLines();initSig()},80)
   }
@@ -3745,11 +3759,74 @@ async function bulkAssignToMe(){
   await load();toast(`${unassigned.length} jobs assigned ✓`);rTechs()
 }
 
+// Activity log for a single job — pulls audit_log rows scoped to this
+// job plus any audit entries on invoices belonging to the job, merges
+// them into a single timeline. Note entries are Jon's own memos added
+// via the "Log it" button on the job detail.
+async function renderJobActivity(jobId){
+  const wrap=document.getElementById('job-activity-'+jobId)
+  const countEl=document.getElementById('job-activity-count-'+jobId)
+  if(!wrap)return
+  let jobEvents=[],invEvents=[]
+  try{
+    const [a,b]=await Promise.all([
+      SB.from('audit_log').select('action,actor,summary,created_at,entity_type').eq('entity_type','job').eq('entity_id',jobId).order('created_at',{ascending:false}).limit(100),
+      SB.from('invoices').select('id').eq('job_id',jobId)
+    ])
+    jobEvents=a.data||[]
+    if(b.data?.length){
+      const invIds=b.data.map(i=>i.id)
+      const{data}=await SB.from('audit_log').select('action,actor,summary,created_at,entity_type').eq('entity_type','invoice').in('entity_id',invIds).order('created_at',{ascending:false}).limit(50)
+      invEvents=data||[]
+    }
+  }catch(e){console.error('activity load:',e)}
+  const all=[...jobEvents,...invEvents].sort((x,y)=>(y.created_at||'').localeCompare(x.created_at||''))
+  if(countEl)countEl.textContent=all.length?(all.length+' entr'+(all.length===1?'y':'ies')):''
+  if(!all.length){
+    wrap.innerHTML=`<div style="font-size:12px;color:var(--g2);text-align:center;padding:14px 0;border-top:1px dashed rgba(42,47,62,.6)">No activity yet. Add a note to start the log.</div>`
+    return
+  }
+  const iconFor={note:'📝',created:'➕',rescheduled:'📅',completed:'✓',paid:'💵',assigned:'👥',factored:'💰',mazon_approved:'💰',deleted:'🗑',cancelled:'✕',updated:'✏️','contact_added':'👤'}
+  wrap.innerHTML=all.map(e=>{
+    const dt=new Date(e.created_at)
+    const timeStr=dt.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})
+    const actor=e.actor==='jon'?'Jon':e.actor==='ai_chat'?'Riker':e.actor==='system'?'System':(e.actor||'—')
+    const icon=iconFor[e.action]||'•'
+    const isInv=e.entity_type==='invoice'
+    return`<div style="display:flex;gap:10px;padding:9px 0;border-top:1px solid rgba(42,47,62,.6)">
+      <div style="width:26px;height:26px;flex-shrink:0;background:var(--c2);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px">${icon}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12.5px;color:var(--w);line-height:1.4;word-wrap:break-word">${esc(e.summary||e.action||'event')}</div>
+        <div style="font-size:10px;color:var(--g1);margin-top:3px;font-family:'JetBrains Mono',ui-monospace,monospace;letter-spacing:.04em">${timeStr} · ${esc(actor)}${isInv?' · invoice':''}</div>
+      </div>
+    </div>`
+  }).join('')
+}
+
+async function addJobNote(jobId){
+  const ta=document.getElementById('job-note-'+jobId)
+  const text=(ta?.value||'').trim()
+  if(!text)return
+  ta.value=''
+  ta.style.height='40px'
+  try{
+    await audit('note','job',jobId,'jon',null,text)
+  }catch(e){toast('Could not save note',false);return}
+  renderJobActivity(jobId)
+}
+
 async function assignJob(jobId,techId){
+  const prev=D.jobs.find(j=>j.id===jobId)?.assigned_to
   await SB.from('jobs').update({assigned_to:techId||null}).eq('id',jobId)
   await load()
   const tk=D.techs?.find(t=>t.id===techId)
+  const prevTk=D.techs?.find(t=>t.id===prev)
   toast(tk?'Assigned to '+tk.name:'Unassigned')
+  if((prev||null)!==(techId||null)){
+    const summary=tk?('Assigned to '+tk.name+(prevTk?' (was '+prevTk.name+')':'')):('Unassigned'+(prevTk?' (was '+prevTk.name+')':''))
+    audit('assigned','job',jobId,'jon',{old:prev||null,new:techId||null},summary)
+    if(window._activeJobId===jobId)renderJobActivity(jobId)
+  }
 }
 
 let sigCtx=null,sigOn=false
