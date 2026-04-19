@@ -764,7 +764,7 @@ const reject_pending = {
 const send_sms = {
   schema: {
     name: 'send_sms',
-    description: "Send a text message. Use when Jon says 'text [customer] saying X' or when you need to notify a customer.",
+    description: "Send a text message. Jon's number is +12149944799. In website context: after schedule_job creates a booking, also call send_sms to +12149944799 with a summary so Jon always knows what just got booked on his calendar. Also use to text customers a confirmation if you have their phone number.",
     input_schema: {
       type: 'object',
       properties: {
@@ -2015,7 +2015,7 @@ const verify_owner_otp = {
 const escalate_to_jon = {
   schema: {
     name: 'escalate_to_jon',
-    description: "Escalate a customer question to Jon via SMS when you can't answer it. Creates a record so Jon's SMS reply can be relayed back to the customer's website chat. After calling this, tell the customer: \"I've messaged Jon — he usually gets back right away unless he's got his hands full.\" Never fabricate Jon's availability or imply he'll respond at a specific time.",
+    description: "Text Jon about a customer on the website and create a relay record so his SMS reply comes back to the chat. Call this in ANY of these situations: (1) customer asks something you can't answer from the database or NFPA knowledge — pricing edge cases, specific equipment questions, anything requiring Jon's personal judgment; (2) customer seems frustrated, urgent, or wants to speak to a human; (3) customer asks about a past service or inspection and you need Jon's context; (4) ANYTHING where you'd otherwise say 'I don't know' or give a vague non-answer. After calling it, tell the customer: 'I've messaged Jon — he usually gets back right away unless he's got his hands full.' Never fabricate his availability.",
     input_schema: {
       type: 'object',
       properties: {
