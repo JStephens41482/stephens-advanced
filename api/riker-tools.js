@@ -1388,6 +1388,110 @@ function _formatRoute(routed, source) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// TOOL: get_job_activity — read the per-job audit log + notes
+// ═══════════════════════════════════════════════════════════════
+// Same source as the Activity section on each job card in the app.
+// Returns merged job-scoped + invoice-scoped audit_log entries sorted
+// newest-first. Lets Riker answer "what's the history on this job",
+// "what did Jon note last time", "when was the last communication".
+const get_job_activity = {
+  schema: {
+    name: 'get_job_activity',
+    description: "Read the activity log for a job — every event (created, rescheduled, completed, paid, assigned, Mazon, etc.) plus any free-form notes Jon typed on the job card. Merges job events and events on invoices tied to the job. Use when Jon asks 'what's been happening with this job', 'has the customer been notified', 'did I leave a note on Wabi', or when you need history before proposing action.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        job_id: { type: 'string', description: 'Job UUID. Required.' },
+        limit: { type: 'integer', description: 'Max entries (default 30, cap 200).' },
+        include_invoice_events: { type: 'boolean', description: 'Also include audit rows on invoices tied to this job. Default true.' }
+      },
+      required: ['job_id']
+    }
+  },
+  async handler(input, ctx) {
+    const jobId = input.job_id
+    if (!jobId) return { error: 'job_id required' }
+    const limit = Math.min(200, Number(input.limit) || 30)
+    const includeInv = input.include_invoice_events !== false
+
+    const jobQ = ctx.supabase.from('audit_log')
+      .select('action, actor, summary, changes, created_at, entity_type, entity_id')
+      .eq('entity_type', 'job').eq('entity_id', jobId)
+      .order('created_at', { ascending: false }).limit(limit)
+    const invIdQ = includeInv
+      ? ctx.supabase.from('invoices').select('id').eq('job_id', jobId)
+      : Promise.resolve({ data: [] })
+
+    const [jobRes, invIdRes] = await Promise.all([jobQ, invIdQ])
+    if (jobRes.error) return { error: jobRes.error.message }
+    const jobEvents = jobRes.data || []
+
+    let invEvents = []
+    const invIds = (invIdRes.data || []).map(r => r.id)
+    if (includeInv && invIds.length) {
+      const { data, error } = await ctx.supabase.from('audit_log')
+        .select('action, actor, summary, changes, created_at, entity_type, entity_id')
+        .eq('entity_type', 'invoice').in('entity_id', invIds)
+        .order('created_at', { ascending: false }).limit(limit)
+      if (error) return { error: error.message }
+      invEvents = data || []
+    }
+
+    const all = [...jobEvents, ...invEvents]
+      .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
+      .slice(0, limit)
+
+    return {
+      job_id: jobId,
+      count: all.length,
+      events: all.map(e => ({
+        when: e.created_at,
+        action: e.action,
+        actor: e.actor,
+        on: e.entity_type,
+        summary: e.summary || null
+      }))
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOOL: add_job_note — append a free-form memo to a job's log
+// ═══════════════════════════════════════════════════════════════
+// Same thing the "Log it" button on the job card does. Writes an
+// audit_log row with action='note' so Jon can find it on the card.
+const add_job_note = {
+  schema: {
+    name: 'add_job_note',
+    description: "Append a free-form note to a job's activity log. Use when Jon says 'log on Wabi that the owner called', 'note that I had to come back for the second extinguisher', 'put on the Amigos job that they asked about monthly billing'. Equivalent to Jon typing in the Activity box on the job card.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        job_id: { type: 'string', description: 'Job UUID. Required.' },
+        text: { type: 'string', description: 'The note body. Required.' }
+      },
+      required: ['job_id', 'text']
+    }
+  },
+  async handler(input, ctx) {
+    const jobId = input.job_id
+    const text = String(input.text || '').trim()
+    if (!jobId) return { error: 'job_id required' }
+    if (!text) return { error: 'text required' }
+    const actor = ctx.context === 'app' || ctx.context === 'sms_jon' ? 'ai_chat' : 'system'
+    const { error } = await ctx.supabase.from('audit_log').insert({
+      action: 'note',
+      entity_type: 'job',
+      entity_id: jobId,
+      actor,
+      summary: text
+    })
+    if (error) return { error: error.message }
+    return { ok: true, job_id: jobId }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // REGISTRY + CONTEXT FILTERING
 // ═══════════════════════════════════════════════════════════════
 
@@ -1400,7 +1504,8 @@ const ALL_TOOLS = {
   lookup_business,
   update_client, delete_client, merge_clients,
   update_invoice, void_invoice, delete_invoice,
-  build_route
+  build_route,
+  get_job_activity, add_job_note
 }
 
 // null = all tools. Keeps Jon contexts unrestricted; trims customer contexts.
