@@ -1,8 +1,63 @@
 // /api/cron.js — Unified cron handler
 // Routes: ?job=morning-digest  (daily 6 AM CDT = 11 UTC)
-//         ?job=auto-reschedule (1st of month 3 AM CDT = 8 UTC)
+//         ?job=auto-reschedule (daily 7 AM CDT = 12 UTC)
 
 const { createClient } = require('@supabase/supabase-js')
+const william = require('./william-schedule')
+
+const JON_PHONE = '+12149944799'
+
+async function sendSMSToJon(body) {
+  const sid = process.env.TWILIO_ACCOUNT_SID
+  const token = process.env.TWILIO_AUTH_TOKEN
+  const from = process.env.TWILIO_PHONE_NUMBER || process.env.TWILIO_FROM_NUMBER
+  if (!sid || !token || !from) throw new Error('Twilio not configured')
+  const auth = Buffer.from(sid + ':' + token).toString('base64')
+  const params = new URLSearchParams({ To: JON_PHONE, From: from, Body: body })
+  const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
+    method: 'POST',
+    headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: params.toString()
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error('Twilio send failed: ' + (data.message || res.status))
+  }
+}
+
+// End-of-month in local (America/Chicago) calendar, returned as Date.
+function endOfMonth(dateLike) {
+  const d = new Date(dateLike)
+  return new Date(d.getFullYear(), d.getMonth() + 1, 0)
+}
+function addDays(dateLike, n) {
+  const d = new Date(dateLike)
+  d.setDate(d.getDate() + n)
+  return d
+}
+function ymd(d) { return d.toISOString().split('T')[0] }
+
+// Given a due_date (end-of-month), pick a weekday within the due-month that Jon
+// is available on. Prefer mid-month Tue/Wed. Fall back to any available weekday
+// 1st-3rd week. Returns YYYY-MM-DD string.
+function pickTargetDate(dueDate) {
+  const year = dueDate.getFullYear(), month = dueDate.getMonth()
+  const firstOfMonth = new Date(year, month, 1)
+  const lastOfMonth = new Date(year, month + 1, 0)
+  const candidates = []
+  for (let d = new Date(firstOfMonth); d <= lastOfMonth; d = addDays(d, 1)) {
+    const dow = d.getDay()
+    if (dow === 0 || dow === 6) continue
+    const avail = william.getJonAvailability(new Date(d))
+    if (!avail.available) continue
+    const weekIdx = Math.floor((d.getDate() - 1) / 7)  // 0 = first week, 1 = second, ...
+    const dayScore = (dow === 2 || dow === 3) ? 0 : (dow === 4) ? 1 : (dow === 1 || dow === 5) ? 2 : 3
+    const weekScore = weekIdx <= 2 ? weekIdx : 5  // prefer weeks 0-2
+    candidates.push({ date: ymd(d), score: weekScore * 10 + dayScore })
+  }
+  candidates.sort((a, b) => a.score - b.score)
+  return candidates[0]?.date || ymd(addDays(dueDate, -7))
+}
 
 module.exports = async function handler(req, res) {
   if (!['GET', 'POST'].includes(req.method)) return res.status(405).end()
@@ -210,168 +265,177 @@ async function morningDigest(req, res, SB) {
 // ═══════════════════════════════════════════════════════════════
 // AUTO-RESCHEDULE — 1st of every month
 // ═══════════════════════════════════════════════════════════════
+// AUTO-RESCHEDULE — daily proposal run.
+//
+// Finds recurring inspections coming due. Due-date rule per Jon: day 180
+// is by-the-book, but in practice we have until end-of-month the 180th
+// day falls in. Suppression = 180d cycle, extinguishers = 365d cycle.
+//
+// Rather than insert jobs silently, this cron builds a proposal list,
+// writes one pending_confirmations row (type=auto_schedule_batch), and
+// texts Jon a digest. Jon replies YES/NO (or lets it expire), and the
+// approve_pending flow materializes the jobs.
+//
+// Jobs that appear in a still-open pending proposal are skipped so
+// successive daily runs don't re-spam.
 async function autoReschedule(req, res, SB) {
   const now = new Date()
   const log = []
 
   try {
-    // Find Jon's tech ID
     const { data: techs } = await SB.from('techs').select('id, name').ilike('name', '%jon%').limit(1)
     const jonId = techs?.[0]?.id || null
 
-    // SUPPRESSION: completed 5.5–6 months ago
-    const supp6mo = new Date(now); supp6mo.setMonth(supp6mo.getMonth() - 6)
-    const supp55mo = new Date(now); supp55mo.setMonth(supp55mo.getMonth() - 6); supp55mo.setDate(supp55mo.getDate() + 15)
+    // 1. Don't re-propose jobs Jon hasn't answered yet.
+    const { data: openPending } = await SB
+      .from('pending_confirmations')
+      .select('proposed_action, created_at, expires_at, status')
+      .eq('status', 'pending')
+      .gt('expires_at', now.toISOString())
+    const alreadyProposedSources = new Set()
+    ;(openPending || []).forEach(p => {
+      const a = p.proposed_action
+      if (a?.type === 'auto_schedule_batch' && Array.isArray(a.jobs)) {
+        a.jobs.forEach(j => { if (j.source_job_id) alreadyProposedSources.add(j.source_job_id) })
+      }
+    })
 
-    const { data: suppJobs, error: suppErr } = await SB
-      .from('jobs')
-      .select('id, location_id, billing_account_id, contract_id, scope, type, completed_at, notes')
-      .eq('status', 'completed')
-      .contains('scope', ['suppression'])
-      .gte('completed_at', supp6mo.toISOString())
-      .lte('completed_at', supp55mo.toISOString())
+    // 2. Pull candidate completions.
+    //    Supp: completed ≥ 150 days ago (5 months) — gives us ≥ 30 days to the due-month.
+    //    Ext:  completed ≥ 335 days ago (~11 months) — gives us ≥ 30 days to the due-month.
+    const suppWindowEnd = addDays(now, -150)
+    const extWindowEnd = addDays(now, -335)
 
+    const { data: suppJobs, error: suppErr } = await SB.from('jobs')
+      .select('id, location_id, billing_account_id, contract_id, scope, completed_at')
+      .eq('status', 'completed').contains('scope', ['suppression'])
+      .lte('completed_at', suppWindowEnd.toISOString())
     if (suppErr) log.push({ error: 'suppression query failed', detail: suppErr.message })
 
-    // EXTINGUISHERS: completed 11.5–12 months ago
-    const ext12mo = new Date(now); ext12mo.setMonth(ext12mo.getMonth() - 12)
-    const ext115mo = new Date(now); ext115mo.setMonth(ext115mo.getMonth() - 12); ext115mo.setDate(ext115mo.getDate() + 15)
-
-    const { data: extJobs, error: extErr } = await SB
-      .from('jobs')
-      .select('id, location_id, billing_account_id, contract_id, scope, type, completed_at, notes')
-      .eq('status', 'completed')
-      .contains('scope', ['extinguishers'])
-      .not('scope', 'cs', '{"suppression"}')
-      .gte('completed_at', ext12mo.toISOString())
-      .lte('completed_at', ext115mo.toISOString())
-
+    const { data: extJobs, error: extErr } = await SB.from('jobs')
+      .select('id, location_id, billing_account_id, contract_id, scope, completed_at')
+      .eq('status', 'completed').contains('scope', ['extinguishers'])
+      .not('scope', 'cs', '{"suppression"}')  // don't double-count combos
+      .lte('completed_at', extWindowEnd.toISOString())
     if (extErr) log.push({ error: 'extinguisher query failed', detail: extErr.message })
 
-    const allCandidates = [
-      ...(suppJobs || []).map(j => ({ ...j, _rebookType: 'suppression', _monthsOut: 6 })),
-      ...(extJobs || []).map(j => ({ ...j, _rebookType: 'extinguisher', _monthsOut: 12 }))
+    const candidates = [
+      ...(suppJobs || []).map(j => ({ ...j, _cycle: 'suppression', _cycleDays: 180 })),
+      ...(extJobs || []).map(j => ({ ...j, _cycle: 'extinguisher', _cycleDays: 365 }))
     ]
 
-    // Fetch locations for test filtering
-    const locIds = [...new Set(allCandidates.map(j => j.location_id))]
+    // 3. Resolve locations for filtering + display.
+    const locIds = [...new Set(candidates.map(j => j.location_id))]
     const { data: locs } = locIds.length
-      ? await SB.from('locations').select('id, name, address').in('id', locIds)
+      ? await SB.from('locations').select('id, name, address, city').in('id', locIds)
       : { data: [] }
     const locMap = Object.fromEntries((locs || []).map(l => [l.id, l]))
 
-    const allJobs = allCandidates.filter(j => {
-      const loc = locMap[j.location_id]
-      if (!loc) return false
+    // 4. Keep only the most-recent completion per (location, cycle) so we don't
+    //    propose twice for a location that has multiple historical completions.
+    const latestBySource = new Map()
+    for (const c of candidates) {
+      const k = c.location_id + '|' + c._cycle
+      const cur = latestBySource.get(k)
+      if (!cur || c.completed_at > cur.completed_at) latestBySource.set(k, c)
+    }
+
+    // 5. Build proposals.
+    const proposals = []
+    for (const c of latestBySource.values()) {
+      const loc = locMap[c.location_id]
+      if (!loc) { skipped('no location', c); continue }
       const name = (loc.name || '').toUpperCase()
-      const addr = loc.address || ''
-      if (name.includes('TEST') || name.includes('DEMO') || name.includes('SAMPLE')) {
-        log.push({ skipped: true, location: loc.name, reason: 'test entry' })
-        return false
-      }
-      if (!addr.match(/\d/)) {
-        log.push({ skipped: true, location: loc.name, reason: 'no street number in address' })
-        return false
-      }
-      return true
-    })
+      if (name.includes('TEST') || name.includes('DEMO') || name.includes('SAMPLE')) { skipped('test entry', c, loc); continue }
+      if (!String(loc.address || '').match(/\d/)) { skipped('no street number', c, loc); continue }
+      if (alreadyProposedSources.has(c.id)) { skipped('already in open proposal', c, loc); continue }
 
-    let created = 0, skipped = 0
+      // Due-date rule: end-of-month the 180th / 365th day falls in.
+      const day180 = addDays(c.completed_at, c._cycleDays)
+      const dueDate = endOfMonth(day180)
+      const targetDateStr = pickTargetDate(dueDate)
 
-    for (const oldJob of allJobs) {
-      const targetDate = new Date(oldJob.completed_at)
-      targetDate.setMonth(targetDate.getMonth() + oldJob._monthsOut)
-      const targetMonthStart = new Date(targetDate.getFullYear(), targetDate.getMonth(), 1)
-      const targetMonthEnd = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 0)
+      // Skip if a next-cycle job already exists in the due-month.
+      const dueMonthStart = ymd(new Date(dueDate.getFullYear(), dueDate.getMonth(), 1))
+      const dueMonthEnd = ymd(dueDate)
+      const { data: existing } = await SB.from('jobs')
+        .select('id').eq('location_id', c.location_id)
+        .gte('scheduled_date', dueMonthStart).lte('scheduled_date', dueMonthEnd)
+        .in('status', ['scheduled', 'completed', 'en_route', 'active']).limit(1)
+      if (existing && existing.length) { skipped('already scheduled for due-month', c, loc); continue }
 
-      const scheduledDate = new Date(targetDate)
-      scheduledDate.setDate(scheduledDate.getDate() - 14)
-      if (scheduledDate < now) scheduledDate.setTime(now.getTime() + 86400000)
-
-      const { data: existing } = await SB
-        .from('jobs')
-        .select('id')
-        .eq('location_id', oldJob.location_id)
-        .gte('scheduled_date', targetMonthStart.toISOString().split('T')[0])
-        .lte('scheduled_date', targetMonthEnd.toISOString().split('T')[0])
-        .in('status', ['scheduled', 'completed', 'en_route', 'active'])
-        .limit(1)
-
-      if (existing && existing.length > 0) {
-        skipped++
-        log.push({ skipped: true, location_id: oldJob.location_id, reason: 'job already exists for target month' })
-        continue
-      }
-
-      const { data: newJob, error: insertErr } = await SB
-        .from('jobs')
-        .insert({
-          location_id: oldJob.location_id,
-          billing_account_id: oldJob.billing_account_id,
-          contract_id: oldJob.contract_id,
-          type: 'inspection',
-          scope: oldJob.scope,
-          status: 'scheduled',
-          scheduled_date: scheduledDate.toISOString().split('T')[0],
-          technician: 'Jon Stephens',
-          assigned_to: jonId,
-          notes: `Auto-rescheduled from job ${oldJob.id} (${oldJob._rebookType}, ${oldJob._monthsOut}-month cycle)`
-        })
-        .select()
-        .single()
-
-      if (insertErr) {
-        log.push({ error: 'insert failed', location_id: oldJob.location_id, detail: insertErr.message })
-        continue
-      }
-
-      // Copy line items from old job's invoice
-      const { data: oldInvoice } = await SB
-        .from('invoices')
-        .select('id')
-        .eq('job_id', oldJob.id)
-        .limit(1)
-        .single()
-
-      if (oldInvoice) {
-        const { data: oldLines } = await SB
-          .from('invoice_lines')
+      // Carry line-item template + estimated value from previous invoice.
+      let lineTemplate = null, estimatedValue = null
+      const { data: oldInv } = await SB.from('invoices').select('id').eq('job_id', c.id).limit(1).maybeSingle()
+      if (oldInv?.id) {
+        const { data: lines } = await SB.from('invoice_lines')
           .select('description, quantity, unit_price, total, sort_order')
-          .eq('invoice_id', oldInvoice.id)
-          .order('sort_order')
-
-        if (oldLines && oldLines.length > 0) {
-          const lineTemplate = oldLines.map(l => `${l.quantity}x ${l.description} @ $${l.unit_price}`).join(' | ')
-          await SB
-            .from('jobs')
-            .update({
-              notes: `Auto-rescheduled from job ${oldJob.id} (${oldJob._rebookType}, ${oldJob._monthsOut}-month cycle)\nPrevious line items: ${lineTemplate}`,
-              estimated_value: oldLines.reduce((sum, l) => sum + parseFloat(l.total), 0)
-            })
-            .eq('id', newJob.id)
+          .eq('invoice_id', oldInv.id).order('sort_order')
+        if (lines && lines.length) {
+          lineTemplate = lines.map(l => `${l.quantity}x ${l.description} @ $${l.unit_price}`).join(' | ')
+          estimatedValue = lines.reduce((s, l) => s + parseFloat(l.total || 0), 0)
         }
       }
 
-      created++
-      log.push({
-        created: true,
-        new_job_id: newJob.id,
-        location_id: oldJob.location_id,
-        type: oldJob._rebookType,
-        scheduled_date: scheduledDate.toISOString().split('T')[0],
-        from_job: oldJob.id
+      proposals.push({
+        source_job_id: c.id,
+        location_id: c.location_id,
+        location_name: loc.name,
+        location_city: loc.city || '',
+        billing_account_id: c.billing_account_id,
+        contract_id: c.contract_id,
+        scope: c.scope,
+        cycle: c._cycle,
+        scheduled_date: targetDateStr,
+        due_date: ymd(dueDate),
+        assigned_to: jonId,
+        estimated_value: estimatedValue,
+        notes: `Auto-proposed from job ${c.id} (${c._cycle}, due ${ymd(dueDate)})${lineTemplate ? '\nPrevious line items: ' + lineTemplate : ''}`
       })
+    }
+
+    function skipped(reason, c, loc) {
+      log.push({ skipped: true, reason, location_id: c.location_id, location_name: loc?.name, source_job_id: c.id, cycle: c._cycle })
+    }
+
+    if (!proposals.length) {
+      return res.status(200).json({ success: true, summary: { ran_at: now.toISOString(), proposals: 0 }, log })
+    }
+
+    // 6. Persist the batch as a pending_confirmation.
+    const expires = new Date(now.getTime() + 72 * 3600 * 1000).toISOString()
+    const digestLines = proposals.map((p, i) =>
+      `${i + 1}. ${p.location_name}${p.location_city ? ' · ' + p.location_city : ''}` +
+      ` — ${p.cycle === 'suppression' ? 'supp' : 'ext'} ${p.scheduled_date}` +
+      (p.estimated_value ? ` ($${Math.round(p.estimated_value)})` : '')
+    )
+    const digestBody = `Riker proposes ${proposals.length} job${proposals.length === 1 ? '' : 's'}:\n\n${digestLines.join('\n')}\n\nReply YES to schedule all, NO to skip. Expires in 72h.`
+
+    const { data: pending, error: pErr } = await SB.from('pending_confirmations').insert({
+      source_channel: 'internal',
+      proposed_action: { type: 'auto_schedule_batch', jobs: proposals },
+      proposed_reply: `OK, scheduled ${proposals.length} inspections.`,
+      expires_at: expires,
+      status: 'pending'
+    }).select().single()
+    if (pErr) return res.status(500).json({ error: 'pending insert failed: ' + pErr.message, log })
+
+    // 7. Text Jon the digest.
+    try {
+      await sendSMSToJon(digestBody)
+    } catch (e) {
+      log.push({ error: 'sms send failed', detail: e.message, pending_id: pending.id })
     }
 
     return res.status(200).json({
       success: true,
       summary: {
         ran_at: now.toISOString(),
-        suppression_candidates: suppJobs?.length || 0,
-        extinguisher_candidates: extJobs?.length || 0,
-        jobs_created: created,
-        jobs_skipped: skipped
+        proposals: proposals.length,
+        pending_id: pending.id,
+        expires_at: expires
       },
+      proposals,
       log
     })
 

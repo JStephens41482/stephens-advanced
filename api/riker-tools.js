@@ -578,6 +578,32 @@ const approve_pending = {
         await ctx.supabase.from('pending_confirmations').update({ status: 'failed', responded_at: new Date().toISOString() }).eq('id', pending.id)
         return { error: 'execute failed: ' + result.error }
       }
+    } else if (sub.type === 'auto_schedule_batch') {
+      // Daily auto-reschedule cron proposal. Each entry in sub.jobs becomes
+      // a real scheduled row. If any fail we record the detail and keep going.
+      const created = []
+      const failed = []
+      for (const j of (sub.jobs || [])) {
+        const { data: newJob, error } = await ctx.supabase.from('jobs').insert({
+          location_id: j.location_id,
+          billing_account_id: j.billing_account_id,
+          contract_id: j.contract_id,
+          type: 'inspection',
+          scope: j.scope,
+          status: 'scheduled',
+          scheduled_date: j.scheduled_date,
+          technician: 'Jon Stephens',
+          assigned_to: j.assigned_to,
+          estimated_value: j.estimated_value,
+          notes: j.notes
+        }).select('id').single()
+        if (error) failed.push({ location_name: j.location_name, error: error.message })
+        else created.push({ job_id: newJob.id, location_name: j.location_name, scheduled_date: j.scheduled_date })
+      }
+      await ctx.supabase.from('pending_confirmations').update({
+        status: 'executed', responded_at: new Date().toISOString()
+      }).eq('id', pending.id)
+      return { ok: true, pending_id: pending.id, created: created.length, failed: failed.length, details: { created, failed } }
     }
 
     await ctx.supabase.from('pending_confirmations').update({
