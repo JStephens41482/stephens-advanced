@@ -12,12 +12,36 @@
 const { createClient } = require('@supabase/supabase-js')
 const core = require('./riker-core')
 
+const JON_PHONE = '+12149944799'
+
+// Claim patterns: "I'm Jon", "I'm the owner", "this is Jon Stephens", etc.
+const OWNER_CLAIM_RE = /\b(i'?m\s+jon\b|i\s+am\s+jon\b|this\s+is\s+jon\b|i'?m\s+the\s+owner|i\s+am\s+the\s+owner|owner\s+access|admin\s+access|verify\s+(me|owner|identity|i'?m))\b/i
+
 function makeSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL ||
     'https://motjasdokoxwiodwzyps.supabase.co'
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY ||
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY
   return createClient(url, key)
+}
+
+async function sendOTPSMS(otp) {
+  const sid = process.env.TWILIO_ACCOUNT_SID
+  const token = process.env.TWILIO_AUTH_TOKEN
+  const from = process.env.TWILIO_PHONE_NUMBER || process.env.TWILIO_FROM_NUMBER
+  if (!sid || !token || !from) return false
+  try {
+    const auth = Buffer.from(sid + ':' + token).toString('base64')
+    const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
+      method: 'POST',
+      headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        To: JON_PHONE, From: from,
+        Body: `Verification code: ${otp}\n(Expires in 10 min — type it in the chat)`
+      }).toString()
+    })
+    return r.ok
+  } catch { return false }
 }
 
 module.exports = async function handler(req, res) {
@@ -45,6 +69,7 @@ module.exports = async function handler(req, res) {
   }
 
   const supabase = makeSupabase()
+  const trimmed = String(message).trim()
 
   // ── Resolve or create website session ────────────────────────────────────
   let sessionId = null
@@ -74,6 +99,57 @@ module.exports = async function handler(req, res) {
     sessionId = created.id
   }
 
+  // ── Owner claim — send OTP deterministically, don't rely on Claude ────────
+  // Pattern-matched in code so it always fires regardless of Claude's mood.
+  if (OWNER_CLAIM_RE.test(trimmed)) {
+    const otp = String(Math.floor(100000 + Math.random() * 900000))
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString()
+    await supabase.from('admin_otps').insert({ phone: JON_PHONE, code: otp, expires_at: expiresAt, used: false })
+    const sent = await sendOTPSMS(otp)
+    const reply = sent
+      ? "I just texted a verification code to your registered number. Type the 6 digits here when you get it."
+      : "Had trouble sending the SMS — please call (214) 994-4799 directly."
+    await core.appendToRikerSession(supabase, sessionId, 'user', trimmed)
+    await core.appendToRikerSession(supabase, sessionId, 'assistant', reply)
+    return res.status(200).json({
+      reply, session_id: sessionId,
+      actions_taken: [{ type: 'request_owner_otp', ok: sent }]
+    })
+  }
+
+  // ── 6-digit OTP reply — verify in code, don't rely on Claude ─────────────
+  if (/^\d{6}$/.test(trimmed)) {
+    const { data: row } = await supabase.from('admin_otps')
+      .select('id')
+      .eq('phone', JON_PHONE)
+      .eq('code', trimmed)
+      .eq('used', false)
+      .gt('expires_at', new Date().toISOString())
+      .order('created_at', { ascending: false })
+      .limit(1).maybeSingle()
+    if (row) {
+      await supabase.from('admin_otps').update({ used: true }).eq('id', row.id)
+      // Write a short-lived memory so Riker knows this session is owner-verified
+      await supabase.from('riker_memory').insert({
+        scope: 'global',
+        category: 'internal',
+        content: `OWNER VERIFIED: website session ${sessionId} authenticated as Jon Stephens.`,
+        priority: 10,
+        expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+        auto_generated: true,
+        source: 'owner_otp_verify'
+      })
+      const reply = "Verified — hey Jon. What do you need?"
+      await core.appendToRikerSession(supabase, sessionId, 'user', trimmed)
+      await core.appendToRikerSession(supabase, sessionId, 'assistant', reply)
+      return res.status(200).json({
+        reply, session_id: sessionId,
+        actions_taken: [{ type: 'verify_owner_otp', ok: true }]
+      })
+    }
+    // Invalid/expired OTP — fall through to Riker to handle naturally
+  }
+
   // ── Run through Riker core ────────────────────────────────────────────────
   try {
     const result = await core.processMessage({
@@ -82,7 +158,7 @@ module.exports = async function handler(req, res) {
       sessionKey: sessionId,
       sessionStorage: 'riker_sessions',
       identity: {},
-      message: String(message).trim(),
+      message: trimmed,
       inboundAlreadyLogged: false,
       rikerSessionId: sessionId
     })
