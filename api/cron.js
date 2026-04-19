@@ -37,26 +37,29 @@ function addDays(dateLike, n) {
 }
 function ymd(d) { return d.toISOString().split('T')[0] }
 
-// Given a due_date (end-of-month), pick a weekday within the due-month that Jon
-// is available on. Prefer mid-month Tue/Wed. Fall back to any available weekday
-// 1st-3rd week. Returns YYYY-MM-DD string.
-function pickTargetDate(dueDate) {
-  const year = dueDate.getFullYear(), month = dueDate.getMonth()
-  const firstOfMonth = new Date(year, month, 1)
-  const lastOfMonth = new Date(year, month + 1, 0)
-  const candidates = []
-  for (let d = new Date(firstOfMonth); d <= lastOfMonth; d = addDays(d, 1)) {
-    const dow = d.getDay()
-    if (dow === 0 || dow === 6) continue
-    const avail = william.getJonAvailability(new Date(d))
-    if (!avail.available) continue
-    const weekIdx = Math.floor((d.getDate() - 1) / 7)  // 0 = first week, 1 = second, ...
-    const dayScore = (dow === 2 || dow === 3) ? 0 : (dow === 4) ? 1 : (dow === 1 || dow === 5) ? 2 : 3
-    const weekScore = weekIdx <= 2 ? weekIdx : 5  // prefer weeks 0-2
-    candidates.push({ date: ymd(d), score: weekScore * 10 + dayScore })
+// Pick a weekday inside the compliance window that Jon is available on.
+// Prefer the by-the-book window (day 165–180 for supp, 335–365 for ext);
+// fall back to the grace window (rest of the end-of-month containing day
+// 180/365). Prefer Tue/Wed. Returns { date, tier } where tier is 'window'
+// or 'grace'.
+function pickTargetDate(windowStart, windowEnd, graceEnd) {
+  const earliest = new Date(Math.max(windowStart.getTime(), Date.now() + 86400000 * 2))  // don't propose yesterday
+  const scan = (from, to, tier) => {
+    const out = []
+    for (let d = new Date(from); d <= to; d = addDays(d, 1)) {
+      const dow = d.getDay()
+      if (dow === 0 || dow === 6) continue
+      const avail = william.getJonAvailability(new Date(d))
+      if (!avail.available) continue
+      const dayScore = (dow === 2 || dow === 3) ? 0 : (dow === 4) ? 1 : (dow === 1 || dow === 5) ? 2 : 3
+      out.push({ date: ymd(d), score: dayScore, tier })
+    }
+    return out
   }
-  candidates.sort((a, b) => a.score - b.score)
-  return candidates[0]?.date || ymd(addDays(dueDate, -7))
+  let options = scan(earliest, windowEnd, 'window')
+  if (!options.length) options = scan(addDays(windowEnd, 1), graceEnd, 'grace')
+  options.sort((a, b) => a.score - b.score)
+  return options[0] || { date: ymd(windowEnd), tier: 'grace' }
 }
 
 module.exports = async function handler(req, res) {
@@ -300,28 +303,35 @@ async function autoReschedule(req, res, SB) {
       }
     })
 
-    // 2. Pull candidate completions.
-    //    Supp: completed ≥ 150 days ago (5 months) — gives us ≥ 30 days to the due-month.
-    //    Ext:  completed ≥ 335 days ago (~11 months) — gives us ≥ 30 days to the due-month.
-    const suppWindowEnd = addDays(now, -150)
-    const extWindowEnd = addDays(now, -335)
+    // 2. Pull candidate completions. Compliance windows per Jon:
+    //    Suppression (semi-annual): performed between day 165 and 180;
+    //    grace = end-of-month containing day 180.
+    //    Extinguishers (annual): performed between day 335 and 365;
+    //    grace = end-of-month containing day 365.
+    //
+    //    Riker should propose ~1 week before the window opens, so the
+    //    starting filter is completed ≥ (cycleStart - 10) days ago. We
+    //    drop anything whose grace window has already passed (those are
+    //    now overdue and handled by the overdue flow, not auto-reschedule).
+    const suppStartCutoff = addDays(now, -(165 - 10))  // propose from day 155
+    const extStartCutoff = addDays(now, -(335 - 10))   // propose from day 325
 
     const { data: suppJobs, error: suppErr } = await SB.from('jobs')
       .select('id, location_id, billing_account_id, contract_id, scope, completed_at')
       .eq('status', 'completed').contains('scope', ['suppression'])
-      .lte('completed_at', suppWindowEnd.toISOString())
+      .lte('completed_at', suppStartCutoff.toISOString())
     if (suppErr) log.push({ error: 'suppression query failed', detail: suppErr.message })
 
     const { data: extJobs, error: extErr } = await SB.from('jobs')
       .select('id, location_id, billing_account_id, contract_id, scope, completed_at')
       .eq('status', 'completed').contains('scope', ['extinguishers'])
       .not('scope', 'cs', '{"suppression"}')  // don't double-count combos
-      .lte('completed_at', extWindowEnd.toISOString())
+      .lte('completed_at', extStartCutoff.toISOString())
     if (extErr) log.push({ error: 'extinguisher query failed', detail: extErr.message })
 
     const candidates = [
-      ...(suppJobs || []).map(j => ({ ...j, _cycle: 'suppression', _cycleDays: 180 })),
-      ...(extJobs || []).map(j => ({ ...j, _cycle: 'extinguisher', _cycleDays: 365 }))
+      ...(suppJobs || []).map(j => ({ ...j, _cycle: 'suppression', _cycleStart: 165, _cycleEnd: 180 })),
+      ...(extJobs || []).map(j => ({ ...j, _cycle: 'extinguisher', _cycleStart: 335, _cycleEnd: 365 }))
     ]
 
     // 3. Resolve locations for filtering + display.
@@ -350,19 +360,28 @@ async function autoReschedule(req, res, SB) {
       if (!String(loc.address || '').match(/\d/)) { skipped('no street number', c, loc); continue }
       if (alreadyProposedSources.has(c.id)) { skipped('already in open proposal', c, loc); continue }
 
-      // Due-date rule: end-of-month the 180th / 365th day falls in.
-      const day180 = addDays(c.completed_at, c._cycleDays)
-      const dueDate = endOfMonth(day180)
-      const targetDateStr = pickTargetDate(dueDate)
+      // Compliance windows:
+      //   windowStart = completed + cycleStart days   (day 165 supp / 335 ext)
+      //   windowEnd   = completed + cycleEnd days     (day 180 supp / 365 ext)
+      //   graceEnd    = end-of-month(windowEnd)       (Jon's in-practice buffer)
+      const windowStart = addDays(c.completed_at, c._cycleStart)
+      const windowEnd = addDays(c.completed_at, c._cycleEnd)
+      const graceEnd = endOfMonth(windowEnd)
 
-      // Skip if a next-cycle job already exists in the due-month.
-      const dueMonthStart = ymd(new Date(dueDate.getFullYear(), dueDate.getMonth(), 1))
-      const dueMonthEnd = ymd(dueDate)
+      // If the grace window has already passed, this isn't an auto-reschedule
+      // candidate — it's an overdue job. Skip.
+      if (now > graceEnd) { skipped('past grace window — overdue flow', c, loc); continue }
+
+      const pick = pickTargetDate(windowStart, windowEnd, graceEnd)
+      const targetDateStr = pick.date
+      const targetTier = pick.tier  // 'window' or 'grace'
+
+      // Skip if a next-cycle job already exists anywhere in the compliance window.
       const { data: existing } = await SB.from('jobs')
         .select('id').eq('location_id', c.location_id)
-        .gte('scheduled_date', dueMonthStart).lte('scheduled_date', dueMonthEnd)
+        .gte('scheduled_date', ymd(windowStart)).lte('scheduled_date', ymd(graceEnd))
         .in('status', ['scheduled', 'completed', 'en_route', 'active']).limit(1)
-      if (existing && existing.length) { skipped('already scheduled for due-month', c, loc); continue }
+      if (existing && existing.length) { skipped('already scheduled in window', c, loc); continue }
 
       // Carry line-item template + estimated value from previous invoice.
       let lineTemplate = null, estimatedValue = null
@@ -387,10 +406,13 @@ async function autoReschedule(req, res, SB) {
         scope: c.scope,
         cycle: c._cycle,
         scheduled_date: targetDateStr,
-        due_date: ymd(dueDate),
+        target_tier: targetTier,
+        window_start: ymd(windowStart),
+        window_end: ymd(windowEnd),
+        grace_end: ymd(graceEnd),
         assigned_to: jonId,
         estimated_value: estimatedValue,
-        notes: `Auto-proposed from job ${c.id} (${c._cycle}, due ${ymd(dueDate)})${lineTemplate ? '\nPrevious line items: ' + lineTemplate : ''}`
+        notes: `Auto-proposed from job ${c.id} (${c._cycle}, window ${ymd(windowStart)}–${ymd(windowEnd)}, grace ${ymd(graceEnd)})${lineTemplate ? '\nPrevious line items: ' + lineTemplate : ''}`
       })
     }
 
@@ -407,6 +429,7 @@ async function autoReschedule(req, res, SB) {
     const digestLines = proposals.map((p, i) =>
       `${i + 1}. ${p.location_name}${p.location_city ? ' · ' + p.location_city : ''}` +
       ` — ${p.cycle === 'suppression' ? 'supp' : 'ext'} ${p.scheduled_date}` +
+      (p.target_tier === 'grace' ? ' [grace]' : '') +
       (p.estimated_value ? ` ($${Math.round(p.estimated_value)})` : '')
     )
     const digestBody = `Riker proposes ${proposals.length} job${proposals.length === 1 ? '' : 's'}:\n\n${digestLines.join('\n')}\n\nReply YES to schedule all, NO to skip. Expires in 72h.`
