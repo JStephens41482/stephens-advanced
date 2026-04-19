@@ -72,23 +72,23 @@ module.exports = async function handler(req, res) {
   const trimmed = String(message).trim()
 
   // ── Resolve or create website session ────────────────────────────────────
-  let sessionId = null
+  let session = null
   if (session_id) {
     const { data } = await supabase.from('riker_sessions')
-      .select('id')
+      .select('id, location_id, messages')
       .eq('id', session_id)
       .eq('context', 'website')
       .eq('status', 'active')
       .maybeSingle()
-    if (data) sessionId = data.id
+    if (data) session = data
   }
 
-  if (!sessionId) {
+  if (!session) {
     const { data: created, error } = await supabase.from('riker_sessions').insert({
       context: 'website',
       messages: [],
       status: 'active'
-    }).select('id').single()
+    }).select('id, location_id, messages').single()
     if (error || !created) {
       console.error('[scheduler-chat] session create failed:', error)
       return res.status(500).json({
@@ -96,8 +96,10 @@ module.exports = async function handler(req, res) {
         session_id: null
       })
     }
-    sessionId = created.id
+    session = created
   }
+
+  const sessionId = session.id
 
   // ── Owner claim — send OTP deterministically, don't rely on Claude ────────
   // Pattern-matched in code so it always fires regardless of Claude's mood.
@@ -172,11 +174,21 @@ module.exports = async function handler(req, res) {
       context: rikerContext,
       sessionKey: sessionId,
       sessionStorage: 'riker_sessions',
-      identity: {},
+      identity: { location_id: session.location_id || null },
       message: trimmed,
       inboundAlreadyLogged: false,
       rikerSessionId: sessionId
     })
+
+    // Periodic deep memory extraction — every 4th inbound turn, distill the
+    // full conversation into durable notebook entries (same cadence as SMS).
+    const inboundCount = (Array.isArray(session.messages) ? session.messages : [])
+      .filter(m => m.role === 'user').length + 1  // +1 for the turn we just added
+    if (inboundCount > 0 && inboundCount % core.MEMORY_EXTRACT_EVERY_N_INBOUND === 0) {
+      core.extractMemoryFromSession(supabase, sessionId).catch(e =>
+        console.error('[scheduler-chat] memory extract failed:', e.message)
+      )
+    }
 
     return res.status(200).json({
       reply: result.reply,

@@ -227,15 +227,23 @@ const lookup_client = {
       if (!lastJobByLoc[j.location_id]) lastJobByLoc[j.location_id] = j
     }
 
-    return {
-      count: data.length,
-      matches: data.map(r => ({
-        ...r,
-        last_job: lastJobByLoc[r.id]
-          ? { date: lastJobByLoc[r.id].scheduled_date, scope: lastJobByLoc[r.id].scope, status: lastJobByLoc[r.id].status }
-          : null
-      }))
+    const matches = data.map(r => ({
+      ...r,
+      last_job: lastJobByLoc[r.id]
+        ? { date: lastJobByLoc[r.id].scheduled_date, scope: lastJobByLoc[r.id].scope, status: lastJobByLoc[r.id].status }
+        : null
+    }))
+
+    // If there's exactly one match and we're in a website session, stamp the
+    // location_id onto the session so customer-scoped memories load next turn.
+    if (matches.length === 1 && ctx.rikerSessionId && ctx.context === 'website') {
+      ctx.supabase.from('riker_sessions').update({
+        location_id: matches[0].id, updated_at: new Date().toISOString()
+      }).eq('id', ctx.rikerSessionId).then(() => {}).catch(() => {})
+      ctx.lastLocationId = matches[0].id
     }
+
+    return { count: matches.length, matches }
   }
 }
 
@@ -827,6 +835,13 @@ const add_client = {
       if (geo) await ctx.supabase.from('locations').update({ lat: geo.lat, lng: geo.lng }).eq('id', loc.id)
     }
     ctx.lastLocationId = loc.id
+    // Stamp the location onto the riker_session so subsequent turns in this
+    // chat load customer-scoped memories from the notebook automatically.
+    if (ctx.rikerSessionId) {
+      ctx.supabase.from('riker_sessions').update({
+        location_id: loc.id, updated_at: new Date().toISOString()
+      }).eq('id', ctx.rikerSessionId).then(() => {}).catch(() => {})
+    }
     return { ok: true, location_id: loc.id, business_name: input.business_name, brycer: isBrycer }
   }
 }

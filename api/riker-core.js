@@ -359,10 +359,11 @@ async function classifyComplexity(message) {
 // relationships, facts about clients, gate codes, etc.). If yes, write
 // via riker-memory. If not, silent no-op. ~$0.002 per turn.
 //
-// Scoped to sms_jon + app only — customer phrasing is noisy and we
-// shouldn't auto-promote their language to standing memory.
+// Runs on sms_jon, app, and website contexts. Website customer exchanges
+// are worth extracting — scheduling constraints, equipment notes, contact
+// preferences — the same things Jon would jot in a paper notebook.
 async function extractDurableMemory({ supabase, context, identity, userMessage, reply }) {
-  if (!['sms_jon', 'app'].includes(context)) return []
+  if (!['sms_jon', 'app', 'website'].includes(context)) return []
   const key = process.env.CLAUDE_KEY
   if (!key) return []
   if (!userMessage) return []
@@ -719,9 +720,9 @@ async function processMessage({
     + (usage.cache_creation_input_tokens * (isOpus ? CLAUDE_PRICE_CACHE_WRITE_OPUS : CLAUDE_PRICE_CACHE_WRITE))
 
   // Active memory extraction — fire and forget so it doesn't delay reply
-  // latency. Only runs on sms_jon + app contexts.
+  // latency. Runs on sms_jon, app, and website contexts.
   let memoryExtractPromise = Promise.resolve([])
-  if (['sms_jon', 'app'].includes(context)) {
+  if (['sms_jon', 'app', 'website'].includes(context)) {
     memoryExtractPromise = extractDurableMemory({ supabase, context, identity, userMessage: message, reply })
   }
 
