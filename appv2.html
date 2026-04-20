@@ -10098,6 +10098,26 @@ async function execChatAction(act){
   }
 }
 
+// LOCATION BEACON — streams Jon's GPS to Supabase every 60s while app is open.
+// Riker reads jon_location for live routing and departure alerts.
+let _locWatchId=null
+function startLocationBeacon(){
+  if(!navigator.geolocation)return
+  let _lastWrite=0
+  _locWatchId=navigator.geolocation.watchPosition(async pos=>{
+    const now=Date.now()
+    if(now-_lastWrite<60000)return
+    _lastWrite=now
+    const{latitude:lat,longitude:lng,accuracy,heading,speed}=pos.coords
+    try{
+      await SB.from('jon_location').upsert(
+        {id:1,lat,lng,accuracy:accuracy||null,heading:heading||null,speed:speed||null,source:'app',updated_at:new Date().toISOString()},
+        {onConflict:'id'}
+      )
+    }catch(e){console.warn('[beacon] write failed:',e.message)}
+  },err=>console.warn('[beacon]',err.message),{enableHighAccuracy:true,maximumAge:30000,timeout:15000})
+}
+
 // STARTUP
 function startApp(){
   load().then(()=>{
@@ -10107,6 +10127,7 @@ function startApp(){
     updateNotifBadge()
     generateNotifications()
     setInterval(()=>{generateNotifications()},30*60*1000)
+    startLocationBeacon()
     if(!D.locs.length&&!D.jobs.length){
       setTimeout(()=>load().then(rCal),1200)
     }

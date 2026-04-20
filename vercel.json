@@ -25,6 +25,10 @@
       "schedule": "0 15 * * 0"
     },
     {
+      "path": "/api/cron?job=departure-check",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/email-inbound",
       "schedule": "*/5 * * * *"
     },

@@ -84,6 +84,15 @@ module.exports = async function handler(req, res) {
   if (job === 'riker-invoice-aging') return runProactive('invoiceAging', res, SB)
   if (job === 'riker-compliance-alerts') return runProactive('complianceAlerts', res, SB)
   if (job === 'riker-memory-prune') return runProactive('memoryPrune', res, SB)
+  if (job === 'departure-check') {
+    try {
+      const result = await runDepartureCheck(SB)
+      return res.status(200).json({ ok: true, job: 'departure-check', ...result })
+    } catch (e) {
+      console.error('[cron] departure-check error:', e)
+      return res.status(500).json({ error: e.message })
+    }
+  }
   return res.status(400).json({ error: 'Unknown job' })
 }
 
@@ -536,4 +545,103 @@ async function autoReschedule(req, res, SB) {
   } catch (err) {
     return res.status(500).json({ error: err.message, log })
   }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DEPARTURE CHECK — Every 5 min during work hours
+// Reads Jon's GPS beacon, computes drive time to next job,
+// texts him when it's time to leave. Fires once per job.
+// ═══════════════════════════════════════════════════════════════
+async function runDepartureCheck(SB) {
+  const key = process.env.GOOGLE_MAPS_API_KEY
+  const now = new Date()
+
+  // Work hours only: 5 AM – 9 PM Central
+  const hourCST = parseInt(now.toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: 'America/Chicago' }), 10)
+  if (hourCST < 5 || hourCST >= 21) return { skipped: 'outside work hours' }
+
+  const todayStr = now.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' }) // YYYY-MM-DD
+
+  // Today's scheduled jobs that haven't had a departure alert yet
+  const { data: jobs, error: jobsErr } = await SB.from('jobs')
+    .select('id, scheduled_time, departure_alert_sent_at, location:locations(name, address, city, state, zip)')
+    .eq('status', 'scheduled')
+    .eq('scheduled_date', todayStr)
+    .is('departure_alert_sent_at', null)
+    .order('scheduled_time')
+  if (jobsErr) throw new Error('jobs query: ' + jobsErr.message)
+  if (!jobs || !jobs.length) return { ok: true, checked: 0, alerted: 0 }
+
+  // Jon's current GPS — use if fresh (< 15 min)
+  const { data: jonLoc } = await SB.from('jon_location')
+    .select('lat, lng, updated_at').eq('id', 1).maybeSingle()
+  let originAddr = '3801 Alder Trail, Euless, TX 76040'
+  if (jonLoc && jonLoc.lat && jonLoc.lng) {
+    const ageMin = (Date.now() - new Date(jonLoc.updated_at).getTime()) / 60000
+    if (ageMin < 15) originAddr = `${jonLoc.lat},${jonLoc.lng}`
+  }
+
+  const alerted = []
+
+  for (const job of jobs) {
+    const loc = job.location
+    if (!loc) continue
+    const destAddr = [loc.address, loc.city, loc.state || 'TX', loc.zip].filter(Boolean).join(', ')
+    if (!destAddr || !/\d/.test(destAddr)) continue
+
+    // Parse scheduled time as CST Date
+    const [h, m] = (job.scheduled_time || '09:00:00').split(':').map(Number)
+    const schedMs = new Date(now.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' }) + `T${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:00`)
+      .getTime() + (now.getTimezoneOffset() + (-300)) * 60000  // offset to CST
+
+    // Approximate: rebuild scheduled time in CST
+    const schedCST = new Date(now)
+    schedCST.setHours(h, m, 0, 0)
+    // adjust from local tz to CST
+    const localOffsetMin = schedCST.getTimezoneOffset()
+    const cstOffsetMin = 300 // UTC-5 (CDT) or 360 (CST); close enough for scheduling
+    const schedUTC = schedCST.getTime() + (localOffsetMin - cstOffsetMin) * 60000
+    const schedDate = new Date(schedUTC)
+
+    // Get drive time via Distance Matrix
+    let driveMin = 30
+    if (key) {
+      try {
+        const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${encodeURIComponent(originAddr)}&destinations=${encodeURIComponent(destAddr)}&departure_time=now&key=${key}`
+        const r = await fetch(url)
+        const d = await r.json()
+        const el = d.rows?.[0]?.elements?.[0]
+        if (el?.status === 'OK') {
+          driveMin = Math.ceil((el.duration_in_traffic?.value || el.duration.value) / 60)
+        }
+      } catch {}
+    }
+
+    const leaveByMs = schedDate.getTime() - (driveMin + 10) * 60000
+    const alertWindowStartMs = leaveByMs - 15 * 60000
+    const nowMs = now.getTime()
+    const lateGraceMs = schedDate.getTime() + 30 * 60000
+
+    if (nowMs < alertWindowStartMs || nowMs > lateGraceMs) continue
+
+    const isLate = nowMs > schedDate.getTime()
+    const schedTimeStr = new Date(schedDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Chicago' })
+    const leaveStr = new Date(leaveByMs).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Chicago' })
+    const minsToLeave = Math.max(0, Math.round((leaveByMs - nowMs) / 60000))
+
+    let msg
+    if (isLate) {
+      msg = `⏰ Running late — ${loc.name} (${loc.city}) was at ${schedTimeStr}. ${driveMin}min drive from current location.`
+    } else if (minsToLeave <= 2) {
+      msg = `⏰ Leave NOW for ${loc.name}, ${loc.city} — ${driveMin}min drive, appt at ${schedTimeStr}.`
+    } else {
+      msg = `⏰ Leave in ${minsToLeave} min for ${loc.name}, ${loc.city}. ${driveMin}min drive → ${schedTimeStr}. Leave by ${leaveStr}.`
+    }
+
+    await sendSMSToJon(msg)
+    await SB.from('jobs').update({ departure_alert_sent_at: new Date().toISOString() }).eq('id', job.id)
+    alerted.push({ job_id: job.id, location: loc.name, msg })
+  }
+
+  return { ok: true, checked: jobs.length, alerted: alerted.length, alerts: alerted }
 }

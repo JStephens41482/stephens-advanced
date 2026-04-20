@@ -1314,8 +1314,8 @@ function _haversine(a, b) {
 function _locAddr(l) {
   return [l.address, l.city, l.state || 'TX', l.zip].filter(Boolean).join(', ')
 }
-function _fallbackRoute(jobs) {
-  let remaining = [...jobs], route = [], cur = BASE_LATLNG
+function _fallbackRoute(jobs, startLatLng = BASE_LATLNG) {
+  let remaining = [...jobs], route = [], cur = startLatLng
   while (remaining.length) {
     let best = null, bestD = Infinity, bestI = 0
     remaining.forEach((j, i) => {
@@ -1346,6 +1346,21 @@ const build_route = {
   async handler(input, ctx) {
     const key = process.env.GOOGLE_MAPS_API_KEY
     const today = new Date().toISOString().split('T')[0]
+
+    // Determine origin — use Jon's live GPS if fresh (< 15 min), else home base
+    let routeOrigin = BASE_ADDR
+    let routeOriginLatLng = BASE_LATLNG
+    try {
+      const { data: jonLoc } = await ctx.supabase.from('jon_location')
+        .select('lat, lng, updated_at').eq('id', 1).maybeSingle()
+      if (jonLoc && jonLoc.lat && jonLoc.lng) {
+        const ageMin = (Date.now() - new Date(jonLoc.updated_at).getTime()) / 60000
+        if (ageMin < 15) {
+          routeOrigin = `${jonLoc.lat},${jonLoc.lng}`
+          routeOriginLatLng = { lat: jonLoc.lat, lng: jonLoc.lng }
+        }
+      }
+    } catch {}
 
     // 1. Pick the job pool.
     let pool = []
@@ -1394,7 +1409,7 @@ const build_route = {
     if (stops.length === 1) {
       if (key) {
         try {
-          const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${encodeURIComponent(BASE_ADDR)}&destinations=${encodeURIComponent(stops[0].address)}&key=${key}`
+          const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${encodeURIComponent(routeOrigin)}&destinations=${encodeURIComponent(stops[0].address)}&key=${key}`
           const r = await fetch(url)
           const d = await r.json()
           const el = d.rows?.[0]?.elements?.[0]
@@ -1404,7 +1419,7 @@ const build_route = {
           }
         } catch (e) { /* fall through */ }
       }
-      return _formatRoute(_fallbackRoute(pool), 'haversine')
+      return _formatRoute(_fallbackRoute(pool, routeOriginLatLng), 'haversine')
     }
 
     // 5. Multi-stop: Directions with waypoint optimization. Same call the
@@ -1413,7 +1428,7 @@ const build_route = {
       try {
         const allAddr = stops.map(s => s.address)
         const waypointStr = '&waypoints=optimize:true|' + allAddr.slice(0, -1).map(w => encodeURIComponent(w)).join('|')
-        const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${encodeURIComponent(BASE_ADDR)}&destination=${encodeURIComponent(allAddr[allAddr.length - 1])}${waypointStr}&key=${key}`
+        const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${encodeURIComponent(routeOrigin)}&destination=${encodeURIComponent(allAddr[allAddr.length - 1])}${waypointStr}&key=${key}`
         const r = await fetch(url)
         const d = await r.json()
         if (d.status === 'OK' && d.routes?.[0]) {
@@ -1442,7 +1457,7 @@ const build_route = {
       } catch (e) { /* fall through */ }
     }
 
-    return _formatRoute(_fallbackRoute(pool), 'haversine')
+    return _formatRoute(_fallbackRoute(pool, routeOriginLatLng), 'haversine')
   }
 }
 
@@ -2064,13 +2079,42 @@ const escalate_to_jon = {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// TOOL: get_jon_location
+// ═══════════════════════════════════════════════════════════════
+const get_jon_location = {
+  schema: {
+    name: 'get_jon_location',
+    description: "Get Jon's current GPS coordinates from the field app beacon. Returns lat/lng, accuracy, speed, and how many minutes ago it was last updated. If age_minutes > 15 the app is probably closed — fall back to home base (Euless) for routing. Use this before build_route to confirm whether live location is available, or to answer 'where am I / how far am I from the next job'.",
+    input_schema: { type: 'object', properties: {} }
+  },
+  async handler(input, ctx) {
+    const { data, error } = await ctx.supabase.from('jon_location')
+      .select('lat, lng, accuracy, heading, speed, source, updated_at')
+      .eq('id', 1).maybeSingle()
+    if (error) return { error: error.message }
+    if (!data) return { ok: false, note: 'No location on file — open the field app to start the beacon.' }
+    const ageMin = Math.floor((Date.now() - new Date(data.updated_at).getTime()) / 60000)
+    return {
+      ok: true,
+      lat: data.lat,
+      lng: data.lng,
+      accuracy_m: data.accuracy ? Math.round(data.accuracy) : null,
+      speed_mph: data.speed ? Math.round(data.speed * 2.237) : null,
+      updated_at: data.updated_at,
+      age_minutes: ageMin,
+      stale: ageMin > 15
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // REGISTRY + CONTEXT FILTERING
 // ═══════════════════════════════════════════════════════════════
 
 const ALL_TOOLS = {
   get_today_summary, query_jobs, lookup_client, get_invoices,
   get_schedule_slots, get_equipment, get_pending_confirmations,
-  get_todos, read_memory, get_rate_card,
+  get_todos, read_memory, get_rate_card, get_jon_location,
   schedule_job, approve_pending, reject_pending, send_sms,
   add_client, add_todo, write_memory, delete_memory, mark_invoice_paid,
   lookup_business,
