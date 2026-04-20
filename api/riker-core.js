@@ -317,10 +317,11 @@ async function buildBusinessPulse(supabase) {
       .eq('status', 'scheduled')
       .order('scheduled_date').limit(20)),
 
-    // Open invoices — all unpaid
+    // Open invoices — all unpaid, not trashed
     safe(supabase.from('invoices')
       .select('invoice_number, total, due_date, location:locations(name)')
       .not('status', 'in', '(paid,void,record,factored)')
+      .is('deleted_at', null)
       .order('due_date', { ascending: true })),
 
     // Customer bookings awaiting Jon's approval

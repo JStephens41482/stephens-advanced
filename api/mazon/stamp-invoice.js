@@ -159,7 +159,17 @@ module.exports = async function handler(req, res) {
       try { await supabase.storage.from(bucket).remove([path]) } catch {}
     }
     if (createdQueueId) {
-      try { await supabase.from('mazon_queue').delete().eq('id', createdQueueId) } catch {}
+      try {
+        const { data: qRow } = await supabase.from('mazon_queue').select('*').eq('id', createdQueueId).maybeSingle()
+        if (qRow) {
+          await supabase.from('deleted_records').insert({
+            table_name: 'mazon_queue', record_id: String(createdQueueId),
+            record_data: qRow, deleted_by: 'system',
+            reason: 'stamp-invoice rollback: ' + e.message, context: 'mazon'
+          })
+        }
+        await supabase.from('mazon_queue').delete().eq('id', createdQueueId)
+      } catch {}
     }
     return res.status(500).json({ error: e.message })
   }

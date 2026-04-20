@@ -21,6 +21,23 @@ const BRYCER_CITIES = ['fort worth', 'benbrook', 'burleson', 'crowley', 'edgecli
 // Helpers
 // ═══════════════════════════════════════════════════════════════
 
+// Log a row to deleted_records before removing it from its source table.
+// Never throws — a logging failure should not block the caller.
+async function trashRecord(supabase, { tableName, recordId, recordData, deletedBy, reason, context }) {
+  try {
+    await supabase.from('deleted_records').insert({
+      table_name: tableName,
+      record_id: String(recordId),
+      record_data: recordData,
+      deleted_by: deletedBy || 'unknown',
+      reason: reason || null,
+      context: context || null
+    })
+  } catch (e) {
+    console.error('[trashRecord] failed to log deletion:', e.message)
+  }
+}
+
 async function sendSMSRaw(to, body) {
   const sid = process.env.TWILIO_ACCOUNT_SID
   const token = process.env.TWILIO_AUTH_TOKEN
@@ -184,6 +201,7 @@ const lookup_client = {
     const phoneDigits = s.replace(/\D/g, '')
     let q = ctx.supabase.from('locations')
       .select('id, name, address, city, state, zip, contact_name, contact_email, contact_phone, billing_account_id, is_brycer_jurisdiction')
+      .is('deleted_at', null)
       .limit(limit)
 
     if (phoneDigits.length >= 7) {
@@ -272,6 +290,7 @@ const get_invoices = {
     const today = new Date().toISOString().split('T')[0]
     let q = ctx.supabase.from('invoices')
       .select('id, invoice_number, date, due_date, total, status, paid_at, payment_method, location:locations(id,name,city), billing_account_id')
+      .is('deleted_at', null)
       .order('date', { ascending: false })
       .limit(limit)
     if (status === 'paid') q = q.eq('status', 'paid')
@@ -1100,35 +1119,60 @@ const update_client = {
 const delete_client = {
   schema: {
     name: 'delete_client',
-    description: "Permanently delete a client location. SAFETY: must pass confirm_name that matches the stored client name (echo back what Jon typed). By default fails if related jobs/invoices exist; pass confirm_cascade=true to also delete those. For accidental duplicates prefer merge_clients.",
+    description: "Move a client location to the trash (soft-delete — recoverable). SAFETY: must pass confirm_name that matches the stored client name (echo back what Jon typed). By default fails if related jobs/invoices exist; pass confirm_cascade=true to also trash those. For accidental duplicates prefer merge_clients.",
     input_schema: {
       type: 'object',
       properties: {
         location_id: { type: 'string' },
         confirm_name: { type: 'string', description: "Must match the stored name (case-insensitive, partial OK). Echo back what Jon called the client. Safety gate against accidental deletes." },
-        confirm_cascade: { type: 'boolean', description: 'If true, deletes all jobs/invoices/reports tied to this location first. Default false.' }
+        confirm_cascade: { type: 'boolean', description: 'If true, also trashes all jobs/invoices tied to this location. Default false.' },
+        reason: { type: 'string', description: 'Why this client is being removed. Required for audit trail.' }
       },
       required: ['location_id', 'confirm_name']
     }
   },
   async handler(input, ctx) {
-    const { data: loc } = await ctx.supabase.from('locations').select('id, name').eq('id', input.location_id).maybeSingle()
+    const { data: loc } = await ctx.supabase.from('locations').select('*').eq('id', input.location_id).maybeSingle()
     if (!loc) return { error: 'Location not found' }
     const a = (input.confirm_name || '').toLowerCase().trim()
     const b = (loc.name || '').toLowerCase().trim()
     const match = a && b && (a.includes(b.slice(0, Math.min(4, b.length))) || b.includes(a.slice(0, Math.min(4, a.length))))
     if (!match) return { error: `Safety check failed: confirm_name "${input.confirm_name}" doesn't overlap the stored name "${loc.name}". Echo back what Jon named.` }
+
+    const now = new Date().toISOString()
+    const deletedBy = ctx.context === 'app' || ctx.context === 'sms_jon' ? 'jon' : 'riker'
+    const trashMeta = { deletedBy, reason: input.reason || null, context: ctx.context }
+
+    let cascadedJobs = 0
+    let cascadedInvoices = 0
+
     if (input.confirm_cascade) {
-      await ctx.supabase.from('invoices').delete().eq('location_id', loc.id)
-      await ctx.supabase.from('jobs').delete().eq('location_id', loc.id)
-      await ctx.supabase.from('reports').delete().eq('location_id', loc.id)
+      // Trash cascaded jobs
+      const { data: jobs } = await ctx.supabase.from('jobs').select('*').eq('location_id', loc.id).is('deleted_at', null)
+      for (const j of (jobs || [])) {
+        await trashRecord(ctx.supabase, { tableName: 'jobs', recordId: j.id, recordData: j, ...trashMeta, reason: `Cascade from delete_client: ${loc.name}` })
+      }
+      if (jobs?.length) {
+        await ctx.supabase.from('jobs').update({ deleted_at: now }).eq('location_id', loc.id).is('deleted_at', null)
+        cascadedJobs = jobs.length
+      }
+      // Trash cascaded invoices
+      const { data: invs } = await ctx.supabase.from('invoices').select('*').eq('location_id', loc.id).is('deleted_at', null)
+      for (const inv of (invs || [])) {
+        await trashRecord(ctx.supabase, { tableName: 'invoices', recordId: inv.id, recordData: inv, ...trashMeta, reason: `Cascade from delete_client: ${loc.name}` })
+      }
+      if (invs?.length) {
+        await ctx.supabase.from('invoices').update({ deleted_at: now }).eq('location_id', loc.id).is('deleted_at', null)
+        cascadedInvoices = invs.length
+      }
     }
-    const { error } = await ctx.supabase.from('locations').delete().eq('id', loc.id)
-    if (error) {
-      const hint = /foreign key|constraint/i.test(error.message) ? ' — related records block the delete. Try confirm_cascade=true or merge_clients.' : ''
-      return { error: 'Delete failed: ' + error.message + hint }
-    }
-    return { ok: true, location_id: loc.id, name: loc.name, cascaded: !!input.confirm_cascade }
+
+    // Trash the location itself
+    await trashRecord(ctx.supabase, { tableName: 'locations', recordId: loc.id, recordData: loc, ...trashMeta })
+    const { error } = await ctx.supabase.from('locations').update({ deleted_at: now }).eq('id', loc.id)
+    if (error) return { error: 'Trash failed: ' + error.message }
+
+    return { ok: true, location_id: loc.id, name: loc.name, cascaded: !!input.confirm_cascade, cascaded_jobs: cascadedJobs, cascaded_invoices: cascadedInvoices, note: 'Moved to trash — recoverable from deleted_records table.' }
   }
 }
 
@@ -1150,7 +1194,7 @@ const merge_clients = {
   },
   async handler(input, ctx) {
     if (input.source_id === input.target_id) return { error: 'source_id and target_id are the same' }
-    const { data: src } = await ctx.supabase.from('locations').select('id, name').eq('id', input.source_id).maybeSingle()
+    const { data: src } = await ctx.supabase.from('locations').select('*').eq('id', input.source_id).maybeSingle()
     const { data: tgt } = await ctx.supabase.from('locations').select('id, name').eq('id', input.target_id).maybeSingle()
     if (!src) return { error: 'source location not found' }
     if (!tgt) return { error: 'target location not found' }
@@ -1160,9 +1204,16 @@ const merge_clients = {
       if (error) return { error: `${t} move failed: ${error.message}`, moved }
       moved[t] = data?.length || 0
     }
-    const { error: delErr } = await ctx.supabase.from('locations').delete().eq('id', src.id)
-    if (delErr) return { error: 'source delete failed after moves: ' + delErr.message + ' — other tables may still reference source.', moved }
-    return { ok: true, source: src.name, target: tgt.name, moved }
+    // Trash the source location (all records already moved to target)
+    await trashRecord(ctx.supabase, {
+      tableName: 'locations', recordId: src.id, recordData: src,
+      deletedBy: ctx.context === 'app' || ctx.context === 'sms_jon' ? 'jon' : 'riker',
+      reason: `Merged into ${tgt.name} (${tgt.id})`,
+      context: ctx.context
+    })
+    const { error: delErr } = await ctx.supabase.from('locations').update({ deleted_at: new Date().toISOString() }).eq('id', src.id)
+    if (delErr) return { error: 'source trash failed after moves: ' + delErr.message, moved }
+    return { ok: true, source: src.name, target: tgt.name, moved, note: 'Source moved to trash — recoverable from deleted_records.' }
   }
 }
 
@@ -1245,26 +1296,34 @@ const void_invoice = {
 const delete_invoice = {
   schema: {
     name: 'delete_invoice',
-    description: "Permanently delete an invoice. Use for test invoices or duplicates. For production invoices that were sent but are wrong, prefer void_invoice (preserves audit trail).",
+    description: "Move an invoice to the trash (soft-delete — recoverable). Use for test invoices or duplicates. For production invoices that were sent but are wrong, prefer void_invoice.",
     input_schema: {
       type: 'object',
       properties: {
         invoice_id: { type: 'string' },
-        invoice_number: { type: 'string' }
+        invoice_number: { type: 'string' },
+        reason: { type: 'string', description: 'Why this invoice is being trashed. Logged to audit trail.' }
       }
     }
   },
   async handler(input, ctx) {
     let invoiceId = input.invoice_id
-    let invNum = input.invoice_number
-    if (!invoiceId && invNum) {
-      const { data } = await ctx.supabase.from('invoices').select('id, invoice_number').eq('invoice_number', invNum).maybeSingle()
+    if (!invoiceId && input.invoice_number) {
+      const { data } = await ctx.supabase.from('invoices').select('id').eq('invoice_number', input.invoice_number).maybeSingle()
       invoiceId = data?.id
     }
     if (!invoiceId) return { error: 'invoice_id or invoice_number required and must match a row' }
-    const { error } = await ctx.supabase.from('invoices').delete().eq('id', invoiceId)
+    const { data: inv } = await ctx.supabase.from('invoices').select('*').eq('id', invoiceId).maybeSingle()
+    if (!inv) return { error: 'Invoice not found' }
+    await trashRecord(ctx.supabase, {
+      tableName: 'invoices', recordId: inv.id, recordData: inv,
+      deletedBy: ctx.context === 'app' || ctx.context === 'sms_jon' ? 'jon' : 'riker',
+      reason: input.reason || null,
+      context: ctx.context
+    })
+    const { error } = await ctx.supabase.from('invoices').update({ deleted_at: new Date().toISOString() }).eq('id', invoiceId)
     if (error) return { error: error.message }
-    return { ok: true, invoice_id: invoiceId }
+    return { ok: true, invoice_id: invoiceId, invoice_number: inv.invoice_number, note: 'Moved to trash — recoverable from deleted_records table.' }
   }
 }
 
