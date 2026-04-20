@@ -296,7 +296,7 @@ const get_invoices = {
 const get_schedule_slots = {
   schema: {
     name: 'get_schedule_slots',
-    description: "Get available booking time slots for the next N days. Already accounts for Jon's custody schedule with his son William (school drop-off 8:40, pickup 4:10, mom's 1st/3rd/5th weekends). Always call this before proposing a time — never guess availability.",
+    description: "Get available booking time slots for the next N days. Already accounts for Jon's custody schedule with his son William. Each day includes a 'booked' array showing existing jobs with their time, customer name, and city — use this to find days when Jon is already working near the new customer's location. Always call this before proposing a time — never guess availability.",
     input_schema: {
       type: 'object',
       properties: {
@@ -318,7 +318,7 @@ const get_schedule_slots = {
     }
     const { data: calEvents } = await ctx.supabase.from('calendar_events').select('*')
     const { data: jobs } = await ctx.supabase.from('jobs')
-      .select('id, scheduled_date, scheduled_time, estimated_duration_hours, status, location:locations(name)')
+      .select('id, scheduled_date, scheduled_time, estimated_duration_hours, status, location:locations(name,city)')
       .in('scheduled_date', days)
 
     const out = []
@@ -356,7 +356,7 @@ const get_schedule_slots = {
         cursor = Math.max(cursor, b.end)
       }
       if (cursor < wEnd) slots.push({ start: minToTime(cursor), end: minToTime(wEnd) })
-      out.push({ date: d, available: true, work_window: `${avail.workStart}-${avail.workEnd}`, reason: avail.reason, slots, booked: dayJobs.map(j => ({ time: j.scheduled_time, customer: j.location?.name })) })
+      out.push({ date: d, available: true, work_window: `${avail.workStart}-${avail.workEnd}`, reason: avail.reason, slots, booked: dayJobs.map(j => ({ time: j.scheduled_time, customer: j.location?.name, city: j.location?.city || null })) })
     }
     return { days: out }
   }
