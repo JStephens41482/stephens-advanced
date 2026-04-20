@@ -10098,8 +10098,9 @@ async function execChatAction(act){
   }
 }
 
-// LOCATION BEACON — streams Jon's GPS to Supabase every 60s while app is open.
-// Riker reads jon_location for live routing and departure alerts.
+// LOCATION BEACON — streams Jon's GPS every 60s while app is open.
+// Uses /api/update-location (service-role write) so the same path works
+// as the iOS Shortcut. Riker reads jon_location for routing + departure alerts.
 let _locWatchId=null
 function startLocationBeacon(){
   if(!navigator.geolocation)return
@@ -10110,10 +10111,11 @@ function startLocationBeacon(){
     _lastWrite=now
     const{latitude:lat,longitude:lng,accuracy,heading,speed}=pos.coords
     try{
-      await SB.from('jon_location').upsert(
-        {id:1,lat,lng,accuracy:accuracy||null,heading:heading||null,speed:speed||null,source:'app',updated_at:new Date().toISOString()},
-        {onConflict:'id'}
-      )
+      await fetch('/api/update-location',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({lat,lng,accuracy:accuracy||null,heading:heading||null,speed:speed||null,source:'app'})
+      })
     }catch(e){console.warn('[beacon] write failed:',e.message)}
   },err=>console.warn('[beacon]',err.message),{enableHighAccuracy:true,maximumAge:30000,timeout:15000})
 }
