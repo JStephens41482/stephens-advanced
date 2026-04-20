@@ -832,7 +832,7 @@ const add_client = {
     if (error) return { error: error.message }
     if (input.address) {
       const geo = await geocode([input.address, input.city, input.state || 'TX', input.zip].filter(Boolean).join(', '))
-      if (geo) await ctx.supabase.from('locations').update({ lat: geo.lat, lng: geo.lng }).eq('id', loc.id)
+      if (geo) await ctx.supabase.from('locations').update({ latitude: geo.lat, longitude: geo.lng }).eq('id', loc.id)
     }
     ctx.lastLocationId = loc.id
     // Stamp the location onto the riker_session so subsequent turns in this
@@ -1089,7 +1089,7 @@ const update_client = {
     if (error) return { error: error.message }
     if (reGeocode && loc) {
       const geo = await geocode([loc.address, loc.city, loc.state || 'TX', loc.zip].filter(Boolean).join(', '))
-      if (geo) await ctx.supabase.from('locations').update({ lat: geo.lat, lng: geo.lng }).eq('id', loc.id)
+      if (geo) await ctx.supabase.from('locations').update({ latitude: geo.lat, longitude: geo.lng }).eq('id', loc.id)
     }
     return { ok: true, location_id: loc?.id, name: loc?.name, updated: Object.keys(patch) }
   }
@@ -1351,13 +1351,13 @@ const build_route = {
     let pool = []
     if (Array.isArray(input.job_ids) && input.job_ids.length) {
       const { data, error } = await ctx.supabase.from('jobs')
-        .select('id, status, scheduled_date, scheduled_time, scope, location_id, location:locations(id,name,address,city,state,zip,lat,lng)')
+        .select('id, status, scheduled_date, scheduled_time, scope, location_id, location:locations(id,name,address,city,state,zip,latitude,longitude)')
         .in('id', input.job_ids)
       if (error) return { error: error.message }
       pool = data || []
     } else if (input.date) {
       const { data, error } = await ctx.supabase.from('jobs')
-        .select('id, status, scheduled_date, scheduled_time, scope, location_id, location:locations(id,name,address,city,state,zip,lat,lng)')
+        .select('id, status, scheduled_date, scheduled_time, scope, location_id, location:locations(id,name,address,city,state,zip,latitude,longitude)')
         .eq('scheduled_date', input.date)
         .eq('status', 'scheduled')
       if (error) return { error: error.message }
@@ -1367,7 +1367,7 @@ const build_route = {
       const tom = new Date(Date.now() + 86400000).toISOString().split('T')[0]
       const dat2 = new Date(Date.now() + 172800000).toISOString().split('T')[0]
       const { data, error } = await ctx.supabase.from('jobs')
-        .select('id, status, scheduled_date, scheduled_time, scope, location_id, location:locations(id,name,address,city,state,zip,lat,lng)')
+        .select('id, status, scheduled_date, scheduled_time, scope, location_id, location:locations(id,name,address,city,state,zip,latitude,longitude)')
         .eq('status', 'scheduled')
         .lte('scheduled_date', dat2)
       if (error) return { error: error.message }
