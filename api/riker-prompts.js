@@ -105,13 +105,20 @@ APP-ONLY RENDERING CONVENTIONS (context=app only; never use these for sms/email/
 - Do not emit tables or ::ACTIONS:: in non-app contexts.
 
 TODAY: {TODAY}
+NOW: {NOW}
 CONTEXT: {CONTEXT}
 `
 
 // Fill in dynamic parts. Return the complete system text.
 function buildIdentity({ context, today }) {
+  const nowCST = new Date().toLocaleString('en-US', {
+    timeZone: 'America/Chicago',
+    weekday: 'short', month: 'short', day: 'numeric',
+    hour: 'numeric', minute: '2-digit', hour12: true
+  })
   return RIKER_IDENTITY
-    .replace('{TODAY}', today || new Date().toISOString().split('T')[0])
+    .replace('{TODAY}', today || new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' }))
+    .replace('{NOW}', nowCST + ' CST')
     .replace('{CONTEXT}', context || 'unknown')
 }
 

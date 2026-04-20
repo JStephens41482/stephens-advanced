@@ -423,7 +423,7 @@ const get_todos = {
   },
   async handler(input, ctx) {
     let q = ctx.supabase.from('todos').select('*').order('created_at', { ascending: false }).limit(50)
-    if (!input.include_completed) q = q.eq('completed', false)
+    if (!input.include_completed) q = q.eq('done', false)
     const { data, error } = await q
     if (error) return { error: error.message }
     return { count: data.length, todos: data }
@@ -865,8 +865,7 @@ const add_todo = {
   async handler(input, ctx) {
     const { data, error } = await ctx.supabase.from('todos').insert({
       text: input.text,
-      created_by: ctx.identity?.tech_id || null,
-      completed: false
+      done: false
     }).select().single()
     if (error) return { error: error.message }
     return { ok: true, todo_id: data?.id, text: input.text }
