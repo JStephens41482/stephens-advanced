@@ -223,7 +223,7 @@ function makeSessionAdapter({ storage, supabase, sessionKey }) {
         return data
       },
       async loadHistoryAsMessages(session) {
-        return sanitizeHistory((session.messages || []).map(m => ({
+        return sanitizeHistory((session.messages || []).slice(-40).map(m => ({
           role: m.role === 'user' || m.role === 'assistant' ? m.role : (m.role === 'inbound' ? 'user' : 'assistant'),
           content: m.content
         })))
@@ -243,8 +243,11 @@ function makeSessionAdapter({ storage, supabase, sessionKey }) {
       return data
     },
     async loadHistoryAsMessages() {
-      const { data: msgs } = await supabase.from('messages')
-        .select('direction, body').eq('conversation_id', sessionKey).order('created_at', { ascending: true })
+      // Fetch newest 30 messages then reverse to chronological — keeps input tokens bounded
+      const { data: raw } = await supabase.from('messages')
+        .select('direction, body').eq('conversation_id', sessionKey)
+        .order('created_at', { ascending: false }).limit(30)
+      const msgs = (raw || []).reverse()
       const filtered = (msgs || []).filter(m => m.direction === 'inbound' || !isPoisonedAssistant(m.body))
       const out = []
       for (const m of filtered) {
@@ -451,6 +454,7 @@ async function callClaudeWithTools({ systemBlocks, messages, toolSchemas, toolCt
   let finalText = ''
   let turns = 0
   let totalLatencyMs = 0
+  let currentModel = model  // may downgrade to Sonnet mid-loop on Opus rate limit
 
   for (let turn = 0; turn < maxTurns; turn++) {
     turns++
@@ -464,7 +468,7 @@ async function callClaudeWithTools({ systemBlocks, messages, toolSchemas, toolCt
         'anthropic-beta': 'prompt-caching-2024-07-31,web-search-2025-03-05'
       },
       body: JSON.stringify({
-        model,
+        model: currentModel,
         max_tokens: 1500,
         system: systemBlocks,
         messages: convo,
@@ -474,6 +478,14 @@ async function callClaudeWithTools({ systemBlocks, messages, toolSchemas, toolCt
     totalLatencyMs += Date.now() - startT
     const data = await res.json()
     if (!res.ok) {
+      // Opus TPM rate limit → downgrade to Sonnet and retry this turn once
+      if (res.status === 429 && currentModel === CLAUDE_MODEL_COMPLEX) {
+        console.warn('[riker-core] Opus TPM limit hit — downgrading to Sonnet for remainder of turn')
+        currentModel = CLAUDE_MODEL_SIMPLE
+        turn--  // retry this turn with Sonnet
+        turns--
+        continue
+      }
       throw new Error('Claude API ' + res.status + ': ' + (data.error?.message || JSON.stringify(data).slice(0, 500)))
     }
 
