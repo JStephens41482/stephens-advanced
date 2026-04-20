@@ -630,12 +630,20 @@ async function processMessage({
   // Notebook (small block, not cached)
   const { block: notebookBlock, count: memCount } = await buildNotebookBlock({ supabase, context, identity })
 
-  // Identity (cached)
+  // Identity (cached) — static identity block, NOW removed so cache doesn't freeze it
   const today = new Date().toISOString().split('T')[0]
   const identityText = buildIdentity({ context, today })
 
+  // NOW injected fresh every turn — must NOT be inside the cached block
+  const nowCST = new Date().toLocaleString('en-US', {
+    timeZone: 'America/Chicago',
+    weekday: 'short', month: 'short', day: 'numeric',
+    hour: 'numeric', minute: '2-digit', hour12: true
+  }) + ' CST'
+
   const systemBlocks = [
-    { type: 'text', text: identityText, cache_control: { type: 'ephemeral' } }
+    { type: 'text', text: identityText, cache_control: { type: 'ephemeral' } },
+    { type: 'text', text: `CURRENT TIME: ${nowCST}` }
   ]
   if (notebookBlock) systemBlocks.push({ type: 'text', text: notebookBlock })
 
