@@ -1656,11 +1656,12 @@ const add_job_note = {
 const update_job = {
   schema: {
     name: 'update_job',
-    description: "Edit fields on an existing job. Pass job_id and any subset of fields to change. For status changes prefer the specific tools (schedule_job, cancel_job). For marking completed, the app's complete-flow is required (captures signature + generates invoice).",
+    description: "Edit fields on an existing job. Pass job_id and any subset of fields to change. Can also flip status — use this to reactivate a cancelled job (status='scheduled'), mark en_route/active, etc. Setting status='completed' is blocked here — that requires the app's completion flow (captures signature + generates invoice).",
     input_schema: {
       type: 'object',
       properties: {
         job_id: { type: 'string' },
+        status: { type: 'string', enum: ['scheduled', 'en_route', 'active', 'cancelled', 'rescheduled'], description: "Change job status. 'completed' is not allowed here — use the app completion flow. Use 'scheduled' to reactivate a cancelled job." },
         scope: { type: 'array', items: { type: 'string' }, description: "e.g. ['suppression','extinguishers','elights','hydro']" },
         type: { type: 'string', description: "inspection, installation, repair, etc." },
         notes: { type: 'string' },
@@ -1673,7 +1674,11 @@ const update_job = {
     }
   },
   async handler(input, ctx) {
+    if (input.status === 'completed') {
+      return { error: "Cannot mark completed via update_job — use the app's completion flow (captures signature and generates invoice)." }
+    }
     const patch = {}
+    if (input.status !== undefined) patch.status = input.status
     if (input.scope !== undefined) patch.scope = input.scope
     if (input.type !== undefined) patch.type = input.type
     if (input.notes !== undefined) patch.notes = input.notes
