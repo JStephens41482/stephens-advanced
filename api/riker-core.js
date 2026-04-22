@@ -807,10 +807,20 @@ async function processMessage({
   }
 
   // Run notebook + pulse in parallel — both are uncached dynamic blocks
-  const [{ block: notebookBlock }, pulseText] = await Promise.all([
-    buildNotebookBlock({ supabase, context, identity }),
-    buildBusinessPulse(supabase)
-  ])
+  let notebookBlock = ''
+  let memCount = 0
+  let pulseText = ''
+  try {
+    const [memoryRead, _pulse] = await Promise.all([
+      buildNotebookBlock({ supabase, context, identity }),
+      buildBusinessPulse(supabase)
+    ])
+    notebookBlock = memoryRead.block || ''
+    memCount = memoryRead.count || 0
+    pulseText = _pulse || ''
+  } catch (e) {
+    console.error('[riker-core] parallel blocks failed:', e.message)
+  }
 
   // Identity (cached) — static identity block, NOW removed so cache doesn't freeze it
   const today = new Date().toISOString().split('T')[0]
