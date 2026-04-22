@@ -277,7 +277,7 @@ async function buildScheduleContext(supabase) {
   const today = new Date().toISOString().split('T')[0]
   const days = [today, ...getNextBusinessDays(7)]
   const { data: calEvents } = await supabase.from('calendar_events').select('*')
-  const { data: jobs } = await supabase.from('jobs').select('*,location:locations(name,city)').in('scheduled_date', days)
+  const { data: jobs } = await supabase.from('jobs').select('*,location:locations(name,city)').in('scheduled_date', days).is('deleted_at', null)
 
   let slotsCtx = 'AVAILABLE_SLOTS (William-schedule aware):\n'
   for (const d of days) {

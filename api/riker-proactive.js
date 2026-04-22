@@ -170,11 +170,11 @@ async function complianceAlerts(supabase) {
 
     // Equipment due on this date
     const [extAnnual, ext6yr, extHydro, supSemi, supHydro, emgAnnual] = await Promise.all([
-      supabase.from('extinguishers').select('id, type, size, location:locations(id,name,contact_name,contact_phone,contact_email,sms_opt_in)').eq('next_inspection', target),
-      supabase.from('extinguishers').select('id, type, size, location:locations(id,name,contact_name,contact_phone,contact_email,sms_opt_in)').eq('next_6year', target),
-      supabase.from('extinguishers').select('id, type, size, location:locations(id,name,contact_name,contact_phone,contact_email,sms_opt_in)').eq('next_hydro', target),
-      supabase.from('suppression_systems').select('id, system_type, location:locations(id,name,contact_name,contact_phone,contact_email,sms_opt_in)').eq('next_inspection', target),
-      supabase.from('suppression_systems').select('id, system_type, location:locations(id,name,contact_name,contact_phone,contact_email,sms_opt_in)').eq('next_hydro', target),
+      supabase.from('extinguishers').select('id, type, size, location:locations(id,name,contact_name,contact_phone,contact_email,sms_opt_in)').eq('next_inspection', target).is('deleted_at', null),
+      supabase.from('extinguishers').select('id, type, size, location:locations(id,name,contact_name,contact_phone,contact_email,sms_opt_in)').eq('next_6year', target).is('deleted_at', null),
+      supabase.from('extinguishers').select('id, type, size, location:locations(id,name,contact_name,contact_phone,contact_email,sms_opt_in)').eq('next_hydro', target).is('deleted_at', null),
+      supabase.from('suppression_systems').select('id, system_type, location:locations(id,name,contact_name,contact_phone,contact_email,sms_opt_in)').eq('next_inspection', target).is('deleted_at', null),
+      supabase.from('suppression_systems').select('id, system_type, location:locations(id,name,contact_name,contact_phone,contact_email,sms_opt_in)').eq('next_hydro', target).is('deleted_at', null),
       supabase.from('emergency_lights').select('id, fixture_count, location:locations(id,name,contact_name,contact_phone,contact_email,sms_opt_in)').eq('next_annual_test', target)
     ])
 

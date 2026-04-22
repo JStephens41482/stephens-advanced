@@ -298,23 +298,23 @@ async function buildBusinessPulse(supabase) {
     openInvoices, pendingConf, openTodos,
     jonLoc, mazonPending, brycerPending
   ] = await Promise.all([
-    // Today's jobs (all statuses so completed ones show too)
+    // Today's jobs (all statuses so completed ones show too) — excludes trashed
     safe(supabase.from('jobs')
       .select('scheduled_time, scope, status, location:locations(name,city)')
-      .eq('scheduled_date', today)
+      .eq('scheduled_date', today).is('deleted_at', null)
       .order('scheduled_time')),
 
-    // Overdue — oldest first, up to 10
+    // Overdue — oldest first, up to 10 — excludes trashed
     safe(supabase.from('jobs')
       .select('scheduled_date, scope, location:locations(name,city)')
-      .lt('scheduled_date', today).eq('status', 'scheduled')
+      .lt('scheduled_date', today).eq('status', 'scheduled').is('deleted_at', null)
       .order('scheduled_date', { ascending: true }).limit(10)),
 
-    // Upcoming this week (not today)
+    // Upcoming this week (not today) — excludes trashed
     safe(supabase.from('jobs')
       .select('scheduled_date, scheduled_time, scope, location:locations(name,city)')
       .gt('scheduled_date', today).lte('scheduled_date', weekEnd)
-      .eq('status', 'scheduled')
+      .eq('status', 'scheduled').is('deleted_at', null)
       .order('scheduled_date').limit(20)),
 
     // Open invoices — all unpaid, not trashed
@@ -330,10 +330,10 @@ async function buildBusinessPulse(supabase) {
       .eq('status', 'pending')
       .gt('expires_at', new Date().toISOString())),
 
-    // Open todos
+    // Open todos — not trashed, not done
     safe(supabase.from('todos')
       .select('text, created_at')
-      .eq('done', false)
+      .eq('done', false).is('deleted_at', null)
       .order('created_at', { ascending: false }).limit(15)),
 
     // Jon's GPS

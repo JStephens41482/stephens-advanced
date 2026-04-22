@@ -397,8 +397,8 @@ const get_equipment = {
   async handler(input, ctx) {
     if (!input.location_id) return { error: 'location_id required' }
     const [ext, sup, emg] = await Promise.all([
-      ctx.supabase.from('extinguishers').select('id, type, size, serial_number, location_in_building, next_inspection, next_hydro, status').eq('location_id', input.location_id),
-      ctx.supabase.from('suppression_systems').select('id, system_type, category, tank_count, nozzle_count, fusible_link_count, location_in_building, next_inspection, next_hydro').eq('location_id', input.location_id),
+      ctx.supabase.from('extinguishers').select('id, type, size, serial_number, location_in_building, next_inspection, next_hydro, status').eq('location_id', input.location_id).is('deleted_at', null),
+      ctx.supabase.from('suppression_systems').select('id, system_type, category, tank_count, nozzle_count, fusible_link_count, location_in_building, next_inspection, next_hydro').eq('location_id', input.location_id).is('deleted_at', null),
       ctx.supabase.from('emergency_lights').select('id, fixture_count, next_annual_test').eq('location_id', input.location_id)
     ])
     return {
@@ -441,7 +441,7 @@ const get_todos = {
     }
   },
   async handler(input, ctx) {
-    let q = ctx.supabase.from('todos').select('*').order('created_at', { ascending: false }).limit(50)
+    let q = ctx.supabase.from('todos').select('*').is('deleted_at', null).order('created_at', { ascending: false }).limit(50)
     if (!input.include_completed) q = q.eq('done', false)
     const { data, error } = await q
     if (error) return { error: error.message }
@@ -964,7 +964,7 @@ const mark_invoice_paid = {
   async handler(input, ctx) {
     let invoiceId = input.invoice_id
     if (!invoiceId && input.invoice_number) {
-      const { data } = await ctx.supabase.from('invoices').select('id').eq('invoice_number', input.invoice_number).maybeSingle()
+      const { data } = await ctx.supabase.from('invoices').select('id').eq('invoice_number', input.invoice_number).is('deleted_at', null).maybeSingle()
       invoiceId = data?.id
     }
     if (!invoiceId) return { error: 'invoice_id or invoice_number required and must match a row' }
@@ -1132,8 +1132,8 @@ const delete_client = {
     }
   },
   async handler(input, ctx) {
-    const { data: loc } = await ctx.supabase.from('locations').select('*').eq('id', input.location_id).maybeSingle()
-    if (!loc) return { error: 'Location not found' }
+    const { data: loc } = await ctx.supabase.from('locations').select('*').eq('id', input.location_id).is('deleted_at', null).maybeSingle()
+    if (!loc) return { error: 'Location not found (or already deleted)' }
     const a = (input.confirm_name || '').toLowerCase().trim()
     const b = (loc.name || '').toLowerCase().trim()
     const match = a && b && (a.includes(b.slice(0, Math.min(4, b.length))) || b.includes(a.slice(0, Math.min(4, a.length))))
@@ -1194,8 +1194,8 @@ const merge_clients = {
   },
   async handler(input, ctx) {
     if (input.source_id === input.target_id) return { error: 'source_id and target_id are the same' }
-    const { data: src } = await ctx.supabase.from('locations').select('*').eq('id', input.source_id).maybeSingle()
-    const { data: tgt } = await ctx.supabase.from('locations').select('id, name').eq('id', input.target_id).maybeSingle()
+    const { data: src } = await ctx.supabase.from('locations').select('*').eq('id', input.source_id).is('deleted_at', null).maybeSingle()
+    const { data: tgt } = await ctx.supabase.from('locations').select('id, name').eq('id', input.target_id).is('deleted_at', null).maybeSingle()
     if (!src) return { error: 'source location not found' }
     if (!tgt) return { error: 'target location not found' }
     const moved = {}
@@ -1241,7 +1241,7 @@ const update_invoice = {
   async handler(input, ctx) {
     let invoiceId = input.invoice_id
     if (!invoiceId && input.invoice_number) {
-      const { data } = await ctx.supabase.from('invoices').select('id').eq('invoice_number', input.invoice_number).maybeSingle()
+      const { data } = await ctx.supabase.from('invoices').select('id').eq('invoice_number', input.invoice_number).is('deleted_at', null).maybeSingle()
       invoiceId = data?.id
     }
     if (!invoiceId) return { error: 'invoice_id or invoice_number required' }
@@ -1278,7 +1278,7 @@ const void_invoice = {
   async handler(input, ctx) {
     let invoiceId = input.invoice_id
     if (!invoiceId && input.invoice_number) {
-      const { data } = await ctx.supabase.from('invoices').select('id').eq('invoice_number', input.invoice_number).maybeSingle()
+      const { data } = await ctx.supabase.from('invoices').select('id').eq('invoice_number', input.invoice_number).is('deleted_at', null).maybeSingle()
       invoiceId = data?.id
     }
     if (!invoiceId) return { error: 'invoice_id or invoice_number required' }
@@ -1309,12 +1309,12 @@ const delete_invoice = {
   async handler(input, ctx) {
     let invoiceId = input.invoice_id
     if (!invoiceId && input.invoice_number) {
-      const { data } = await ctx.supabase.from('invoices').select('id').eq('invoice_number', input.invoice_number).maybeSingle()
+      const { data } = await ctx.supabase.from('invoices').select('id').eq('invoice_number', input.invoice_number).is('deleted_at', null).maybeSingle()
       invoiceId = data?.id
     }
     if (!invoiceId) return { error: 'invoice_id or invoice_number required and must match a row' }
-    const { data: inv } = await ctx.supabase.from('invoices').select('*').eq('id', invoiceId).maybeSingle()
-    if (!inv) return { error: 'Invoice not found' }
+    const { data: inv } = await ctx.supabase.from('invoices').select('*').eq('id', invoiceId).is('deleted_at', null).maybeSingle()
+    if (!inv) return { error: 'Invoice not found (or already deleted)' }
     await trashRecord(ctx.supabase, {
       tableName: 'invoices', recordId: inv.id, recordData: inv,
       deletedBy: ctx.context === 'app' || ctx.context === 'sms_jon' ? 'jon' : 'riker',
@@ -1578,7 +1578,7 @@ const get_job_activity = {
       .eq('entity_type', 'job').eq('entity_id', jobId)
       .order('created_at', { ascending: false }).limit(limit)
     const invIdQ = includeInv
-      ? ctx.supabase.from('invoices').select('id').eq('job_id', jobId)
+      ? ctx.supabase.from('invoices').select('id').eq('job_id', jobId).is('deleted_at', null)
       : Promise.resolve({ data: [] })
 
     const [jobRes, invIdRes] = await Promise.all([jobQ, invIdQ])
@@ -1715,8 +1715,8 @@ const cancel_job = {
     }
   },
   async handler(input, ctx) {
-    const { data: job } = await ctx.supabase.from('jobs').select('id, status, location:locations(name)').eq('id', input.job_id).maybeSingle()
-    if (!job) return { error: 'Job not found' }
+    const { data: job } = await ctx.supabase.from('jobs').select('id, status, location:locations(name)').eq('id', input.job_id).is('deleted_at', null).maybeSingle()
+    if (!job) return { error: 'Job not found (or already deleted)' }
     if (job.status === 'cancelled') return { error: 'Already cancelled' }
     if (job.status === 'completed') return { error: 'Job is completed — cannot cancel a completed job' }
     const { error } = await ctx.supabase.from('jobs').update({ status: 'cancelled' }).eq('id', job.id)
@@ -1975,7 +1975,7 @@ const mazon_mark_funded = {
   async handler(input, ctx) {
     let qId = input.queue_id
     if (!qId && input.invoice_number) {
-      const { data: inv } = await ctx.supabase.from('invoices').select('id, mazon_queue_id').eq('invoice_number', input.invoice_number).maybeSingle()
+      const { data: inv } = await ctx.supabase.from('invoices').select('id, mazon_queue_id').eq('invoice_number', input.invoice_number).is('deleted_at', null).maybeSingle()
       qId = inv?.mazon_queue_id
     }
     if (!qId) return { error: 'queue_id or invoice_number required' }
@@ -2020,7 +2020,7 @@ const mazon_void = {
   async handler(input, ctx) {
     let qId = input.queue_id
     if (!qId && input.invoice_number) {
-      const { data: inv } = await ctx.supabase.from('invoices').select('id, mazon_queue_id').eq('invoice_number', input.invoice_number).maybeSingle()
+      const { data: inv } = await ctx.supabase.from('invoices').select('id, mazon_queue_id').eq('invoice_number', input.invoice_number).is('deleted_at', null).maybeSingle()
       qId = inv?.mazon_queue_id
     }
     if (!qId) return { error: 'queue_id or invoice_number required' }

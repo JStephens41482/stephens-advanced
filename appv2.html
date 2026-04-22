@@ -685,12 +685,12 @@ async function load(){
   // One cheap query, tiny payload.
   let unpaidJobIds=[]
   try{
-    const{data:up}=await SB.from('invoices').select('job_id').not('status','in','("paid","void","record")').not('job_id','is',null)
+    const{data:up}=await SB.from('invoices').select('job_id').not('status','in','("paid","void","record")').not('job_id','is',null).is('deleted_at',null)
     unpaidJobIds=Array.from(new Set((up||[]).map(x=>x.job_id).filter(Boolean)))
   }catch(e){console.error('unpaid job ids:',e)}
 
   // Step 2: build the main jobs query with the OR filter
-  let jobsQuery=SB.from('jobs').select('*,location:locations(*)').order('updated_at',{ascending:false})
+  let jobsQuery=SB.from('jobs').select('*,location:locations(*)').is('deleted_at',null).order('updated_at',{ascending:false})
   const orParts=[`status.neq.completed`,`scheduled_date.gte.${jobCutoff}`]
   if(unpaidJobIds.length)orParts.push(`id.in.(${unpaidJobIds.join(',')})`)
   jobsQuery=jobsQuery.or(orParts.join(','))
@@ -698,11 +698,11 @@ async function load(){
   const[j,l,i,b,r,ci,td2,mz,bq,tk,sr,pt,ce,ct,cl2,rch,pr,nf,cn]=await Promise.all([
     jobsQuery,
     SB.from('locations').select('*,extinguishers(id,type,size,serial_number,location_in_building,manufacture_date,last_internal,last_hydro),suppression_systems(id,system_type,category,tank_count,nozzle_count,fusible_link_count),emergency_lights(id,fixture_count),billing_account:billing_accounts(*)').is('deleted_at',null).order('name'),
-    SB.from('invoices').select('*').order('date',{ascending:false}).limit(100),
+    SB.from('invoices').select('*').is('deleted_at',null).order('date',{ascending:false}).limit(100),
     SB.from('billing_accounts').select('*').order('name'),
     SB.from('rate_card').select('key,price'),
     SB.from('custom_items').select('description,unit_price').order('description'),
-    SB.from('todos').select('*').eq('done',false).order('created_at'),
+    SB.from('todos').select('*').eq('done',false).is('deleted_at',null).order('created_at'),
     SB.from('mazon_queue').select('*').order('created_at',{ascending:false}),
     SB.from('brycer_queue').select('*').eq('submitted',false).order('created_at'),
     SB.from('techs').select('*').order('name'),
@@ -736,6 +736,12 @@ async function load(){
   if(nf.error)console.error('notifications error:',nf.error)
   if(cn.error)console.error('contracts error:',cn.error)
   console.log('loaded:',j.data?.length,'jobs,',l.data?.length,'locs,',i.data?.length,'invs,',td2.data?.length,'todos')
+  // Strip soft-deleted children from embedded selects (nested rows don't respect parent filters)
+  ;(l.data||[]).forEach(loc=>{
+    if(Array.isArray(loc.extinguishers))loc.extinguishers=loc.extinguishers.filter(x=>!x.deleted_at)
+    if(Array.isArray(loc.suppression_systems))loc.suppression_systems=loc.suppression_systems.filter(x=>!x.deleted_at)
+    if(Array.isArray(loc.emergency_lights))loc.emergency_lights=loc.emergency_lights.filter(x=>!x.deleted_at)
+  })
   D.jobs=j.data||[];D.locs=l.data||[];D.invs=i.data||[];D.bas=b.data||[]
   const rc={};(r.data||[]).forEach(x=>rc[x.key]=+x.price);D.rc=rc
   D.customItems=ci.data||[]
@@ -1119,6 +1125,46 @@ async function audit(action,entityType,entityId,actor,changes,summary){
   try{await SB.from('audit_log').insert({action,entity_type:entityType,entity_id:entityId,actor,changes,summary})}catch(e){console.error('audit:',e)}
 }
 
+// ═══ TRASH / SOFT-DELETE ═══
+// Every "delete" must land here first. Writes a full snapshot to deleted_records,
+// then flips the row's deleted_at. NOTHING is ever physically removed.
+//   table:    supabase table name
+//   filter:   {col:val} or {col:[vals]} — rows to trash
+//   reason:   required — why this is being deleted
+//   actor:    defaults to 'jon'
+//   context:  defaults to 'app'
+async function trash(table,filter,reason,actor,context){
+  try{
+    // 1. Fetch full rows
+    let q=SB.from(table).select('*')
+    for(const k of Object.keys(filter||{})){
+      const v=filter[k]
+      q=Array.isArray(v)?q.in(k,v):q.eq(k,v)
+    }
+    const{data:rows,error:fetchErr}=await q
+    if(fetchErr){console.error('trash fetch:',table,fetchErr);return{error:fetchErr.message}}
+    if(!rows||!rows.length)return{ok:true,count:0}
+    // 2. Snapshot each row into deleted_records
+    const snaps=rows.map(r=>({
+      table_name:table,
+      record_id:String(r.id||r.uuid||Object.values(filter).flat().join('|')),
+      record_data:r,
+      deleted_by:actor||'jon',
+      reason:reason||'Deleted via app UI',
+      context:context||'app'
+    }))
+    const{error:insErr}=await SB.from('deleted_records').insert(snaps)
+    if(insErr)console.error('trash snap:',table,insErr)
+    // 3. Flip deleted_at (soft-delete). Target rows only — we already filtered above.
+    const ids=rows.map(r=>r.id).filter(Boolean)
+    if(ids.length){
+      const{error:updErr}=await SB.from(table).update({deleted_at:new Date().toISOString()}).in('id',ids)
+      if(updErr){console.error('trash update:',table,updErr);return{error:updErr.message}}
+    }
+    return{ok:true,count:rows.length}
+  }catch(e){console.error('trash fatal:',table,e);return{error:e.message}}
+}
+
 // ═══ DOCUMENT STORAGE ═══
 async function uploadDocument(blob, filename, docType, entityType, entityId, metadata={}){
   const path=`${docType}/${entityId}/${Date.now()}-${filename}`
@@ -1355,7 +1401,7 @@ async function doneTodo(id){
   const el=$('todo-'+id)
   if(el)el.style.opacity='.3'
   try{
-    await SB.from('todos').delete().eq('id',id)
+    await trash('todos',{id},'Todo marked done','jon','app')
     await load();rJobs()
     if(stk.length){pop();openTodoList()}
   }catch(e){toast('Error',false)}
@@ -4019,7 +4065,7 @@ async function openCust(id){
   if((!l.suppression_systems?.length||!l.extinguishers?.length)&&locInvs.length){
     const lastInv=locInvs.sort((a,b)=>(b.date||'').localeCompare(a.date||''))[0]
     if(lastInv){
-      const{data:ll}=await SB.from('invoice_lines').select('description,quantity').eq('invoice_id',lastInv.id)
+      const{data:ll}=await SB.from('invoice_lines').select('description,quantity').eq('invoice_id',lastInv.id).is('deleted_at',null)
       const lines2=ll||[]
       if(!l.suppression_systems?.length){
         const syss=lines2.filter(ln=>(ln.description||'').toLowerCase().match(/semi.?annual|suppression|kitchen|ansul|pyro|buckeye|kidde|captive|clean.?agent|fm.?200|dry.?chem|dry chemical|paint|booth/))
@@ -4344,7 +4390,7 @@ async function openInvDetail(id){
   const loc=D.locs.find(l=>l.id===inv.location_id)||{}
   const locBa=loc.billing_account_id?D.bas.find(b=>b.id===loc.billing_account_id):null
   const locEmail=loc.contact_email||locBa?.email||''
-  const{data:lines}=await SB.from('invoice_lines').select('*').eq('invoice_id',id).order('sort_order')
+  const{data:lines}=await SB.from('invoice_lines').select('*').eq('invoice_id',id).is('deleted_at',null).order('sort_order')
   const ls=lines||[]
   const total=ls.reduce((s,l)=>s+(+l.total||0),0)||+inv.total||0
   const bc=inv.status==='paid'?'bpaid':inv.status==='sent'?'bsent':inv.status==='record'?'brec':inv.status==='factored'?'bfact':'bdraft'
@@ -4625,8 +4671,8 @@ async function saveInvLines(invId){
   const lines=invLines.filter(l2=>(l2.desc||'').trim())
   const newTotal=lines.reduce((s,l2)=>s+(+(l2.qty||1))*(+(l2.price||0)),0)
   try{
-    // delete existing lines and reinsert
-    await SB.from('invoice_lines').delete().eq('invoice_id',invId)
+    // trash existing lines (snapshot to deleted_records + flip deleted_at) then reinsert fresh
+    await trash('invoice_lines',{invoice_id:invId},'Invoice lines replaced via edit','jon','app')
     if(lines.length)await SB.from('invoice_lines').insert(lines.map((l2,i)=>({
       invoice_id:invId,
       description:l2.desc.trim(),
@@ -5306,8 +5352,8 @@ function initSwipes(){
       const id=el.dataset.swipeInv
       const inv=D.invs.find(i=>i.id===id)
       if(!confirm('Delete invoice '+(inv?.invoice_number||'')+' ($'+(+(inv?.total||0)).toFixed(2)+')?'))return
-      await SB.from('invoice_lines').delete().eq('invoice_id',id)
-      await SB.from('invoices').delete().eq('id',id)
+      await trash('invoice_lines',{invoice_id:id},'Invoice deleted (swipe)','jon','app')
+      await trash('invoices',{id},'Invoice deleted (swipe)','jon','app')
       await load();toast('Invoice deleted');rMoney()
     })
   })
@@ -5317,15 +5363,15 @@ function initSwipes(){
       const job=D.jobs.find(j=>j.id===id)
       const loc=D.locs.find(l=>l.id===job?.location_id)
       if(!confirm('Delete job for '+(loc?.name||'this location')+'? This also deletes all invoices and reports for this job.'))return
-      const{data:invs2}=await SB.from('invoices').select('id').eq('job_id',id)
+      const{data:invs2}=await SB.from('invoices').select('id').eq('job_id',id).is('deleted_at',null)
       const invIds2=(invs2||[]).map(x=>x.id)
-      if(invIds2.length)await SB.from('invoice_lines').delete().in('invoice_id',invIds2)
-      if(invIds2.length)await SB.from('invoices').delete().in('id',invIds2)
-      try{await SB.from('reports').delete().eq('job_id',id)}catch(e){}
-      try{await SB.from('extinguisher_results').delete().eq('job_id',id)}catch(e){}
+      if(invIds2.length)await trash('invoice_lines',{invoice_id:invIds2},'Job deleted (swipe) — cascade','jon','app')
+      if(invIds2.length)await trash('invoices',{id:invIds2},'Job deleted (swipe) — cascade','jon','app')
+      await trash('reports',{job_id:id},'Job deleted (swipe) — cascade','jon','app')
+      await trash('extinguisher_results',{job_id:id},'Job deleted (swipe) — cascade','jon','app')
       deleteJobGcalEvent(id)
-      await SB.from('jobs').delete().eq('id',id)
-      audit('deleted','job',id,'jon',null,'Job deleted (swipe)')
+      await trash('jobs',{id},'Job deleted (swipe)','jon','app')
+      audit('deleted','job',id,'jon',null,'Job deleted (swipe) — soft-delete to trash')
       await load();toast('Job deleted');rJobs()
     })
   })
@@ -5333,10 +5379,8 @@ function initSwipes(){
     initSwipe(el,async()=>{
       const cid=el.dataset.swipeContact
       const locId=el.dataset.contactLoc
-      await SB.from('contact_links').delete().eq('contact_id',cid).eq('entity_type','location').eq('entity_id',locId)
-      // if contact has no other links, delete the contact too
-      const{data:remaining}=await SB.from('contact_links').select('id').eq('contact_id',cid)
-      if(!remaining?.length)await SB.from('contacts').delete().eq('id',cid)
+      // location_contacts.id holds the contact row directly
+      await trash('location_contacts',{id:cid},'Contact removed from location','jon','app')
       await load();toast('Contact removed');openCust(locId)
     })
   })
@@ -6455,7 +6499,7 @@ async function sendInvoiceEmail(invId,toEmail,custName,invNum,btn){
 async function _showEmailPreview(invId,to,custName,invNum){
   const{data:invFresh}=await SB.from('invoices').select('*').eq('id',invId).single()
   const inv=invFresh||D.invs.find(x=>x.id===invId)||{}
-  const{data:lines}=await SB.from('invoice_lines').select('*').eq('invoice_id',invId).order('sort_order')
+  const{data:lines}=await SB.from('invoice_lines').select('*').eq('invoice_id',invId).is('deleted_at',null).order('sort_order')
   const ls=lines||[]
   const total=ls.reduce((s,l)=>s+(+l.total||0),0)||+inv.total||0
   const loc=D.locs.find(x=>x.id===inv.location_id)||{}
@@ -7149,7 +7193,7 @@ async function uploadInvoiceAttachment(invoiceId,file,label){
 
 async function loadInvoiceAttachments(invoiceId){
   if(!invoiceId)return[]
-  const{data,error}=await SB.from('invoice_attachments').select('*').eq('invoice_id',invoiceId).order('uploaded_at')
+  const{data,error}=await SB.from('invoice_attachments').select('*').eq('invoice_id',invoiceId).is('deleted_at',null).order('uploaded_at')
   if(error){console.error('load attachments:',error);return[]}
   return data||[]
 }
@@ -7165,8 +7209,8 @@ async function deleteInvoiceAttachment(attachmentId){
   const{data:row}=await SB.from('invoice_attachments').select('id,file_path').eq('id',attachmentId).single()
   if(!row)return{error:'Not found'}
   try{await SB.storage.from(INV_ATTACH_BUCKET).remove([row.file_path])}catch(e){console.error('storage remove:',e)}
-  const{error}=await SB.from('invoice_attachments').delete().eq('id',attachmentId)
-  if(error)return{error:error.message}
+  const res=await trash('invoice_attachments',{id:attachmentId},'Attachment removed from invoice','jon','app')
+  if(res.error)return{error:res.error}
   return{ok:true}
 }
 
@@ -7302,34 +7346,40 @@ async function rerenderDetailDocs(invoiceId){
 }
 
 async function delInvoice(id){
-  // remove any attached files from storage first
+  // remove any attached files from storage first (the DB row stays in invoice_attachments as soft-deleted)
   try{
-    const{data:atts}=await SB.from('invoice_attachments').select('file_path').eq('invoice_id',id)
+    const{data:atts}=await SB.from('invoice_attachments').select('file_path').eq('invoice_id',id).is('deleted_at',null)
     const paths=(atts||[]).map(a=>a.file_path).filter(Boolean)
     if(paths.length)await SB.storage.from(INV_ATTACH_BUCKET).remove(paths)
   }catch(e){console.error('delInvoice storage cleanup:',e)}
-  await SB.from('invoice_lines').delete().eq('invoice_id',id)
-  const{error}=await SB.from('invoices').delete().eq('id',id)
-  if(error){toast('Error deleting invoice',false);return}
+  await trash('invoice_attachments',{invoice_id:id},'Invoice deleted — cascade','jon','app')
+  await trash('invoice_lines',{invoice_id:id},'Invoice deleted — cascade','jon','app')
+  const res=await trash('invoices',{id},'Invoice deleted','jon','app')
+  if(res.error){toast('Error deleting invoice: '+res.error,false);return}
+  audit('deleted','invoice',id,'jon',null,'Invoice soft-deleted — record preserved in trash')
   await load();toast('Invoice deleted')
   popAll()
   go(document.querySelector('[data-v="vMoney"]'))
 }
 
 async function delJob(id){
-  // cascade: invoice_lines → invoices → reports → extinguisher_results → job
+  // cascade: invoice_lines → invoice_attachments → invoices → reports → extinguisher_results → suppression_results → job
   try{
-    const{data:invs}=await SB.from('invoices').select('id').eq('job_id',id)
+    const{data:invs}=await SB.from('invoices').select('id').eq('job_id',id).is('deleted_at',null)
     const invIds=(invs||[]).map(i=>i.id)
-    if(invIds.length)await SB.from('invoice_lines').delete().in('invoice_id',invIds)
-    if(invIds.length)await SB.from('invoices').delete().in('id',invIds)
-    await SB.from('reports').delete().eq('job_id',id)
-    await SB.from('extinguisher_results').delete().eq('job_id',id)
+    if(invIds.length){
+      await trash('invoice_attachments',{invoice_id:invIds},'Job deleted — cascade','jon','app')
+      await trash('invoice_lines',{invoice_id:invIds},'Job deleted — cascade','jon','app')
+      await trash('invoices',{id:invIds},'Job deleted — cascade','jon','app')
+    }
+    await trash('reports',{job_id:id},'Job deleted — cascade','jon','app')
+    await trash('extinguisher_results',{job_id:id},'Job deleted — cascade','jon','app')
+    await trash('suppression_results',{job_id:id},'Job deleted — cascade','jon','app')
   }catch(e){console.error('delJob cascade:',e)}
   deleteJobGcalEvent(id)
-  const{error}=await SB.from('jobs').delete().eq('id',id)
-  if(error){toast('Error deleting job',false);return}
-  audit('deleted','job',id,'jon',null,'Job deleted')
+  const res=await trash('jobs',{id},'Job deleted','jon','app')
+  if(res.error){toast('Error deleting job: '+res.error,false);return}
+  audit('deleted','job',id,'jon',null,'Job soft-deleted — record preserved in trash')
   await load();toast('Job deleted')
   popAll()
   rJobs();rJobs()
@@ -7365,9 +7415,10 @@ async function delCust(id){
 }
 
 async function delExtinguisher(eid,locId){
-  try{await SB.from('extinguisher_results').delete().eq('extinguisher_id',eid)}catch(e){}
-  const{error}=await SB.from('extinguishers').delete().eq('id',eid)
-  if(error){toast('Error deleting extinguisher',false);return}
+  try{await trash('extinguisher_results',{extinguisher_id:eid},'Extinguisher deleted — cascade','jon','app')}catch(e){}
+  const res=await trash('extinguishers',{id:eid},'Extinguisher deleted','jon','app')
+  if(res.error){toast('Error deleting extinguisher: '+res.error,false);return}
+  audit('deleted','extinguisher',eid,'jon',null,'Extinguisher soft-deleted — record preserved in trash')
   await load()
   toast('Extinguisher deleted')
   const slot=stk[stk.length-1]
@@ -7381,8 +7432,10 @@ async function delExtinguisher(eid,locId){
 }
 
 async function delSuppSystem(sid,locId){
-  const{error}=await SB.from('suppression_systems').delete().eq('id',sid)
-  if(error){toast('Error deleting system',false);return}
+  try{await trash('suppression_results',{suppression_system_id:sid},'Suppression system deleted — cascade','jon','app')}catch(e){}
+  const res=await trash('suppression_systems',{id:sid},'Suppression system deleted','jon','app')
+  if(res.error){toast('Error deleting system: '+res.error,false);return}
+  audit('deleted','suppression_system',sid,'jon',null,'System soft-deleted — record preserved in trash')
   await load()
   toast('System deleted')
   const slot=stk[stk.length-1]
@@ -10012,9 +10065,9 @@ async function execChatAction(act){
     else if(t==='open_job'){closeChat();openJob(act.job_id)}
     else if(t==='delete_job'){
       if(confirm('Delete this job?')){
-        await SB.from('jobs').delete().eq('id',act.job_id)
+        await trash('jobs',{id:act.job_id},act.reason||'Deleted via AI chat','ai_chat','app')
         await load();rJobs();rJobs()
-        audit('deleted','job',act.job_id,'ai_chat',null,'AI deleted job')
+        audit('deleted','job',act.job_id,'ai_chat',null,'AI soft-deleted job — record preserved in trash')
         _chatMsgs.push({role:'assistant',content:'✓ Job deleted'})
       }else{_chatMsgs.push({role:'assistant',content:'Cancelled.'})}
     }
