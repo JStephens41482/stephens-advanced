@@ -55,7 +55,71 @@ const MEMORY_EXTRACT_EVERY_N_INBOUND = 4
 // SESSION HELPERS — riker_sessions mirroring for SMS/email
 // ═══════════════════════════════════════════════════════════════
 
+// Jon's canonical phone. Centralized here so upsertRikerSessionForChannel
+// can recognize him without re-importing from riker-tools.
+const JON_PHONE_CANONICAL = '+12149944799'
+
+/**
+ * Phase 6a — "One Jon". Return the SINGLE rolling riker_sessions row that
+ * represents every conversation Jon has with Riker across every channel
+ * (sms_jon, app, future additions). Principal='jon' guarantees uniqueness
+ * via partial unique index on (principal) WHERE status='active'.
+ *
+ * If no row exists yet, one is created with context='jon_unified'. If an
+ * older Jon session is lying around without the principal marker, we adopt
+ * the newest one by stamping principal='jon' on it.
+ */
+async function getOrCreatePrincipalSession(supabase, principal) {
+  // 1) Existing active principal row — fast path
+  const { data: existing } = await supabase.from('riker_sessions')
+    .select('*')
+    .eq('principal', principal)
+    .eq('status', 'active')
+    .order('updated_at', { ascending: false })
+    .limit(1).maybeSingle()
+  if (existing) return existing
+
+  // 2) Adopt the most-recent pre-principal Jon session, if any
+  if (principal === 'jon') {
+    const { data: adopt } = await supabase.from('riker_sessions')
+      .select('*')
+      .in('context', ['sms_jon', 'app', 'jon_unified'])
+      .eq('customer_phone', JON_PHONE_CANONICAL)
+      .is('principal', null)
+      .eq('status', 'active')
+      .order('updated_at', { ascending: false })
+      .limit(1).maybeSingle()
+    if (adopt) {
+      const { data: updated } = await supabase.from('riker_sessions')
+        .update({ principal: 'jon', context: 'jon_unified', updated_at: new Date().toISOString() })
+        .eq('id', adopt.id).select().single()
+      return updated || adopt
+    }
+  }
+
+  // 3) Create fresh
+  const { data: created, error } = await supabase.from('riker_sessions').insert({
+    context: 'jon_unified',
+    principal,
+    customer_phone: principal === 'jon' ? JON_PHONE_CANONICAL : null,
+    messages: [],
+    status: 'active'
+  }).select().single()
+  if (error) { console.error('[riker-core] getOrCreatePrincipalSession insert failed:', error); return null }
+  return created
+}
+
 async function upsertRikerSessionForChannel({ supabase, context, phone, email, party, locationId, billingAccountId, customerName }) {
+  // Phase 6a: Jon's channels all resolve to one principal='jon' row. His
+  // SMS, his in-app chat, anything he touches lands in the same thread so
+  // continuity is perfect across surfaces.
+  const isJonPhone = phone && phone === JON_PHONE_CANONICAL
+  const isJonChannel = context === 'sms_jon' || context === 'app' || context === 'jon_unified' || isJonPhone
+  if (isJonChannel) {
+    return getOrCreatePrincipalSession(supabase, 'jon')
+  }
+
+  // Everyone else: per-channel sessions keyed on phone/email as before.
   let q = supabase.from('riker_sessions').select('*').eq('context', context).eq('status', 'active')
   if (phone) q = q.eq('customer_phone', phone)
   else if (email) q = q.eq('customer_email', email)
@@ -663,6 +727,28 @@ async function callClaudeWithTools({ systemBlocks, messages, toolSchemas, toolCt
   for (let turn = 0; turn < maxTurns; turn++) {
     turns++
     const startT = Date.now()
+
+    // Phase 6b — cache the message history. With a 200-turn verbatim window
+    // we must mark a cache breakpoint on the second-to-last message so the
+    // old history re-uses the 5-min prompt cache instead of re-billing on
+    // every turn. Only mark when there are enough turns for the cache to be
+    // worthwhile (>= 6 turns means at least a few thousand tokens).
+    const cachedConvo = convo.length >= 6
+      ? convo.map((m, i) => {
+          if (i !== convo.length - 2) return m  // only cache up through second-to-last
+          // Wrap string content into a block so we can attach cache_control
+          if (typeof m.content === 'string') {
+            return { role: m.role, content: [{ type: 'text', text: m.content, cache_control: { type: 'ephemeral' } }] }
+          }
+          // Already a block array — tag the last block
+          if (Array.isArray(m.content) && m.content.length) {
+            const cloned = m.content.map((b, j) => j === m.content.length - 1 ? { ...b, cache_control: { type: 'ephemeral' } } : b)
+            return { role: m.role, content: cloned }
+          }
+          return m
+        })
+      : convo
+
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -675,7 +761,7 @@ async function callClaudeWithTools({ systemBlocks, messages, toolSchemas, toolCt
         model: currentModel,
         max_tokens: 1500,
         system: systemBlocks,
-        messages: convo,
+        messages: cachedConvo,
         tools: toolSchemas
       })
     })
@@ -1121,10 +1207,12 @@ module.exports = {
   generateProactive,
   makeSessionAdapter,
   upsertRikerSessionForChannel,
+  getOrCreatePrincipalSession,
   appendToRikerSession,
   bumpSessionStats,
   countInboundTurns,
   extractMemoryFromSession,
   MEMORY_EXTRACT_EVERY_N_INBOUND,
-  CLAUDE_MODEL
+  CLAUDE_MODEL,
+  JON_PHONE_CANONICAL
 }

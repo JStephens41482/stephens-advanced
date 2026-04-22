@@ -77,6 +77,24 @@ module.exports = async function handler(req, res) {
 
     // Resolve or create session
     let sessionId = body.session_id
+
+    // Phase 6a — "One Jon". The app is Jon's private field app, so any app
+    // session belongs to him. Route to his unified principal='jon' session
+    // instead of spinning up a new row per app-open. SMS + app + future
+    // channels all land in the same thread.
+    if (!sessionId && context === 'app') {
+      const jonSession = await core.getOrCreatePrincipalSession(supabase, 'jon')
+      if (jonSession) {
+        sessionId = jonSession.id
+        // Keep the unified row in sync with the client's active location
+        if (identity.location_id && !jonSession.location_id) {
+          await supabase.from('riker_sessions')
+            .update({ location_id: identity.location_id, updated_at: new Date().toISOString() })
+            .eq('id', jonSession.id)
+        }
+      }
+    }
+
     if (!sessionId) {
       const insertRow = {
         context,
