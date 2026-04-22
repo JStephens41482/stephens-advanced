@@ -280,6 +280,185 @@ function makeSessionAdapter({ storage, supabase, sessionKey }) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// BUSINESS PULSE — live snapshot injected fresh every turn (not cached)
+// Runs 9 parallel DB queries so Riker wakes up knowing the state of the
+// business without having to ask. Never throws — silently omits failures.
+// ═══════════════════════════════════════════════════════════════
+
+async function buildBusinessPulse(supabase) {
+  const today = new Date().toISOString().split('T')[0]
+  const weekEnd = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0]
+
+  const safe = p => p.then(r => r.data || []).catch(() => [])
+  const safeOne = p => p.then(r => r.data || null).catch(() => null)
+  const safeCount = p => p.then(r => r.count || 0).catch(() => 0)
+
+  const [
+    todayJobs, overdueJobs, upcomingJobs,
+    openInvoices, pendingConf, openTodos,
+    jonLoc, mazonPending, brycerPending
+  ] = await Promise.all([
+    // Today's jobs (all statuses so completed ones show too) — excludes trashed
+    safe(supabase.from('jobs')
+      .select('scheduled_time, scope, status, location:locations(name,city)')
+      .eq('scheduled_date', today).is('deleted_at', null)
+      .order('scheduled_time')),
+
+    // Overdue — oldest first, up to 10 — excludes trashed
+    safe(supabase.from('jobs')
+      .select('scheduled_date, scope, location:locations(name,city)')
+      .lt('scheduled_date', today).eq('status', 'scheduled').is('deleted_at', null)
+      .order('scheduled_date', { ascending: true }).limit(10)),
+
+    // Upcoming this week (not today) — excludes trashed
+    safe(supabase.from('jobs')
+      .select('scheduled_date, scheduled_time, scope, location:locations(name,city)')
+      .gt('scheduled_date', today).lte('scheduled_date', weekEnd)
+      .eq('status', 'scheduled').is('deleted_at', null)
+      .order('scheduled_date').limit(20)),
+
+    // Open invoices — all unpaid, not trashed
+    safe(supabase.from('invoices')
+      .select('invoice_number, total, due_date, location:locations(name)')
+      .not('status', 'in', '(paid,void,record,factored)')
+      .is('deleted_at', null)
+      .order('due_date', { ascending: true })),
+
+    // Customer bookings awaiting Jon's approval
+    safe(supabase.from('pending_confirmations')
+      .select('customer_name, business_name, scheduled_date, scheduled_time, scope')
+      .eq('status', 'pending')
+      .gt('expires_at', new Date().toISOString())),
+
+    // Open todos — not trashed, not done
+    safe(supabase.from('todos')
+      .select('text, created_at')
+      .eq('done', false).is('deleted_at', null)
+      .order('created_at', { ascending: false }).limit(15)),
+
+    // Jon's GPS
+    safeOne(supabase.from('jon_location').select('lat, lng, source, updated_at').eq('id', 1).maybeSingle()),
+
+    // Mazon factoring queue — pending items
+    safe(supabase.from('mazon_queue')
+      .select('customer_name, amount, status')
+      .eq('status', 'pending')),
+
+    // Brycer compliance — pending submissions
+    safeCount(supabase.from('brycer_queue')
+      .select('id', { count: 'exact', head: true })
+      .eq('submitted', false))
+  ])
+
+  const lines = []
+
+  // --- TODAY ---
+  const todayLabel = new Date().toLocaleDateString('en-US', { timeZone: 'America/Chicago', weekday: 'short', month: 'short', day: 'numeric' })
+  if (todayJobs.length === 0) {
+    lines.push(`TODAY (${todayLabel}): no jobs scheduled`)
+  } else {
+    lines.push(`TODAY (${todayLabel}) — ${todayJobs.length} job${todayJobs.length > 1 ? 's' : ''}:`)
+    for (const j of todayJobs) {
+      const t = j.scheduled_time ? j.scheduled_time.slice(0, 5) : '?'
+      const loc = j.location?.name || 'Unknown'
+      const city = j.location?.city ? ` (${j.location.city})` : ''
+      const scope = (j.scope || []).join(', ') || 'TBD'
+      const done = j.status === 'completed' ? ' ✓' : j.status === 'cancelled' ? ' ✗' : ''
+      lines.push(`  • ${t}  ${loc}${city} — ${scope}${done}`)
+    }
+  }
+
+  // --- OVERDUE ---
+  if (overdueJobs.length === 0) {
+    lines.push('OVERDUE: none')
+  } else {
+    const oldest = overdueJobs[0]
+    const oldestDate = oldest.scheduled_date
+    const oldestName = oldest.location?.name || '?'
+    lines.push(`OVERDUE: ${overdueJobs.length} job${overdueJobs.length > 1 ? 's' : ''} (oldest: ${oldestDate} — ${oldestName}${oldest.location?.city ? ', ' + oldest.location.city : ''})`)
+    for (const j of overdueJobs.slice(0, 8)) {
+      const scope = (j.scope || []).join('+') || 'TBD'
+      lines.push(`  • ${j.scheduled_date}  ${j.location?.name || '?'}${j.location?.city ? ' (' + j.location.city + ')' : ''} [${scope}]`)
+    }
+    if (overdueJobs.length > 8) lines.push(`  … and ${overdueJobs.length - 8} more`)
+  }
+
+  // --- UPCOMING THIS WEEK ---
+  if (upcomingJobs.length > 0) {
+    lines.push(`UPCOMING (next 7 days): ${upcomingJobs.length} job${upcomingJobs.length > 1 ? 's' : ''}`)
+    for (const j of upcomingJobs.slice(0, 10)) {
+      const d = new Date(j.scheduled_date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+      const t = j.scheduled_time ? ' ' + j.scheduled_time.slice(0, 5) : ''
+      const loc = j.location?.name || '?'
+      const city = j.location?.city ? ` (${j.location.city})` : ''
+      const scope = (j.scope || []).join('+') || 'TBD'
+      lines.push(`  • ${d}${t}  ${loc}${city} [${scope}]`)
+    }
+    if (upcomingJobs.length > 10) lines.push(`  … and ${upcomingJobs.length - 10} more`)
+  }
+
+  // --- OPEN INVOICES ---
+  if (openInvoices.length === 0) {
+    lines.push('INVOICES: all paid up')
+  } else {
+    const total = openInvoices.reduce((s, i) => s + Number(i.total || 0), 0)
+    const oldest = openInvoices[0]
+    lines.push(`INVOICES: $${total.toFixed(2)} outstanding across ${openInvoices.length} (oldest due: ${oldest.due_date || '?'} — ${oldest.location?.name || '?'} $${Number(oldest.total || 0).toFixed(2)})`)
+    for (const inv of openInvoices.slice(0, 8)) {
+      lines.push(`  • #${inv.invoice_number}  ${inv.location?.name || '?'}  $${Number(inv.total || 0).toFixed(2)}  due ${inv.due_date || '?'}`)
+    }
+    if (openInvoices.length > 8) lines.push(`  … and ${openInvoices.length - 8} more`)
+  }
+
+  // --- PENDING CUSTOMER CONFIRMATIONS ---
+  if (pendingConf.length > 0) {
+    lines.push(`PENDING APPROVAL: ${pendingConf.length} customer booking${pendingConf.length > 1 ? 's' : ''} awaiting Jon`)
+    for (const p of pendingConf) {
+      const biz = p.business_name || p.customer_name || '?'
+      const d = p.scheduled_date || '?'
+      const t = p.scheduled_time ? ' ' + p.scheduled_time.slice(0, 5) : ''
+      const scope = (p.scope || []).join('+') || 'TBD'
+      lines.push(`  • ${biz} — ${d}${t} [${scope}]`)
+    }
+  }
+
+  // --- TODOS ---
+  if (openTodos.length > 0) {
+    lines.push(`TODOS: ${openTodos.length} open`)
+    for (const t of openTodos) {
+      lines.push(`  • ${String(t.text).trim()}`)
+    }
+  }
+
+  // --- JON'S LOCATION ---
+  if (jonLoc && jonLoc.lat) {
+    const ageMins = jonLoc.updated_at
+      ? Math.round((Date.now() - new Date(jonLoc.updated_at).getTime()) / 60000)
+      : null
+    const ageStr = ageMins != null ? ` (${ageMins} min ago, via ${jonLoc.source || '?'})` : ''
+    lines.push(`JON'S LOCATION: ${jonLoc.lat.toFixed(4)}, ${jonLoc.lng.toFixed(4)}${ageStr}`)
+  } else {
+    lines.push('JON\'S LOCATION: unknown')
+  }
+
+  // --- MAZON ---
+  if (mazonPending.length > 0) {
+    const mazonTotal = mazonPending.reduce((s, r) => s + Number(r.amount || 0), 0)
+    lines.push(`MAZON FACTORING: ${mazonPending.length} pending ($${mazonTotal.toFixed(2)})`)
+    for (const r of mazonPending) {
+      lines.push(`  • ${r.customer_name || '?'}  $${Number(r.amount || 0).toFixed(2)}`)
+    }
+  }
+
+  // --- BRYCER ---
+  if (brycerPending > 0) {
+    lines.push(`BRYCER: ${brycerPending} location${brycerPending > 1 ? 's' : ''} pending compliance submission`)
+  }
+
+  return 'BUSINESS PULSE (live — fetched fresh this turn):\n' + lines.join('\n')
+}
+
+// ═══════════════════════════════════════════════════════════════
 // NOTEBOOK BLOCK — small system-prompt addendum with relevant memories
 // ═══════════════════════════════════════════════════════════════
 
@@ -627,15 +806,26 @@ async function processMessage({
     await adapter.appendInbound(session, message)
   }
 
-  // Notebook (small block, not cached)
-  const { block: notebookBlock, count: memCount } = await buildNotebookBlock({ supabase, context, identity })
+  // Run notebook + pulse in parallel — both are uncached dynamic blocks
+  const [{ block: notebookBlock }, pulseText] = await Promise.all([
+    buildNotebookBlock({ supabase, context, identity }),
+    buildBusinessPulse(supabase)
+  ])
 
-  // Identity (cached)
+  // Identity (cached) — static identity block, NOW removed so cache doesn't freeze it
   const today = new Date().toISOString().split('T')[0]
   const identityText = buildIdentity({ context, today })
 
+  // NOW injected fresh every turn — must NOT be inside the cached block
+  const nowCST = new Date().toLocaleString('en-US', {
+    timeZone: 'America/Chicago',
+    weekday: 'short', month: 'short', day: 'numeric',
+    hour: 'numeric', minute: '2-digit', hour12: true
+  }) + ' CST'
+
   const systemBlocks = [
-    { type: 'text', text: identityText, cache_control: { type: 'ephemeral' } }
+    { type: 'text', text: identityText, cache_control: { type: 'ephemeral' } },
+    { type: 'text', text: `CURRENT TIME: ${nowCST}\n\n${pulseText}` }
   ]
   if (notebookBlock) systemBlocks.push({ type: 'text', text: notebookBlock })
 

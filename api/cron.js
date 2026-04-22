@@ -126,12 +126,13 @@ async function morningDigest(req, res, SB) {
       .select('id, location_id, scope, scheduled_date, scheduled_time, type, assigned_to, estimated_value, notes')
       .eq('scheduled_date', today)
       .in('status', ['scheduled', 'en_route', 'active'])
+      .is('deleted_at', null)
       .order('scheduled_time', { ascending: true })
 
     // Get location names
     const locIds = [...new Set((todayJobs || []).map(j => j.location_id))]
     const { data: locs } = locIds.length
-      ? await SB.from('locations').select('id, name, address, city').in('id', locIds)
+      ? await SB.from('locations').select('id, name, address, city').in('id', locIds).is('deleted_at', null)
       : { data: [] }
     const locMap = Object.fromEntries((locs || []).map(l => [l.id, l]))
 
@@ -141,6 +142,7 @@ async function morningDigest(req, res, SB) {
       .select('id, location_id, scheduled_date')
       .eq('status', 'scheduled')
       .lt('scheduled_date', today)
+      .is('deleted_at', null)
 
     // Unassigned jobs
     const { data: unassignedJobs } = await SB
@@ -148,6 +150,7 @@ async function morningDigest(req, res, SB) {
       .select('id')
       .eq('status', 'scheduled')
       .is('assigned_to', null)
+      .is('deleted_at', null)
 
     // Unpaid invoices 30+ days
     const { data: agingInvoices } = await SB
@@ -417,7 +420,7 @@ async function autoReschedule(req, res, SB) {
     // 3. Resolve locations for filtering + display.
     const locIds = [...new Set(candidates.map(j => j.location_id))]
     const { data: locs } = locIds.length
-      ? await SB.from('locations').select('id, name, address, city').in('id', locIds)
+      ? await SB.from('locations').select('id, name, address, city').in('id', locIds).is('deleted_at', null)
       : { data: [] }
     const locMap = Object.fromEntries((locs || []).map(l => [l.id, l]))
 
@@ -465,11 +468,11 @@ async function autoReschedule(req, res, SB) {
 
       // Carry line-item template + estimated value from previous invoice.
       let lineTemplate = null, estimatedValue = null
-      const { data: oldInv } = await SB.from('invoices').select('id').eq('job_id', c.id).limit(1).maybeSingle()
+      const { data: oldInv } = await SB.from('invoices').select('id').eq('job_id', c.id).is('deleted_at', null).limit(1).maybeSingle()
       if (oldInv?.id) {
         const { data: lines } = await SB.from('invoice_lines')
           .select('description, quantity, unit_price, total, sort_order')
-          .eq('invoice_id', oldInv.id).order('sort_order')
+          .eq('invoice_id', oldInv.id).is('deleted_at', null).order('sort_order')
         if (lines && lines.length) {
           lineTemplate = lines.map(l => `${l.quantity}x ${l.description} @ $${l.unit_price}`).join(' | ')
           estimatedValue = lines.reduce((s, l) => s + parseFloat(l.total || 0), 0)
