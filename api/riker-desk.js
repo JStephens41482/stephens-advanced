@@ -16,9 +16,17 @@
 //   CURRENT TIME
 //   BUSINESS PULSE          (jobs/invoices/todos/Jon's location)
 //   DESK NOTES              (short_term_desk memory category, last 48h)
+//   LIVE TRANSCRIPT         (Phase 6c — full-text cross-channel messages,
+//                            last 2h, no truncation. Makes Riker feel
+//                            present — he sees the actual words that were
+//                            said, not 60-char summaries.)
+//   AUDIT TAIL              (Phase 6d — last ~30 audit_log events across
+//                            the business. Riker narrates state changes
+//                            — "Mike just marked that complete", "invoice
+//                            1042 was paid 4 min ago".)
 //   OPEN THREADS            (active conversations across channels, last 24h)
-//   RECENT ACTIVITY         (cross-channel feed, last 2h)
 //   UNREAD INBOX            (emails Jon hasn't replied to)
+//   DRAFTED EMAILS          (Riker's pending drafts awaiting Jon)
 //
 // Never throws. Any subsystem failure becomes silent omission.
 
@@ -41,19 +49,21 @@ async function buildRikersDesk(supabase, { context = 'app', identity = {}, now =
   parts.push(`CURRENT TIME: ${nowCST}`)
 
   // Run every section in parallel — any failure is tolerated as empty.
-  const [pulse, deskNotes, openThreads, recentActivity, unreadInbox, pendingDrafts] = await Promise.all([
+  const [pulse, deskNotes, liveTranscript, auditTail, openThreads, unreadInbox, pendingDrafts] = await Promise.all([
     _buildBusinessPulse(supabase).catch(e => { console.warn('[desk] pulse:', e.message); return '' }),
     _buildDeskNotes(supabase, identity).catch(e => { console.warn('[desk] notes:', e.message); return '' }),
+    _buildLiveTranscript(supabase, now).catch(e => { console.warn('[desk] transcript:', e.message); return '' }),
+    _buildAuditTail(supabase, now).catch(e => { console.warn('[desk] audit:', e.message); return '' }),
     _buildOpenThreads(supabase, now).catch(e => { console.warn('[desk] threads:', e.message); return '' }),
-    _buildRecentActivity(supabase, now).catch(e => { console.warn('[desk] activity:', e.message); return '' }),
     _buildUnreadInbox(supabase).catch(e => { console.warn('[desk] inbox:', e.message); return '' }),
     _buildPendingDrafts(supabase).catch(e => { console.warn('[desk] drafts:', e.message); return '' })
   ])
 
   if (pulse) parts.push(pulse)
   if (deskNotes) parts.push(deskNotes)
+  if (liveTranscript) parts.push(liveTranscript)
+  if (auditTail) parts.push(auditTail)
   if (openThreads) parts.push(openThreads)
-  if (recentActivity) parts.push(recentActivity)
   if (unreadInbox) parts.push(unreadInbox)
   if (pendingDrafts) parts.push(pendingDrafts)
 
@@ -292,28 +302,58 @@ async function _buildOpenThreads(supabase, now) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// RECENT ACTIVITY — cross-channel feed, last 2 hours
+// LIVE TRANSCRIPT — verbatim cross-channel messages, last 2 hours
 // ═══════════════════════════════════════════════════════════════
-// Timeline of everything that happened in the business in the last 2h:
-//   - Inbound SMS, outbound SMS
-//   - Inbound email, outbound email
-//   - App audit_log entries (job updates, completions, etc.)
-//   - New pending_confirmations
-//   - Jobs status changes
-// Reads like a stock ticker; ordered newest first; capped at 25 entries.
+// Phase 6c: NO summarization. Riker sees the actual words that passed
+// between customers and Riker across every channel, with timestamps and
+// who's talking. This is how "one single flow" shows up at the prompt
+// level — when Jon asks "what did Brandon say this morning", Riker has
+// the literal reply, not a paraphrase.
+//
+// Window: 2h. Per message cap: 600 chars (covers 95% of SMS+email without
+// ballooning prompt cost). Max 25 messages — plenty for a busy morning,
+// bounded for cost.
 
-async function _buildRecentActivity(supabase, now) {
+async function _buildLiveTranscript(supabase, now) {
   const since = new Date(now.getTime() - ACTIVITY_WINDOW_MIN * 60000).toISOString()
+  const { data: msgs } = await supabase.from('messages')
+    .select('id, direction, channel, body, created_at, email_subject, email_from, conversation:conversations(customer_name, phone, email)')
+    .gte('created_at', since)
+    .order('created_at', { ascending: false })
+    .limit(25)
+  if (!msgs || !msgs.length) return ''
 
+  const chrono = [...msgs].reverse()  // oldest first so the transcript reads top-down
+  const lines = chrono.map(m => {
+    const who = m.conversation?.customer_name || m.conversation?.phone || m.conversation?.email || m.email_from || '?'
+    const speaker = m.direction === 'inbound' ? who : 'Riker → ' + who
+    const time = new Date(m.created_at).toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour: 'numeric', minute: '2-digit', hour12: true })
+    const kind = m.channel === 'email' ? 'email' : 'sms'
+    const subj = m.email_subject ? ` | ${_truncate(m.email_subject, 60)}` : ''
+    // No aggressive truncation — keep the real words
+    const body = _flatten(m.body, 600)
+    return `[${time} ${kind}${subj}] ${speaker}: ${body}`
+  })
+  return `LIVE TRANSCRIPT (last ${ACTIVITY_WINDOW_MIN / 60}h, verbatim cross-channel):\n` + lines.join('\n')
+}
+
+// ═══════════════════════════════════════════════════════════════
+// AUDIT TAIL — Phase 6d
+// ═══════════════════════════════════════════════════════════════
+// The ambient state-change stream. Every write through the app / portal /
+// Riker goes through audit_log; we surface the last 30 rows so Riker can
+// narrate "Mike marked the Wabi job complete 4 min ago, payment on
+// invoice 1042 hit 30 sec ago". Also folds in new pending_confirmations
+// and riker_interactions so the picture isn't limited to what's in
+// audit_log.
+
+async function _buildAuditTail(supabase, now) {
+  const since = new Date(now.getTime() - ACTIVITY_WINDOW_MIN * 60000).toISOString()
   const [
-    { data: recentMsgs },
-    { data: recentAudit },
-    { data: recentPending },
-    { data: recentInteractions }
+    { data: auditRows },
+    { data: pendingRows },
+    { data: interactionRows }
   ] = await Promise.all([
-    supabase.from('messages')
-      .select('id, conversation_id, direction, channel, body, created_at, email_subject, conversation:conversations(customer_name, phone, email)')
-      .gte('created_at', since).order('created_at', { ascending: false }).limit(30),
     supabase.from('audit_log')
       .select('id, action, entity_type, entity_id, actor, details, created_at')
       .gte('created_at', since).order('created_at', { ascending: false }).limit(30),
@@ -321,52 +361,56 @@ async function _buildRecentActivity(supabase, now) {
       .select('id, customer_name, status, created_at, proposed_action')
       .gte('created_at', since).order('created_at', { ascending: false }).limit(10),
     supabase.from('riker_interactions')
-      .select('id, context, user_message, reply, created_at, actions_succeeded')
+      .select('id, context, created_at, actions_succeeded')
       .gte('created_at', since).order('created_at', { ascending: false }).limit(15)
   ])
 
   const events = []
 
-  for (const m of (recentMsgs || [])) {
-    const who = m.conversation?.customer_name || m.conversation?.phone || m.conversation?.email || '?'
-    const arrow = m.direction === 'inbound' ? '→' : '←'
-    const kind = m.channel === 'email' ? 'email' : 'sms'
-    events.push({
-      ts: m.created_at,
-      line: `${arrow} ${kind} ${m.direction === 'inbound' ? 'from' : 'to'} ${who}: "${_snippet(m.body)}"${m.email_subject ? ` [${m.email_subject}]` : ''}`
-    })
-  }
-  for (const a of (recentAudit || [])) {
+  for (const a of (auditRows || [])) {
     const who = a.actor || 'system'
-    const entity = a.entity_type ? `${a.entity_type}` : ''
+    const entity = a.entity_type ? `${a.entity_type}${a.entity_id ? ':' + String(a.entity_id).slice(0, 8) : ''}` : ''
     const act = a.action || 'change'
     let detail = ''
     if (a.details && typeof a.details === 'object') {
-      const keys = Object.keys(a.details).slice(0, 3)
-      if (keys.length) detail = ' (' + keys.map(k => `${k}=${_truncate(String(a.details[k]), 40)}`).join(', ') + ')'
+      const keys = Object.keys(a.details).slice(0, 4)
+      if (keys.length) {
+        detail = ' (' + keys.map(k => {
+          const v = a.details[k]
+          const vs = typeof v === 'object' ? JSON.stringify(v) : String(v)
+          return `${k}=${_truncate(vs, 60)}`
+        }).join(', ') + ')'
+      }
     }
-    events.push({ ts: a.created_at, line: `· ${who}: ${act} ${entity}${detail}` })
+    events.push({ ts: a.created_at, line: `${who} ${act} ${entity}${detail}` })
   }
-  for (const p of (recentPending || [])) {
+
+  for (const p of (pendingRows || [])) {
     const a = p.proposed_action || {}
     const biz = a.business_name || p.customer_name || '?'
-    events.push({ ts: p.created_at, line: `⚡ pending ${p.status}: ${biz} ${a.date || ''} ${a.time || ''}`.trim() })
+    events.push({ ts: p.created_at, line: `pending-confirm ${p.status}: ${biz} ${a.scope ? '[' + (Array.isArray(a.scope) ? a.scope.join(',') : a.scope) + ']' : ''} ${a.scheduled_date || a.date || ''} ${a.scheduled_time || a.time || ''}`.trim() })
   }
-  for (const i of (recentInteractions || [])) {
+
+  for (const i of (interactionRows || [])) {
     const acts = Array.isArray(i.actions_succeeded) ? i.actions_succeeded.filter(x => x.ok !== false).map(x => x.type) : []
     if (acts.length) {
-      events.push({ ts: i.created_at, line: `★ riker[${i.context}]: ${acts.slice(0, 4).join(', ')}${acts.length > 4 ? ` +${acts.length - 4}` : ''}` })
+      events.push({ ts: i.created_at, line: `riker[${i.context}] ran: ${acts.slice(0, 6).join(', ')}${acts.length > 6 ? ` +${acts.length - 6}` : ''}` })
     }
   }
 
   if (!events.length) return ''
   events.sort((a, b) => new Date(b.ts) - new Date(a.ts))
-  const lines = events.slice(0, 25).map(e => {
+  const lines = events.slice(0, 30).map(e => {
     const dt = new Date(e.ts)
     const timeStr = dt.toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour: 'numeric', minute: '2-digit', hour12: true })
-    return `  ${timeStr}  ${e.line}`
+    return `  ${timeStr}  · ${e.line}`
   })
-  return `RECENT ACTIVITY (last ${ACTIVITY_WINDOW_MIN / 60}h):\n` + lines.join('\n')
+  return `AUDIT TAIL (last ${ACTIVITY_WINDOW_MIN / 60}h, state changes across the business):\n` + lines.join('\n')
+}
+
+// Legacy name kept for back-compat with any external import.
+async function _buildRecentActivity(supabase, now) {
+  return _buildAuditTail(supabase, now)
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -417,6 +461,14 @@ function _truncate(s, n = 50) {
   if (!s) return ''
   return s.length > n ? s.slice(0, n - 1) + '…' : s
 }
+// Phase 6c: keep real newlines and spacing; only collapse runs of blank
+// lines. This preserves the "shape" of emails and multi-line SMS without
+// letting a pathological message blow the block out.
+function _flatten(s, n = 600) {
+  if (!s) return ''
+  const cleaned = String(s).replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
+  return cleaned.length > n ? cleaned.slice(0, n - 1) + '…' : cleaned
+}
 function _ageLabel(ts, now = new Date()) {
   if (!ts) return '?'
   const mins = Math.round((now.getTime() - new Date(ts).getTime()) / 60000)
@@ -434,7 +486,9 @@ module.exports = {
   _buildBusinessPulse,
   _buildDeskNotes,
   _buildOpenThreads,
-  _buildRecentActivity,
+  _buildLiveTranscript,
+  _buildAuditTail,
+  _buildRecentActivity,   // legacy alias → _buildAuditTail
   _buildUnreadInbox,
   _buildPendingDrafts
 }

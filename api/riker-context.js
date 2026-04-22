@@ -20,11 +20,19 @@
 // turn whenever msg count has grown past the last-summarized checkpoint
 // by at least 6 turns. Never blocks the user-facing reply.
 
-const SLIDING_WINDOW = 20                          // verbatim turns kept
-const SUMMARY_EVERY_N_TURNS = 6                    // resummarize every N added turns
-const SUMMARY_MIN_TURNS = 10                       // don't summarize before this total
-const CROSS_SESSION_DAYS = 7                       // look back this far for prior threads
-const CROSS_SESSION_CAP = 4                        // max prior sessions pulled
+// Phase 6b — keep the words. The original 20-turn window meant Riker lost
+// the verbatim phrasing of anything older than about a half-day of back-
+// and-forth. Prompt caching on the system blocks plus Anthropic's inherent
+// pricing means carrying a much larger window costs near-zero marginal
+// dollars per turn. Bumped to 200 verbatim turns. Summary only kicks in
+// once the thread is *both* past 200 turns AND has meaningful older
+// content worth paraphrasing (min 220 so we're not summarizing 20 stale
+// turns).
+const SLIDING_WINDOW = 200                         // verbatim turns kept
+const SUMMARY_EVERY_N_TURNS = 40                   // resummarize every N added turns
+const SUMMARY_MIN_TURNS = 220                      // don't summarize before this total
+const CROSS_SESSION_DAYS = 14                      // look back this far for prior threads (widened)
+const CROSS_SESSION_CAP = 6                        // max prior sessions pulled
 const HAIKU_MODEL = 'claude-haiku-4-5-20251001'
 
 // ───────────────────────────────────────────────
