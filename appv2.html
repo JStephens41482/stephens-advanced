@@ -697,7 +697,7 @@ async function load(){
 
   const[j,l,i,b,r,ci,td2,mz,bq,tk,sr,pt,ce,ct,cl2,rch,pr,nf,cn]=await Promise.all([
     jobsQuery,
-    SB.from('locations').select('*,extinguishers(id,type,size,serial_number,location_in_building,manufacture_date,last_internal,last_hydro),suppression_systems(id,system_type,category,tank_count,nozzle_count,fusible_link_count),emergency_lights(id,fixture_count),billing_account:billing_accounts(*)').order('name'),
+    SB.from('locations').select('*,extinguishers(id,type,size,serial_number,location_in_building,manufacture_date,last_internal,last_hydro),suppression_systems(id,system_type,category,tank_count,nozzle_count,fusible_link_count),emergency_lights(id,fixture_count),billing_account:billing_accounts(*)').is('deleted_at',null).order('name'),
     SB.from('invoices').select('*').order('date',{ascending:false}).limit(100),
     SB.from('billing_accounts').select('*').order('name'),
     SB.from('rate_card').select('key,price'),
@@ -7344,39 +7344,22 @@ async function tripleDeleteClient(id, name){
 }
 
 async function delCust(id){
-  // cascade everything referencing this location
+  // Soft-delete only — nothing is permanently removed. Full snapshot goes to
+  // deleted_records, then deleted_at is stamped on the location row.
+  // Child records (jobs, invoices, equipment) are preserved as history.
   try{
-    const jobIds=D.jobs.filter(j=>j.location_id===id||j.location?.id===id).map(j=>j.id)
-    const invIds=D.invs.filter(i=>i.location_id===id).map(i=>i.id)
-    // reports → reference job_id
-    if(jobIds.length)try{await SB.from('reports').delete().in('job_id',jobIds)}catch(e){}
-    // also reports by location_id
-    try{await SB.from('reports').delete().eq('location_id',id)}catch(e){}
-    // invoice lines → invoices
-    if(invIds.length)try{await SB.from('invoice_lines').delete().in('invoice_id',invIds)}catch(e){}
-    if(invIds.length)try{await SB.from('invoices').delete().in('id',invIds)}catch(e){}
-    // extinguisher_results, suppression_results
-    if(jobIds.length)try{await SB.from('extinguisher_results').delete().in('job_id',jobIds)}catch(e){}
-    if(jobIds.length)try{await SB.from('suppression_results').delete().in('job_id',jobIds)}catch(e){}
-    // brycer queue
-    try{await SB.from('brycer_queue').delete().eq('location_id',id)}catch(e){}
-    // portal tokens
-    try{await SB.from('portal_tokens').delete().eq('location_id',id)}catch(e){}
-    // service requests
-    try{await SB.from('service_requests').delete().eq('location_id',id)}catch(e){}
-    // jobs
-    if(jobIds.length)try{await SB.from('jobs').delete().in('id',jobIds)}catch(e){}
-    // equipment
-    try{await SB.from('extinguishers').delete().eq('location_id',id)}catch(e){}
-    try{await SB.from('suppression_systems').delete().eq('location_id',id)}catch(e){}
-    try{await SB.from('emergency_lights').delete().eq('location_id',id)}catch(e){}
-    // contracts
-    try{await SB.from('contracts').delete().eq('location_id',id)}catch(e){}
-    // finally the location
-    const{error}=await SB.from('locations').delete().eq('id',id)
+    const{data:loc,error:fetchErr}=await SB.from('locations').select('*').eq('id',id).maybeSingle()
+    if(fetchErr||!loc){toast('Could not fetch location: '+(fetchErr?.message||'not found'),false);return}
+    // Log to trash
+    await SB.from('deleted_records').insert({
+      table_name:'locations',record_id:id,record_data:loc,
+      deleted_by:'jon',reason:'Deleted via app UI',context:'app'
+    })
+    // Soft-delete
+    const{error}=await SB.from('locations').update({deleted_at:new Date().toISOString()}).eq('id',id)
     if(error){toast('Error: '+error.message,false);return}
   }catch(e){toast('Delete failed: '+e.message,false);return}
-  audit('deleted','location',id,'jon',null,'Client deleted')
+  audit('deleted','location',id,'jon',null,'Client soft-deleted — record preserved in trash')
   await load();toast('Client deleted')
   popAll();rCust()
 }
