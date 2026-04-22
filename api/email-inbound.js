@@ -84,6 +84,25 @@ module.exports = async function handler(req, res) {
           email_to: parsed.to
         })
 
+        // Phase 3: mirror into email_inbox so Riker's Desk can surface an
+        // accurate "unread" counter without re-joining messages every turn.
+        // Best-effort — never block the pipeline.
+        try {
+          await supabase.from('email_inbox').insert({
+            thread_id: parsed.threadId || null,
+            conversation_id: conv.id,
+            from_email: parsed.from,
+            from_name: parsed.fromName || null,
+            to_email: parsed.to || null,
+            subject: parsed.subject || null,
+            preview: (parsed.bodyText || '').replace(/\s+/g, ' ').slice(0, 240),
+            message_id: parsed.messageIdHeader || null,
+            in_reply_to: parsed.inReplyTo || null,
+            location_id: conv.location_id || null,
+            needs_reply: true
+          })
+        } catch (e) { /* best effort — email_inbox is a convenience mirror */ }
+
         // Mirror into riker_sessions (parallel to conversations/messages)
         const rikerSession = await core.upsertRikerSessionForChannel({
           supabase, context: 'email_customer',

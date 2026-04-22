@@ -87,6 +87,59 @@ function renderMemoriesForPrompt(memories) {
 
 // ═══ WRITE ═══
 
+// Phase 5: fuzzy dedup. Exact content match is too strict — "Jon prefers
+// 9am appointments" and "jon prefers morning appointments at 9" shouldn't
+// become two separate notebook rows. We normalize + Levenshtein compare and
+// treat anything ≥ 0.85 similar as the same entry (UPDATE, don't INSERT).
+const FUZZY_DEDUP_THRESHOLD = 0.85
+const FUZZY_CANDIDATE_CAP = 30
+
+function _normalizeForCompare(s) {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/[^\p{Letter}\p{Number}\s]/gu, ' ')   // strip punctuation
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+// Classic Levenshtein, two-row implementation. O(n*m) memory = O(min(n,m)).
+function _levenshtein(a, b) {
+  if (a === b) return 0
+  if (!a.length) return b.length
+  if (!b.length) return a.length
+  // Ensure a is the shorter — memory scales with a.length
+  if (a.length > b.length) { const t = a; a = b; b = t }
+  let prev = new Array(a.length + 1)
+  let cur = new Array(a.length + 1)
+  for (let i = 0; i <= a.length; i++) prev[i] = i
+  for (let j = 1; j <= b.length; j++) {
+    cur[0] = j
+    for (let i = 1; i <= a.length; i++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1
+      cur[i] = Math.min(
+        cur[i - 1] + 1,       // insertion
+        prev[i] + 1,          // deletion
+        prev[i - 1] + cost    // substitution
+      )
+    }
+    const tmp = prev; prev = cur; cur = tmp
+  }
+  return prev[a.length]
+}
+
+function _similarity(a, b) {
+  const A = _normalizeForCompare(a)
+  const B = _normalizeForCompare(b)
+  if (!A && !B) return 1
+  const maxLen = Math.max(A.length, B.length)
+  if (maxLen === 0) return 1
+  // Fast reject: length ratio too far apart can't exceed threshold
+  const minLen = Math.min(A.length, B.length)
+  if (minLen / maxLen < FUZZY_DEDUP_THRESHOLD - 0.05) return 0
+  const dist = _levenshtein(A, B)
+  return 1 - (dist / maxLen)
+}
+
 async function writeMemory(supabase, entry, { sessionId, source } = {}) {
   const row = {
     scope: entry.scope,
@@ -102,8 +155,9 @@ async function writeMemory(supabase, entry, { sessionId, source } = {}) {
     source_session_id: sessionId || null,
     auto_generated: true
   }
-  // Best-effort de-dup: if an identical content exists for same scope+category+location, update priority + updated_at instead
-  const { data: existing } = await supabase
+
+  // 1) Exact-match fast path (cheap index hit).
+  const { data: exact } = await supabase
     .from('riker_memory')
     .select('id, priority')
     .eq('archived', false)
@@ -113,20 +167,54 @@ async function writeMemory(supabase, entry, { sessionId, source } = {}) {
     .eq('location_id', row.location_id)
     .limit(1)
     .maybeSingle()
-  if (existing) {
+  if (exact) {
     await supabase.from('riker_memory').update({
-      priority: Math.max(existing.priority, row.priority),
+      priority: Math.max(exact.priority, row.priority),
       updated_at: new Date().toISOString(),
       expires_at: row.expires_at
-    }).eq('id', existing.id)
-    return { id: existing.id, updated: true }
+    }).eq('id', exact.id)
+    return { id: exact.id, updated: true, match: 'exact' }
   }
+
+  // 2) Fuzzy dedup: fetch recent candidates with the same scope+category+
+  // location and pick the closest above threshold. Restricting to the same
+  // scope/category/location keeps the candidate set small (capped at 30).
+  let candQ = supabase.from('riker_memory')
+    .select('id, content, priority')
+    .eq('archived', false)
+    .eq('scope', row.scope)
+    .eq('category', row.category)
+    .order('updated_at', { ascending: false })
+    .limit(FUZZY_CANDIDATE_CAP)
+  if (row.location_id) candQ = candQ.eq('location_id', row.location_id)
+  else candQ = candQ.is('location_id', null)
+  const { data: candidates } = await candQ
+
+  let bestMatch = null
+  let bestScore = 0
+  for (const c of (candidates || [])) {
+    const s = _similarity(row.content, c.content)
+    if (s > bestScore) { bestScore = s; bestMatch = c }
+  }
+  if (bestMatch && bestScore >= FUZZY_DEDUP_THRESHOLD) {
+    // Treat as same entry. Update priority + refresh timestamps. Overwrite
+    // content with the newer phrasing (usually more specific).
+    await supabase.from('riker_memory').update({
+      content: row.content,
+      priority: Math.max(bestMatch.priority, row.priority),
+      updated_at: new Date().toISOString(),
+      expires_at: row.expires_at
+    }).eq('id', bestMatch.id)
+    return { id: bestMatch.id, updated: true, match: 'fuzzy', score: bestScore }
+  }
+
+  // 3) No match — insert new row.
   const { data: inserted, error } = await supabase.from('riker_memory').insert(row).select().single()
   if (error) {
     console.error('[riker-memory] write error:', error)
     return null
   }
-  return { id: inserted.id, updated: false }
+  return { id: inserted.id, updated: false, match: 'new' }
 }
 
 async function deleteMemory(supabase, memoryId, reason) {
@@ -179,5 +267,9 @@ module.exports = {
   renderMemoriesForPrompt,
   writeMemory,
   deleteMemory,
-  pruneMemories
+  pruneMemories,
+  // exported for tests
+  _similarity,
+  _levenshtein,
+  FUZZY_DEDUP_THRESHOLD
 }
