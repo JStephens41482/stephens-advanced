@@ -13,6 +13,7 @@
 const crypto = require('crypto')
 const memory = require('./riker-memory')
 const william = require('./william-schedule')
+const web = require('./riker-web')
 
 const JON_PHONE = '+12149944799'
 const BRYCER_CITIES = ['fort worth', 'benbrook', 'burleson', 'crowley', 'edgecliff village', 'everman', 'forest hill', 'haltom city', 'kennedale', 'lake worth', 'north richland hills', 'richland hills', 'river oaks', 'saginaw', 'sansom park', 'westover hills', 'westworth village', 'white settlement', 'watauga', 'blue mound', 'haslet', 'keller', 'southlake', 'colleyville', 'grapevine', 'euless', 'bedford', 'hurst']
@@ -2171,6 +2172,335 @@ const get_jon_location = {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// PHASE 3 — EMAIL READ / REPLY / DRAFT TOOLS
+// These let Riker act like an inbox copilot: read unread threads,
+// draft a reply for Jon's approval, then send when Jon says go.
+// ═══════════════════════════════════════════════════════════════
+
+const read_inbox = {
+  schema: {
+    name: 'read_inbox',
+    description: "Read recent unread email threads from Jon's inbox. Returns each thread's latest inbound message with the from address, subject, preview, and the conversation_id needed to reply. Use this when Jon asks 'what's in my inbox', 'any new emails', 'did customer X email', or before deciding if a draft is needed. Unread = no outbound reply recorded after the latest inbound in that thread.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        since_hours: { type: 'integer', description: 'Look back this many hours (default 48, cap 720 / 30d).' },
+        from: { type: 'string', description: 'Filter by sender email (optional).' },
+        limit: { type: 'integer', description: 'Max threads returned (default 10, cap 30).' }
+      }
+    }
+  },
+  async handler(input, ctx) {
+    const hours = Math.min(720, Math.max(1, Number(input.since_hours) || 48))
+    const limit = Math.min(30, Math.max(1, Number(input.limit) || 10))
+    const sinceIso = new Date(Date.now() - hours * 3600000).toISOString()
+
+    // Pull email conversations touched in the window, newest first.
+    let convQ = ctx.supabase.from('conversations')
+      .select('id, channel, email, customer_name, location_id, email_thread_id, last_message_at, status')
+      .eq('channel', 'email')
+      .gte('last_message_at', sinceIso)
+      .order('last_message_at', { ascending: false })
+      .limit(limit * 2)  // oversample — we filter out already-replied threads below
+    if (input.from) convQ = convQ.eq('email', String(input.from).toLowerCase())
+    const { data: convs, error: cErr } = await convQ
+    if (cErr) return { error: cErr.message }
+    if (!convs || !convs.length) return { count: 0, unread_threads: [] }
+
+    // For each conv, find the newest inbound and whether any outbound follows it.
+    const unread = []
+    for (const conv of convs) {
+      const { data: lastFew } = await ctx.supabase.from('messages')
+        .select('direction, body, email_subject, email_from, created_at')
+        .eq('conversation_id', conv.id)
+        .order('created_at', { ascending: false })
+        .limit(8)
+      const msgs = lastFew || []
+      if (!msgs.length) continue
+      const latest = msgs[0]
+      // Thread is "unread" if latest is inbound (no outbound reply since).
+      if (latest.direction !== 'inbound') continue
+      unread.push({
+        conversation_id: conv.id,
+        email_thread_id: conv.email_thread_id || null,
+        from_email: latest.email_from || conv.email,
+        from_name: conv.customer_name || null,
+        subject: latest.email_subject || null,
+        preview: (latest.body || '').replace(/\s+/g, ' ').slice(0, 240),
+        received_at: latest.created_at,
+        last_message_at: conv.last_message_at,
+        location_id: conv.location_id || null
+      })
+      if (unread.length >= limit) break
+    }
+    return { count: unread.length, since: sinceIso, unread_threads: unread }
+  }
+}
+
+const read_email_thread = {
+  schema: {
+    name: 'read_email_thread',
+    description: "Read a full email thread in chronological order. Accepts either conversation_id (preferred — as returned by read_inbox) or email_thread_id (the Gmail thread ID). Returns every inbound + outbound message with subject, body, and timestamps. Use this to build context before drafting a reply.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        conversation_id: { type: 'string', description: 'UUID from conversations table.' },
+        email_thread_id: { type: 'string', description: 'Gmail thread ID (alternative).' },
+        limit: { type: 'integer', description: 'Max messages (default 40, cap 100).' }
+      }
+    }
+  },
+  async handler(input, ctx) {
+    const limit = Math.min(100, Math.max(1, Number(input.limit) || 40))
+    let convId = input.conversation_id
+    if (!convId && input.email_thread_id) {
+      const { data: conv } = await ctx.supabase.from('conversations')
+        .select('id').eq('channel', 'email').eq('email_thread_id', input.email_thread_id)
+        .order('last_message_at', { ascending: false }).limit(1).maybeSingle()
+      if (!conv) return { error: `No conversation for email_thread_id ${input.email_thread_id}` }
+      convId = conv.id
+    }
+    if (!convId) return { error: 'Must pass conversation_id or email_thread_id' }
+    const { data: conv } = await ctx.supabase.from('conversations')
+      .select('id, email, customer_name, email_thread_id, location_id, last_message_at')
+      .eq('id', convId).maybeSingle()
+    if (!conv) return { error: `Conversation ${convId} not found` }
+    const { data: msgs, error } = await ctx.supabase.from('messages')
+      .select('direction, channel, body, email_subject, email_from, email_to, email_message_id, created_at')
+      .eq('conversation_id', convId)
+      .order('created_at', { ascending: false })
+      .limit(limit)
+    if (error) return { error: error.message }
+    return {
+      conversation: conv,
+      count: (msgs || []).length,
+      messages: (msgs || []).reverse()  // oldest → newest
+    }
+  }
+}
+
+const draft_email_reply = {
+  schema: {
+    name: 'draft_email_reply',
+    description: "Draft an email reply and park it for Jon's approval — does NOT send. Use when you want to pre-compose a response that Jon can eyeball before it goes out. Accepts conversation_id (preferred) or a raw to_email. Returns a draft_id Jon can hand back to approve_email_draft to send. Prefer this for anything customer-facing that isn't a 1-sentence ack.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        conversation_id: { type: 'string', description: 'Reply to this conversation. Auto-fills to/subject/threading.' },
+        to_email: { type: 'string', description: 'Recipient (required if no conversation_id).' },
+        subject: { type: 'string', description: 'Override the auto "Re: ..." subject.' },
+        body: { type: 'string', description: 'Plain-text body.' },
+        reasoning: { type: 'string', description: "One-line note on why this reply (shown to Jon with the draft)." }
+      },
+      required: ['body']
+    }
+  },
+  async handler(input, ctx) {
+    if (!input.body || !String(input.body).trim()) return { error: 'body is required' }
+
+    let toEmail = input.to_email ? String(input.to_email).toLowerCase() : null
+    let subject = input.subject || null
+    let conv = null
+    let replyToMessageId = null
+    let referencesHeader = null
+    let emailThreadId = null
+
+    if (input.conversation_id) {
+      const { data: c } = await ctx.supabase.from('conversations')
+        .select('id, email, customer_name, email_thread_id, location_id')
+        .eq('id', input.conversation_id).maybeSingle()
+      if (!c) return { error: `Conversation ${input.conversation_id} not found` }
+      conv = c
+      toEmail = toEmail || c.email
+      emailThreadId = c.email_thread_id || null
+      // Pull the latest inbound to thread the reply
+      const { data: lastIn } = await ctx.supabase.from('messages')
+        .select('email_subject, email_message_id, body')
+        .eq('conversation_id', c.id).eq('direction', 'inbound')
+        .order('created_at', { ascending: false }).limit(1).maybeSingle()
+      if (lastIn) {
+        if (!subject) {
+          subject = lastIn.email_subject
+            ? (lastIn.email_subject.startsWith('Re:') ? lastIn.email_subject : 'Re: ' + lastIn.email_subject)
+            : 'Re: your email'
+        }
+        replyToMessageId = lastIn.email_message_id || null
+        referencesHeader = lastIn.email_message_id || null
+      }
+    }
+
+    if (!toEmail) return { error: 'to_email is required (or pass a conversation_id)' }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(toEmail)) return { error: 'Invalid to_email' }
+    if (!subject) subject = 'Re: your email'
+
+    const { data: draft, error } = await ctx.supabase.from('email_drafts').insert({
+      thread_id: emailThreadId,
+      conversation_id: conv?.id || null,
+      to_email: toEmail,
+      subject,
+      body: String(input.body),
+      reply_to_message_id: replyToMessageId,
+      references_header: referencesHeader,
+      status: 'pending',
+      source_context: ctx.context || null,
+      reasoning: input.reasoning || null
+    }).select('id, created_at').single()
+    if (error) return { error: error.message }
+
+    return {
+      ok: true,
+      draft_id: draft.id,
+      status: 'pending',
+      to: toEmail,
+      subject,
+      preview: String(input.body).slice(0, 160),
+      note: "Draft parked. Jon can call approve_email_draft with this draft_id to send it."
+    }
+  }
+}
+
+const approve_email_draft = {
+  schema: {
+    name: 'approve_email_draft',
+    description: "Send a previously drafted email reply (from draft_email_reply) that Jon has approved. Marks the draft approved+sent, pushes it through Resend/SMTP with proper threading headers, and logs the outbound message on the conversation. Use ONLY after Jon says 'send it' or similar explicit approval.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        draft_id: { type: 'string', description: 'The id returned by draft_email_reply.' }
+      },
+      required: ['draft_id']
+    }
+  },
+  async handler(input, ctx) {
+    const { data: draft, error } = await ctx.supabase.from('email_drafts')
+      .select('*').eq('id', input.draft_id).maybeSingle()
+    if (error) return { error: error.message }
+    if (!draft) return { error: `Draft ${input.draft_id} not found` }
+    if (draft.status === 'sent') return { error: 'Draft was already sent' }
+    if (draft.status === 'rejected') return { error: 'Draft was rejected and cannot be sent' }
+
+    // Mark approved first so we don't double-send on retry
+    await ctx.supabase.from('email_drafts').update({
+      status: 'approved', approved_at: new Date().toISOString()
+    }).eq('id', draft.id)
+
+    try {
+      await sendEmailRaw({
+        to: draft.to_email,
+        subject: draft.subject,
+        body: draft.body,
+        inReplyTo: draft.reply_to_message_id || undefined,
+        references: draft.references_header || undefined
+      })
+    } catch (e) {
+      await ctx.supabase.from('email_drafts').update({
+        status: 'failed'
+      }).eq('id', draft.id)
+      return { error: 'Send failed: ' + e.message }
+    }
+
+    await ctx.supabase.from('email_drafts').update({
+      status: 'sent', sent_at: new Date().toISOString()
+    }).eq('id', draft.id)
+
+    // Mirror into messages for the conversation timeline
+    if (draft.conversation_id) {
+      try {
+        await ctx.supabase.from('messages').insert({
+          conversation_id: draft.conversation_id,
+          direction: 'outbound',
+          channel: 'email',
+          body: draft.body,
+          email_subject: draft.subject
+        })
+        await ctx.supabase.from('conversations').update({
+          last_message_at: new Date().toISOString()
+        }).eq('id', draft.conversation_id)
+      } catch (e) { /* best effort */ }
+    }
+
+    // Mark the inbox row(s) replied so the desk counter drops
+    if (draft.thread_id) {
+      try {
+        await ctx.supabase.from('email_inbox').update({
+          replied_at: new Date().toISOString(),
+          needs_reply: false
+        }).eq('thread_id', draft.thread_id)
+      } catch (e) { /* best effort */ }
+    }
+
+    return {
+      ok: true,
+      draft_id: draft.id,
+      sent_to: draft.to_email,
+      subject: draft.subject
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PHASE 4 — WEB LOOKUP TOOLS
+// Brave Search (paid), Browserbase headless fetch (paid), OpenWeatherMap
+// (free tier). Results are cached in web_lookup_cache for 15–60 min so
+// repeat questions in the same turn stay free.
+// ═══════════════════════════════════════════════════════════════
+
+const web_search_brave = {
+  schema: {
+    name: 'web_search_brave',
+    description: "Search the web via Brave Search. Use for current facts Jon can't know from the database: competitor pricing, code requirements that might have changed, a company Jon's never worked with before, a news event he mentioned. Returns title/url/description for each result. Cached 30 min per query. Prefer this over any built-in web_search for cost reasons.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'The search query.' },
+        count: { type: 'integer', description: 'Number of results (default 6, cap 20).' }
+      },
+      required: ['query']
+    }
+  },
+  async handler(input, ctx) {
+    return web.braveSearch(ctx.supabase, input.query, { count: input.count })
+  }
+}
+
+const web_fetch = {
+  schema: {
+    name: 'web_fetch',
+    description: "Fetch a web page and return its rendered text + title. Uses Browserbase (real Chromium) so JS-heavy pages work. Use after web_search_brave when a result needs full reading, or when Jon hands you a URL. Text is trimmed to 8000 chars. Cached 1 hour per URL.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'Full http/https URL.' },
+        max_chars: { type: 'integer', description: 'Trim returned text to this many chars (default 8000, cap 20000).' }
+      },
+      required: ['url']
+    }
+  },
+  async handler(input, ctx) {
+    const maxChars = Math.min(20000, Math.max(500, Number(input.max_chars) || 8000))
+    return web.browserbaseFetch(ctx.supabase, input.url, { maxChars })
+  }
+}
+
+const get_weather = {
+  schema: {
+    name: 'get_weather',
+    description: "Get current conditions + 7-day forecast for a city. Use when Jon asks 'will it rain Tuesday on the Fort Worth job' or 'how cold will it be overnight' — weather affects whether cold-weather jobs get pushed or tank tests get delayed. Optionally pass date (YYYY-MM-DD within the 7-day window) to highlight that day. Cached 15 min per query.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        city: { type: 'string', description: "City name, optionally with state/country. E.g. 'Fort Worth', 'Fort Worth, TX', 'Euless, TX, US'." },
+        date: { type: 'string', description: 'YYYY-MM-DD — pulls that specific day from the forecast (must be within 7 days).' }
+      },
+      required: ['city']
+    }
+  },
+  async handler(input, ctx) {
+    return web.openWeatherMap(ctx.supabase, input.city, { date: input.date })
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // REGISTRY + CONTEXT FILTERING
 // ═══════════════════════════════════════════════════════════════
 
@@ -2189,7 +2519,11 @@ const ALL_TOOLS = {
   send_email, get_conversation_history, create_invoice, list_job_documents,
   mazon_list_queue, mazon_mark_funded, mazon_void,
   escalate_to_jon,
-  request_owner_otp, verify_owner_otp
+  request_owner_otp, verify_owner_otp,
+  // Phase 3 — email inbox copilot
+  read_inbox, read_email_thread, draft_email_reply, approve_email_draft,
+  // Phase 4 — web lookup
+  web_search_brave, web_fetch, get_weather
 }
 
 // null = all tools. Keeps Jon contexts unrestricted; trims customer contexts.

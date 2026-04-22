@@ -23,6 +23,12 @@
 const memory = require('./riker-memory')
 const { RIKER_IDENTITY, buildIdentity } = require('./riker-prompts')
 const tools = require('./riker-tools')
+const { buildRikersDesk } = require('./riker-desk')
+const {
+  slidingWindowForSession,
+  maybeUpdateSessionSummary,
+  buildCrossSessionThread
+} = require('./riker-context')
 
 // Two-tier model routing. Sonnet for simple CRUD / lookups / greetings
 // (fast + cheap), Opus for planning / routing / multi-step reasoning.
@@ -223,10 +229,16 @@ function makeSessionAdapter({ storage, supabase, sessionKey }) {
         return data
       },
       async loadHistoryAsMessages(session) {
-        return sanitizeHistory((session.messages || []).slice(-40).map(m => ({
-          role: m.role === 'user' || m.role === 'assistant' ? m.role : (m.role === 'inbound' ? 'user' : 'assistant'),
-          content: m.content
-        })))
+        // Phase 2: sliding window. Only the most recent SLIDING_WINDOW turns
+        // travel verbatim; older turns are folded into session.summary which
+        // processMessage surfaces as a separate system block.
+        const { messages } = slidingWindowForSession(session)
+        return sanitizeHistory(messages)
+      },
+      // Phase 2 helper: surface the rolling summary so processMessage can
+      // inject it as a system block.
+      getSummary(session) {
+        return (session && session.summary) ? session.summary : ''
       },
       async appendInbound(_session, body) {
         await appendToRikerSession(supabase, sessionKey, 'user', body)
@@ -260,6 +272,10 @@ function makeSessionAdapter({ storage, supabase, sessionKey }) {
       }
       return out
     },
+    // conversations storage doesn't keep a rolling summary (message table is
+    // the source of truth). Surface empty so processMessage treats it as
+    // "no summary block needed."
+    getSummary() { return '' },
     async appendInbound() { /* webhook logged it */ },
     async appendOutbound(_session, body, meta = {}) {
       await supabase.from('messages').insert({
@@ -280,12 +296,21 @@ function makeSessionAdapter({ storage, supabase, sessionKey }) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// BUSINESS PULSE — live snapshot injected fresh every turn (not cached)
-// Runs 9 parallel DB queries so Riker wakes up knowing the state of the
-// business without having to ask. Never throws — silently omits failures.
+// BUSINESS PULSE — live snapshot. Now lives in riker-desk.js as part of
+// the unified Riker's Desk block. This wrapper is kept only for back-
+// compat with any external caller that still imports buildBusinessPulse
+// directly. New callers should use buildRikersDesk().
 // ═══════════════════════════════════════════════════════════════
 
 async function buildBusinessPulse(supabase) {
+  const { _buildBusinessPulse } = require('./riker-desk')
+  return _buildBusinessPulse(supabase)
+}
+
+// Retained for reference — the old inline implementation is no longer
+// invoked from this module. Preserved under `_buildBusinessPulseLegacy`
+// in case the Desk version needs a diff reference during rollout.
+async function _buildBusinessPulseLegacy(supabase) {
   const today = new Date().toISOString().split('T')[0]
   const weekEnd = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0]
 
@@ -716,11 +741,50 @@ async function callClaudeWithTools({ systemBlocks, messages, toolSchemas, toolCt
   }
 
   if (!finalText) {
-    // Loop exited without Claude producing final text — this is rare, happens
-    // if max_turns is hit while still asking for tools. Surface diagnostic.
-    finalText = actionsTaken.length
-      ? 'Kept going in tool-use loop without concluding. Tools invoked: ' + actionsTaken.map(a => a.type).join(', ')
-      : ''
+    // Loop exited with pending tool_uses (MAX_TOOL_TURNS hit). Phase 5 fix:
+    // make ONE more call with tools disabled so Claude is forced to write a
+    // narrative reply instead of asking for another tool. The tool history
+    // is still in `convo` — Claude has everything it needs to wrap up.
+    try {
+      const wrapStart = Date.now()
+      const wrapRes = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': claudeKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-beta': 'prompt-caching-2024-07-31'
+        },
+        body: JSON.stringify({
+          model: currentModel,
+          max_tokens: 600,
+          system: [
+            ...systemBlocks,
+            { type: 'text', text: 'You have exhausted the tool-use budget for this turn. Do NOT request more tools. Using only what you already gathered above, write the final reply to Jon now — short, direct, plain text. If you were partway through a task, state clearly what you finished and what still needs to happen next.' }
+          ],
+          messages: convo
+          // Intentionally omit `tools` — forces a text-only response
+        })
+      })
+      totalLatencyMs += Date.now() - wrapStart
+      const wrapData = await wrapRes.json()
+      if (wrapRes.ok) {
+        const u = wrapData.usage || {}
+        usageTotal.input_tokens += u.input_tokens || 0
+        usageTotal.output_tokens += u.output_tokens || 0
+        usageTotal.cache_read_input_tokens += u.cache_read_input_tokens || 0
+        usageTotal.cache_creation_input_tokens += u.cache_creation_input_tokens || 0
+        finalText = (wrapData.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim()
+      }
+    } catch (e) {
+      console.error('[riker-core] wrap-up call failed:', e.message)
+    }
+    // If still nothing, synthesize a minimal summary from the actions taken.
+    if (!finalText) {
+      finalText = actionsTaken.length
+        ? summarizeResult({ synthesized: true, actions: actionsTaken.map(a => a.type) }) || 'Worked on it but ran out of room — tell me what you need me to follow up on.'
+        : "I couldn't wrap that up in one pass. Give me a nudge with a more specific ask and I'll retry."
+    }
   }
 
   if (onCost) {
@@ -806,37 +870,54 @@ async function processMessage({
     await adapter.appendInbound(session, message)
   }
 
-  // Run notebook + pulse in parallel — both are uncached dynamic blocks
+  // Run notebook + Riker's Desk + cross-session thread in parallel — all are
+  // uncached dynamic blocks.
+  //   - Desk (Phase 1): pulse + desk notes + open threads + recent cross-
+  //     channel activity + unread inbox.
+  //   - Cross-session thread (Phase 2): prior conversations on the same
+  //     phone/email in the last 7 days, across contexts.
+  const nowTs = new Date()
+  const currentSessionIdForThread = sessionStorage === 'riker_sessions' ? sessionKey : (rikerSessionId || null)
   let notebookBlock = ''
   let memCount = 0
-  let pulseText = ''
+  let deskBlock = ''
+  let crossSessionBlock = ''
   try {
-    const [memoryRead, _pulse] = await Promise.all([
+    const [memoryRead, _desk, _cross] = await Promise.all([
       buildNotebookBlock({ supabase, context, identity }),
-      buildBusinessPulse(supabase)
+      buildRikersDesk(supabase, { context, identity, now: nowTs }),
+      buildCrossSessionThread(supabase, {
+        currentSessionId: currentSessionIdForThread,
+        phone: identity?.phone || identity?.customer_phone || null,
+        email: identity?.email || identity?.customer_email || null,
+        locationId: identity?.location_id || null
+      }).catch(() => '')
     ])
     notebookBlock = memoryRead.block || ''
     memCount = memoryRead.count || 0
-    pulseText = _pulse || ''
+    deskBlock = _desk || ''
+    crossSessionBlock = _cross || ''
   } catch (e) {
     console.error('[riker-core] parallel blocks failed:', e.message)
   }
 
-  // Identity (cached) — static identity block, NOW removed so cache doesn't freeze it
-  const today = new Date().toISOString().split('T')[0]
-  const identityText = buildIdentity({ context, today })
+  // Session rolling summary (Phase 2, riker_sessions storage only). Travels
+  // as its own uncached block so the sliding window can drop older turns
+  // from `history` without losing their gist.
+  const sessionSummary = typeof adapter.getSummary === 'function' ? adapter.getSummary(session) : ''
 
-  // NOW injected fresh every turn — must NOT be inside the cached block
-  const nowCST = new Date().toLocaleString('en-US', {
-    timeZone: 'America/Chicago',
-    weekday: 'short', month: 'short', day: 'numeric',
-    hour: 'numeric', minute: '2-digit', hour12: true
-  }) + ' CST'
+  // Identity (cached) — static identity block
+  const today = nowTs.toISOString().split('T')[0]
+  const identityText = buildIdentity({ context, today })
 
   const systemBlocks = [
     { type: 'text', text: identityText, cache_control: { type: 'ephemeral' } },
-    { type: 'text', text: `CURRENT TIME: ${nowCST}\n\n${pulseText}` }
+    { type: 'text', text: deskBlock }
   ]
+  if (sessionSummary) {
+    systemBlocks.push({ type: 'text', text: `SESSION SUMMARY SO FAR (older turns, condensed):\n${sessionSummary}` })
+  }
+  if (crossSessionBlock) systemBlocks.push({ type: 'text', text: crossSessionBlock })
   if (notebookBlock) systemBlocks.push({ type: 'text', text: notebookBlock })
 
   // History for Claude
@@ -930,6 +1011,14 @@ async function processMessage({
     + (usage.output_tokens * (isOpus ? CLAUDE_PRICE_OUTPUT_OPUS : CLAUDE_PRICE_OUTPUT))
     + (usage.cache_read_input_tokens * (isOpus ? CLAUDE_PRICE_CACHE_READ_OPUS : CLAUDE_PRICE_CACHE_READ))
     + (usage.cache_creation_input_tokens * (isOpus ? CLAUDE_PRICE_CACHE_WRITE_OPUS : CLAUDE_PRICE_CACHE_WRITE))
+
+  // Phase 2: refresh the rolling summary if this session has grown past the
+  // last checkpoint by at least SUMMARY_EVERY_N_TURNS turns. Fire and forget
+  // — the Haiku call must never delay the user-facing reply.
+  if (effectiveRikerSessionId) {
+    maybeUpdateSessionSummary(supabase, effectiveRikerSessionId)
+      .catch(e => console.error('[riker-core] summary refresh failed:', e.message))
+  }
 
   // Active memory extraction — fire and forget so it doesn't delay reply
   // latency. Runs on sms_jon, app, and website contexts.
