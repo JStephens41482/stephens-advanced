@@ -33,6 +33,10 @@
       "schedule": "*/5 * * * *"
     },
     {
+      "path": "/api/email-monitor",
+      "schedule": "*/10 * * * *"
+    },
+    {
       "path": "/api/mazon/friday-check",
       "schedule": "0 14 * * 5"
     }

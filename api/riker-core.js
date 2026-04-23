@@ -634,7 +634,7 @@ async function classifyComplexity(message) {
 // are worth extracting — scheduling constraints, equipment notes, contact
 // preferences — the same things Jon would jot in a paper notebook.
 async function extractDurableMemory({ supabase, context, identity, userMessage, reply }) {
-  if (!['sms_jon', 'app', 'website'].includes(context)) return []
+  if (!['sms_jon', 'app', 'website', 'jon_unified'].includes(context)) return []
   const key = process.env.CLAUDE_KEY
   if (!key) return []
   if (!userMessage) return []
@@ -645,6 +645,8 @@ If yes, return a JSON array of memory entries. Each entry shape:
   {"scope":"global|location|billing_account|job","category":"preference|relationship|fact|gate_code|vendor|procedure","priority":1-9,"content":"<one short sentence, no quotes>"}
 
 Priority guidance: 1-3 nice-to-know, 4-6 standard, 7-9 important (but RESERVE priority 10 for explicit Jon-issued standing orders — the main prompt handles those separately).
+
+EMAIL MONITOR — if Jon gives feedback about email notifications ("stop texting me about X", "ignore emails from Y", "don't alert me about Z"), extract a memory entry with content starting exactly with "EMAIL_MONITOR_IGNORE: " followed by the pattern to ignore (e.g. "EMAIL_MONITOR_IGNORE: newsletters and promotional emails" or "EMAIL_MONITOR_IGNORE: emails from noreply@mailchimp.com"). If Jon says he WANTS alerts about something specific, use "EMAIL_MONITOR_WATCH: " prefix instead. Scope=global, category=preference, priority=8.
 
 Do NOT extract:
 - Ephemeral task state ("I'm going to reschedule that one")
