@@ -197,11 +197,18 @@ module.exports = async function handler(req, res) {
       await core.appendToRikerSession(supabase, rikerSession.id, 'user', body, { channel: 'sms', twilio_sid: messageSid })
     }
 
+    // Phase 6a completion — "One Jon". For Jon's inbound SMS we route the
+    // processMessage adapter to the unified principal='jon' riker_sessions
+    // row so history is loaded from the SAME thread as the app. Customer
+    // SMS keeps the per-conversation loading because their context should
+    // remain scoped to their phone/location.
+    const useUnifiedStorage = isJon && !!rikerSession
+
     // Dispatch to core
     const result = await core.processMessage({
       supabase, context,
-      sessionKey: conv.id,
-      sessionStorage: 'conversations',
+      sessionKey: useUnifiedStorage ? rikerSession.id : conv.id,
+      sessionStorage: useUnifiedStorage ? 'riker_sessions' : 'conversations',
       identity: {
         phone: from,
         location_id: conv.location_id,
@@ -212,8 +219,33 @@ module.exports = async function handler(req, res) {
       rikerSessionId: rikerSession?.id
     })
 
-    // Mirror the outbound into riker_sessions + bump stats
-    if (rikerSession && result.reply) {
+    if (useUnifiedStorage) {
+      // The riker_sessions adapter already appended the outbound to the
+      // unified session. We still need a row in `messages` for the SMS
+      // audit trail (Twilio IDs, per-conversation history UI), and a
+      // last_message_at bump on the conversation.
+      if (result.reply) {
+        try {
+          await supabase.from('messages').insert({
+            conversation_id: conv.id,
+            direction: 'outbound',
+            channel: 'sms',
+            body: result.reply
+          })
+          await supabase.from('conversations').update({
+            last_message_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          }).eq('id', conv.id)
+        } catch (e) { console.error('[sms-inbound] messages audit insert failed:', e.message) }
+      }
+      await core.bumpSessionStats(supabase, rikerSession.id, {
+        usage: { input_tokens: 0, output_tokens: 0 },
+        cost: result.cost || 0,
+        actions: result.actions_taken || []
+      })
+    } else if (rikerSession && result.reply) {
+      // Customer path: conversations adapter already wrote to `messages`,
+      // mirror the outbound into riker_sessions so memory extraction runs.
       await core.appendToRikerSession(supabase, rikerSession.id, 'assistant', result.reply, { channel: 'sms' })
       await core.bumpSessionStats(supabase, rikerSession.id, {
         usage: { input_tokens: 0, output_tokens: 0 },  // token counts already in riker_interactions; skip double-counting here
