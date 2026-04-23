@@ -143,7 +143,7 @@ const get_today_summary = {
 const query_jobs = {
   schema: {
     name: 'query_jobs',
-    description: "Search jobs by status, date range, location, or scope. Use this when Jon asks 'what's overdue', 'show me next week', 'jobs at Dragon Palace', etc.",
+    description: "Search jobs by status, date range, location, or scope. Use this when Jon asks 'what's overdue', 'show me next week', etc. IMPORTANT: this tool filters by location_id (UUID), NOT by client name. If Jon asks about jobs for a specific client by name (e.g. 'jobs at Dragon Palace'), call lookup_client first to get their location_id, then pass it here. You can also pass location_name and this tool will resolve it automatically.",
     input_schema: {
       type: 'object',
       properties: {
@@ -151,7 +151,8 @@ const query_jobs = {
         date_from: { type: 'string', description: 'YYYY-MM-DD inclusive. Omit for no lower bound.' },
         date_to: { type: 'string', description: 'YYYY-MM-DD inclusive. Omit for no upper bound.' },
         overdue_only: { type: 'boolean', description: 'If true, only return jobs scheduled before today with status=scheduled.' },
-        location_id: { type: 'string' },
+        location_id: { type: 'string', description: 'UUID of the location. Use this if you already have it from lookup_client.' },
+        location_name: { type: 'string', description: 'Client name to search for (fuzzy). The tool resolves this to a location_id automatically. Use instead of location_id when Jon gives a name.' },
         scope: { type: 'array', items: { type: 'string' }, description: 'Filter to jobs whose scope array contains ANY of these.' },
         limit: { type: 'integer', description: 'Max rows (default 20, cap 100).' }
       }
@@ -160,8 +161,40 @@ const query_jobs = {
   async handler(input, ctx) {
     const limit = Math.min(100, Number(input.limit) || 20)
     const today = new Date().toISOString().split('T')[0]
+
+    // If caller gave a name instead of a UUID, resolve it via the locations table.
+    let locationId = input.location_id || null
+    let resolvedClient = null
+    if (!locationId && input.location_name) {
+      const s = String(input.location_name).trim().toLowerCase()
+      if (s) {
+        const stopwords = new Set(['the', 'a', 'an', 'of', 'in', 'at', 'on', 'to', 'for', 'and', 'or', 'store', 'shop', 'restaurant', 'llc', 'inc', 'co', 'company'])
+        const tokens = s.split(/\s+/)
+          .map(t => t.replace(/[^a-z0-9']/g, ''))
+          .filter(t => { const bare = t.replace(/'/g, ''); return bare.length >= 2 && !stopwords.has(bare) })
+          .slice(0, 4)
+        let lq = ctx.supabase.from('locations').select('id, name, city').is('deleted_at', null).limit(5)
+        if (tokens.length === 0) {
+          lq = lq.or(`name.ilike.%${s.replace(/[%_]/g, '')}%,city.ilike.%${s.replace(/[%_]/g, '')}%`)
+        } else {
+          for (const tok of tokens) {
+            const pat = '%' + tok.replace(/'/g, '%') + '%'
+            lq = lq.or(`name.ilike.${pat},city.ilike.${pat}`)
+          }
+        }
+        const { data: locs } = await lq
+        if (locs && locs.length) {
+          locationId = locs[0].id
+          resolvedClient = { name: locs[0].name, city: locs[0].city }
+        } else {
+          return { count: 0, jobs: [], note: `No client found matching "${input.location_name}" — try lookup_client to verify spelling.` }
+        }
+      }
+    }
+
     let q = ctx.supabase.from('jobs')
       .select('id, job_number, scheduled_date, scheduled_time, scope, status, estimated_value, type, notes, location:locations(id,name,city,address,contact_phone)')
+      .is('deleted_at', null)
       .order('scheduled_date', { ascending: false })
       .limit(limit)
     if (input.overdue_only) {
@@ -171,11 +204,11 @@ const query_jobs = {
       if (input.date_from) q = q.gte('scheduled_date', input.date_from)
       if (input.date_to) q = q.lte('scheduled_date', input.date_to)
     }
-    if (input.location_id) q = q.eq('location_id', input.location_id)
+    if (locationId) q = q.eq('location_id', locationId)
     if (input.scope?.length) q = q.overlaps('scope', input.scope)
     const { data, error } = await q
     if (error) return { error: error.message }
-    return { count: data.length, jobs: data }
+    return { count: data.length, jobs: data, ...(resolvedClient ? { client: resolvedClient } : {}) }
   }
 }
 
@@ -185,11 +218,11 @@ const query_jobs = {
 const lookup_client = {
   schema: {
     name: 'lookup_client',
-    description: "Search clients by business name, city, or phone. Fuzzy match. Returns up to 10 matches with location details AND last_job (date, scope, status of the most recent job). Always call this first when a customer gives you a business name — before asking for address/city info they may already have on file.",
+    description: "Primary client search — use this whenever Jon OR a customer mentions a business name and you need their details, location_id, or last-service history. Fuzzy ILIKE match on name and city. Returns up to 10 matches with full location details AND last_job. ALWAYS call this first when anyone gives a business name — before asking for info that's already on file. For job lookups by client name, call this first to get the location_id, then call query_jobs.",
     input_schema: {
       type: 'object',
       properties: {
-        search: { type: 'string', description: 'Name, city, or phone number fragment. Required.' },
+        search: { type: 'string', description: 'Business name, city, or phone number fragment. Required.' },
         limit: { type: 'integer', description: 'Max matches (default 10, cap 25).' }
       },
       required: ['search']
@@ -212,18 +245,26 @@ const lookup_client = {
       // Tokenize so "Amigos Grocery Store Irving" matches name="Amigos
       // Grocery Store" city="Irving". Each token must appear in name OR
       // city. Strip stopwords that show up in noisy business names.
+      // Keep apostrophes during tokenization so "Mario's" → pattern
+      // "%mario%s%" which matches "Mario's Pizza" in the DB.
       const stopwords = new Set(['the', 'a', 'an', 'of', 'in', 'at', 'on', 'to', 'for', 'and', 'or', 'store', 'shop', 'restaurant', 'llc', 'inc', 'co', 'company'])
       const tokens = s.toLowerCase()
         .split(/\s+/)
-        .map(t => t.replace(/[^a-z0-9]/gi, ''))
-        .filter(t => t.length >= 2 && !stopwords.has(t))
+        .map(t => t.replace(/[^a-z0-9']/g, ''))   // keep apostrophes, strip everything else
+        .filter(t => {
+          const bare = t.replace(/'/g, '')          // strip apostrophe for length / stopword check
+          return bare.length >= 2 && !stopwords.has(bare)
+        })
         .slice(0, 5)
       if (tokens.length === 0) {
         const wc = '%' + s.replace(/[%_]/g, '') + '%'
         q = q.or(`name.ilike.${wc},city.ilike.${wc}`)
       } else {
         for (const tok of tokens) {
-          const wc = '%' + tok + '%'
+          // Replace apostrophes with % wildcard so "mario's" → "%mario%s%"
+          // which matches both "Mario's Pizza" (has apostrophe) and
+          // "Marios Kitchen" (no apostrophe) in the database.
+          const wc = '%' + tok.replace(/'/g, '%') + '%'
           q = q.or(`name.ilike.${wc},city.ilike.${wc}`)
         }
       }
