@@ -1,0 +1,62 @@
+name: Riker Evals
+
+# Run the gold-prompt regression harness on every PR that touches Riker's
+# code (core, tools, prompts, memory, eval fixtures). Skipping unrelated PRs
+# keeps the Anthropic bill out of CI.
+#
+# Required repo secrets:
+#   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, CLAUDE_KEY
+# Optional:
+#   VOYAGE_API_KEY or OPENAI_API_KEY (for memory semantic dedup)
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'api/riker*.js'
+      - 'api/sms-inbound.js'
+      - 'api/email-inbound.js'
+      - 'tests/eval/**'
+      - 'migrations/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/riker-evals.yml'
+  workflow_dispatch: {}
+
+jobs:
+  evals:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      CLAUDE_KEY: ${{ secrets.CLAUDE_KEY }}
+      VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Guard — required secrets present
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_ROLE_KEY" ] || [ -z "$CLAUDE_KEY" ]; then
+            echo "::error::Missing one of SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY / CLAUDE_KEY repo secrets"
+            exit 1
+          fi
+
+      - name: Run Riker evals
+        run: node tests/eval/run.js --concurrency 2 --report eval-report.json
+
+      - name: Upload eval report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: riker-eval-report
+          path: eval-report.json
+          retention-days: 14
