@@ -5,6 +5,7 @@ name: Riker Evals
 # keeps the Anthropic bill out of CI.
 #
 # Secrets added 2026-04-22: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, CLAUDE_KEY.
+# CLAUDE_KEY rotated 2026-04-22 (first value returned 401).
 #
 # Required repo secrets:
 #   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, CLAUDE_KEY
