@@ -8,13 +8,14 @@
 //
 // Both providers produce 1024-dimension vectors so the riker_memory.embedding
 // column schema is provider-stable:
-//   - voyage-3-lite: native 1024
+//   - voyage-3: native 1024 (note: voyage-3-lite is 512-dim, not 1024 —
+//     that's why we use voyage-3 here despite the slightly higher cost)
 //   - text-embedding-3-small: reduced from 1536 via `dimensions: 1024` param
 //
 // Cost at 75 existing rows + ~20 writes/day:
 //   ≈ 50k tokens/month × $0.02/M = $0.001/month. Effectively free.
 
-const VOYAGE_MODEL = 'voyage-3-lite'
+const VOYAGE_MODEL = 'voyage-3'
 const OPENAI_MODEL = 'text-embedding-3-small'
 const EMBEDDING_DIM = 1024
 
