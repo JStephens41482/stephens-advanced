@@ -964,9 +964,19 @@ async function processMessage({
   //     phone/email in the last 7 days, across contexts.
   const nowTs = new Date()
   const currentSessionIdForThread = sessionStorage === 'riker_sessions' ? sessionKey : (rikerSessionId || null)
-  const [memoryRead, deskBlock, crossSessionBlock] = await Promise.all([
-    buildNotebookBlock({ supabase, context, identity }),
-    buildRikersDesk(supabase, { context, identity, now: nowTs }),
+  // Each of these can fail independently — catch at each so one DB hiccup
+  // doesn't crash the whole turn. The destructured defaults below guarantee
+  // memCount and notebookBlock are always defined (bug fix: prior version
+  // threw ReferenceError when memoryRead was undefined on an early throw).
+  const [memoryRead, deskBlockRaw, crossSessionBlock] = await Promise.all([
+    buildNotebookBlock({ supabase, context, identity }).catch(e => {
+      console.error('[riker-core] buildNotebookBlock failed:', e.message)
+      return { block: '', count: 0 }
+    }),
+    buildRikersDesk(supabase, { context, identity, now: nowTs }).catch(e => {
+      console.error('[riker-core] buildRikersDesk failed:', e.message)
+      return ''
+    }),
     buildCrossSessionThread(supabase, {
       currentSessionId: currentSessionIdForThread,
       phone: identity?.phone || identity?.customer_phone || null,
@@ -974,7 +984,9 @@ async function processMessage({
       locationId: identity?.location_id || null
     }).catch(() => '')
   ])
-  const { block: notebookBlock, count: memCount } = memoryRead
+  const notebookBlock = memoryRead?.block || ''
+  const memCount = memoryRead?.count || 0
+  const deskBlock = deskBlockRaw || ''
 
   // Session rolling summary (Phase 2, riker_sessions storage only). Travels
   // as its own uncached block so the sliding window can drop older turns
