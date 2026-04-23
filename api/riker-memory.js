@@ -2,6 +2,8 @@
 // The notebook. Read relevant entries before every Claude call, write new
 // ones when Riker issues memory_write actions, prune daily.
 
+const embeddings = require('./riker-embeddings')
+
 // ═══ READ ═══
 
 // Pull the memories that should be injected into the system prompt for
@@ -94,6 +96,18 @@ function renderMemoriesForPrompt(memories) {
 const FUZZY_DEDUP_THRESHOLD = 0.85
 const FUZZY_CANDIDATE_CAP = 30
 
+// Phase 7 (pgvector): semantic dedup. Levenshtein was blind to paraphrase —
+// "trip charge is $125" and "charge customers $125 for trips" are edit-
+// distance far apart but semantically identical. We now embed each write
+// (voyage-3-lite or text-embedding-3-small @ 1024 dim), cosine-compare to
+// recent entries in the same scope/category/location, and merge when cosine
+// distance ≤ SEMANTIC_DEDUP_DISTANCE (≈ similarity ≥ 0.88).
+//
+// If no embedding provider is configured the writeMemory() path silently
+// falls back to Levenshtein so nothing breaks in dev environments.
+const SEMANTIC_DEDUP_DISTANCE = 0.12            // cosine distance ceiling (≈ 0.88 sim)
+const SEMANTIC_CANDIDATE_CAP = 5                // how many nearest candidates to consider
+
 function _normalizeForCompare(s) {
   return String(s || '')
     .toLowerCase()
@@ -176,9 +190,50 @@ async function writeMemory(supabase, entry, { sessionId, source } = {}) {
     return { id: exact.id, updated: true, match: 'exact' }
   }
 
-  // 2) Fuzzy dedup: fetch recent candidates with the same scope+category+
-  // location and pick the closest above threshold. Restricting to the same
-  // scope/category/location keeps the candidate set small (capped at 30).
+  // 2) Semantic dedup via pgvector cosine. We embed the candidate content,
+  // ask Postgres for the nearest neighbors in the same scope/category (and
+  // location if set) within SEMANTIC_DEDUP_DISTANCE, and treat the closest
+  // as "same entry" → UPDATE. This catches paraphrased rewrites that the
+  // Levenshtein path missed.
+  //
+  // Embedding generation is best-effort: if no provider is configured or
+  // the call fails, embedResult is null and we fall through to Levenshtein.
+  const embedResult = await embeddings.embedText(row.content)
+  if (embedResult) {
+    const vecStr = embeddings.toPgVector(embedResult.vector)
+    const { data: neighbors, error: rpcErr } = await supabase.rpc('match_memory_candidates', {
+      query_embedding: vecStr,
+      p_scope: row.scope,
+      p_category: row.category,
+      p_location_id: row.location_id,
+      p_threshold: SEMANTIC_DEDUP_DISTANCE,
+      p_match_count: SEMANTIC_CANDIDATE_CAP
+    })
+    if (rpcErr) {
+      console.error('[riker-memory] semantic match rpc error:', rpcErr.message)
+    } else if (neighbors && neighbors.length) {
+      const best = neighbors[0]  // RPC already sorted by distance ASC
+      await supabase.from('riker_memory').update({
+        content: row.content,
+        priority: Math.max(best.priority, row.priority),
+        updated_at: new Date().toISOString(),
+        expires_at: row.expires_at,
+        embedding: vecStr,
+        embedding_model: embedResult.model
+      }).eq('id', best.id)
+      return {
+        id: best.id,
+        updated: true,
+        match: 'semantic',
+        distance: best.distance,
+        similarity: 1 - best.distance
+      }
+    }
+  }
+
+  // 3) Fuzzy (Levenshtein) fallback: either the embedding provider is
+  // unavailable, or pgvector found no neighbors. This keeps dev/test
+  // environments working without an embedding API key.
   let candQ = supabase.from('riker_memory')
     .select('id, content, priority')
     .eq('archived', false)
@@ -197,18 +252,26 @@ async function writeMemory(supabase, entry, { sessionId, source } = {}) {
     if (s > bestScore) { bestScore = s; bestMatch = c }
   }
   if (bestMatch && bestScore >= FUZZY_DEDUP_THRESHOLD) {
-    // Treat as same entry. Update priority + refresh timestamps. Overwrite
-    // content with the newer phrasing (usually more specific).
-    await supabase.from('riker_memory').update({
+    const update = {
       content: row.content,
       priority: Math.max(bestMatch.priority, row.priority),
       updated_at: new Date().toISOString(),
       expires_at: row.expires_at
-    }).eq('id', bestMatch.id)
+    }
+    if (embedResult) {
+      update.embedding = embeddings.toPgVector(embedResult.vector)
+      update.embedding_model = embedResult.model
+    }
+    await supabase.from('riker_memory').update(update).eq('id', bestMatch.id)
     return { id: bestMatch.id, updated: true, match: 'fuzzy', score: bestScore }
   }
 
-  // 3) No match — insert new row.
+  // 4) No match — insert new row. Attach embedding if we have one so future
+  // writes can semantic-dedup against it.
+  if (embedResult) {
+    row.embedding = embeddings.toPgVector(embedResult.vector)
+    row.embedding_model = embedResult.model
+  }
   const { data: inserted, error } = await supabase.from('riker_memory').insert(row).select().single()
   if (error) {
     console.error('[riker-memory] write error:', error)
@@ -262,14 +325,52 @@ async function pruneMemories(supabase) {
   }
 }
 
+// ═══ BACKFILL ═══
+//
+// Generate + persist embeddings for memory rows that predate pgvector.
+// Idempotent — rows that already have an embedding are skipped. Safe to run
+// repeatedly. Call from a one-shot script or a cron job.
+async function backfillEmbeddings(supabase, { batchSize = 25, maxBatches = 10 } = {}) {
+  if (!embeddings.isAvailable()) {
+    return { skipped: 'no embedding provider configured' }
+  }
+  let totalUpdated = 0
+  let totalFailed = 0
+  for (let b = 0; b < maxBatches; b++) {
+    const { data: rows, error } = await supabase
+      .from('riker_memory')
+      .select('id, content')
+      .eq('archived', false)
+      .is('embedding', null)
+      .limit(batchSize)
+    if (error) return { error: error.message, totalUpdated, totalFailed }
+    if (!rows || !rows.length) break
+
+    for (const r of rows) {
+      const result = await embeddings.embedText(r.content)
+      if (!result) { totalFailed++; continue }
+      const vecStr = embeddings.toPgVector(result.vector)
+      const { error: upErr } = await supabase.from('riker_memory').update({
+        embedding: vecStr,
+        embedding_model: result.model
+      }).eq('id', r.id)
+      if (upErr) totalFailed++
+      else totalUpdated++
+    }
+  }
+  return { totalUpdated, totalFailed, provider: embeddings.resolveProvider() }
+}
+
 module.exports = {
   readRelevantMemories,
   renderMemoriesForPrompt,
   writeMemory,
   deleteMemory,
   pruneMemories,
+  backfillEmbeddings,
   // exported for tests
   _similarity,
   _levenshtein,
-  FUZZY_DEDUP_THRESHOLD
+  FUZZY_DEDUP_THRESHOLD,
+  SEMANTIC_DEDUP_DISTANCE
 }
