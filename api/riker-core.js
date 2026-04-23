@@ -742,13 +742,12 @@ async function callClaudeWithTools({ systemBlocks, messages, toolSchemas, toolCt
           if (typeof m.content === 'string') {
             return { role: m.role, content: [{ type: 'text', text: m.content, cache_control: { type: 'ephemeral' } }] }
           }
-          // Already a block array — tag the last cacheable block.
-          // tool_use blocks don't support cache_control; skip them.
+          // Already a block array — tag the last block ONLY if it's text/image.
+          // tool_use and tool_result blocks reject cache_control with a 400.
           if (Array.isArray(m.content) && m.content.length) {
-            const CACHEABLE = new Set(['text', 'image', 'tool_result', 'document'])
-            const idx = m.content.map((b, j) => ({ b, j })).reverse().find(({ b }) => CACHEABLE.has(b.type))?.j
-            if (idx === undefined) return m
-            const cloned = m.content.map((b, j) => j === idx ? { ...b, cache_control: { type: 'ephemeral' } } : b)
+            const lastBlock = m.content[m.content.length - 1]
+            if (lastBlock.type !== 'text' && lastBlock.type !== 'image') return m
+            const cloned = m.content.map((b, j) => j === m.content.length - 1 ? { ...b, cache_control: { type: 'ephemeral' } } : b)
             return { role: m.role, content: cloned }
           }
           return m

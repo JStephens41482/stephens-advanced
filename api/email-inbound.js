@@ -12,7 +12,6 @@ const core = require('./riker-core')
 const { sendSMS, sendEmail, JON_PHONE } = require('./riker-actions')
 
 const JON_EMAIL = 'jonathan@stephensadvanced.com'
-const RIKER_LABEL = 'Riker'
 
 module.exports = async function handler(req, res) {
   if (!['GET', 'POST'].includes(req.method)) return res.status(405).end()
@@ -28,13 +27,10 @@ module.exports = async function handler(req, res) {
 
   try {
     const accessToken = await getGmailAccessToken()
-    const labels = await gmailRequest(accessToken, 'users/me/labels')
-    const rikerLabel = (labels.labels || []).find(l => l.name === RIKER_LABEL)
-    if (!rikerLabel) {
-      return res.status(200).json({ warning: `Label "${RIKER_LABEL}" not found. Create it and set up a filter.`, processed: 0 })
-    }
 
-    const q = `label:${RIKER_LABEL} is:unread -from:${JON_EMAIL}`
+    // Query the real inbox — no label requirement. Skip Gmail's promotional
+    // and social tabs so Riker only sees actual business correspondence.
+    const q = `in:inbox is:unread -from:${JON_EMAIL} -category:promotions -category:social`
     const list = await gmailRequest(accessToken, `users/me/messages?q=${encodeURIComponent(q)}&maxResults=25`)
     const msgIds = (list.messages || []).map(m => m.id)
 
