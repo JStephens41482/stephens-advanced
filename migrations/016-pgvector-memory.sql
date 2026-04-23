@@ -12,7 +12,7 @@
 -- of INSERT).
 --
 -- Column dim = 1024 works for both embedding providers we support:
---   - Voyage voyage-3-lite (native 1024)
+--   - Voyage voyage-3 (native 1024; voyage-3-lite is 512-dim so we don't use it)
 --   - OpenAI text-embedding-3-small (reduced from 1536 via `dimensions: 1024`)
 --
 -- Existing rows get their embedding backfilled lazily by riker-memory.js on
