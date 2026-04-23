@@ -4033,7 +4033,8 @@ async function openCust(id){
   h+=`<div class="ds"><div class="ds-t" style="display:flex;justify-content:space-between;align-items:center">
     <span>Locations${ba?' · '+esc(ba.name):''}</span>
     <div style="display:flex;gap:6px">
-      ${!ba?`<button style="font-size:11px;font-weight:700;color:var(--info);background:none;border:none;cursor:pointer" onclick="assignToParent('${l.id}')">Assign to Parent Co.</button>`:''}
+      <button style="font-size:11px;font-weight:700;color:var(--info);background:none;border:none;cursor:pointer" onclick="assignToParent('${l.id}')">${ba?'Change Parent':'Assign to Parent Co.'}</button>
+      ${ba?`<button style="font-size:11px;font-weight:700;color:var(--g2);background:none;border:none;cursor:pointer" onclick="removeParentCompany('${l.id}')">Remove Parent</button>`:''}
       <button style="font-size:11px;font-weight:700;color:var(--fire);background:none;border:none;cursor:pointer" onclick="addSiblingLocation('${l.id}','${ba?.id||''}')">+ Add Location</button>
     </div>
   </div>`
@@ -4220,6 +4221,13 @@ async function doAssignParent(locId,baId){
   await SB.from('locations').update({billing_account_id:baId}).eq('id',locId)
   await load();toast('Assigned to parent company')
   pop();pop();openCust(locId)
+}
+
+async function removeParentCompany(locId){
+  if(!confirm('Remove this location from its parent company?'))return
+  await SB.from('locations').update({billing_account_id:null}).eq('id',locId)
+  await load();toast('Removed from parent company')
+  openCust(locId)
 }
 
 async function createAndAssignParent(locId){

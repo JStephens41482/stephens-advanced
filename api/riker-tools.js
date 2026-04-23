@@ -1260,6 +1260,65 @@ const merge_clients = {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// TOOL: assign_parent_company
+// ═══════════════════════════════════════════════════════════════
+const assign_parent_company = {
+  schema: {
+    name: 'assign_parent_company',
+    description: "Assign a client location to a parent billing account (e.g. 'assign Walmart Supercenter Garland to Walmart Corporate'). Fuzzy-searches existing billing accounts by name. Creates a new one if create_if_missing:true. Pass clear:true to remove the current parent. Call lookup_client first if you only have a name.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        location_id: { type: 'string', description: 'Location UUID. Required.' },
+        parent_name: { type: 'string', description: 'Name of the parent company. Fuzzy-matched against existing billing accounts.' },
+        create_if_missing: { type: 'boolean', description: 'If true, create a new billing account with parent_name when no match is found.' },
+        clear: { type: 'boolean', description: 'If true, remove this location from its current parent company.' }
+      },
+      required: ['location_id']
+    }
+  },
+  async handler(input, ctx) {
+    const { data: loc } = await ctx.supabase.from('locations')
+      .select('id, name, billing_account_id')
+      .eq('id', input.location_id).is('deleted_at', null).maybeSingle()
+    if (!loc) return { error: 'location not found' }
+
+    if (input.clear) {
+      if (!loc.billing_account_id) return { error: `${loc.name} has no parent company assigned` }
+      const { error } = await ctx.supabase.from('locations').update({ billing_account_id: null }).eq('id', loc.id)
+      if (error) return { error: error.message }
+      return { ok: true, location: loc.name, action: 'removed from parent company' }
+    }
+
+    if (!input.parent_name) return { error: 'parent_name required (or pass clear:true to remove)' }
+
+    const { data: accounts } = await ctx.supabase.from('billing_accounts')
+      .select('id, name').ilike('name', `%${input.parent_name}%`).limit(10)
+
+    let baId, baName, created = false
+    if (accounts?.length === 1) {
+      baId = accounts[0].id; baName = accounts[0].name
+    } else if (accounts?.length > 1) {
+      // Try exact match first
+      const exact = accounts.find(a => a.name.toLowerCase() === input.parent_name.toLowerCase())
+      if (exact) { baId = exact.id; baName = exact.name }
+      else return { error: 'Multiple billing accounts match — be more specific', matches: accounts.map(a => ({ id: a.id, name: a.name })) }
+    } else if (input.create_if_missing) {
+      const { data: ba, error } = await ctx.supabase.from('billing_accounts')
+        .insert({ name: input.parent_name }).select().single()
+      if (error) return { error: 'Failed to create billing account: ' + error.message }
+      baId = ba.id; baName = ba.name; created = true
+    } else {
+      return { error: `No billing account found matching "${input.parent_name}". Pass create_if_missing:true to create it.` }
+    }
+
+    const { error } = await ctx.supabase.from('locations').update({ billing_account_id: baId }).eq('id', loc.id)
+    if (error) return { error: error.message }
+    return { ok: true, location: loc.name, parent_company: baName, action: created ? 'assigned (new parent created)' : 'assigned' }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // TOOL: update_invoice
 // ═══════════════════════════════════════════════════════════════
 const update_invoice = {
@@ -2552,7 +2611,7 @@ const ALL_TOOLS = {
   schedule_job, approve_pending, reject_pending, send_sms,
   add_client, add_todo, write_memory, delete_memory, mark_invoice_paid,
   lookup_business,
-  update_client, delete_client, merge_clients,
+  update_client, delete_client, merge_clients, assign_parent_company,
   update_invoice, void_invoice, delete_invoice,
   build_route,
   get_job_activity, add_job_note,
