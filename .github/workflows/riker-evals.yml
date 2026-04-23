@@ -4,6 +4,8 @@ name: Riker Evals
 # code (core, tools, prompts, memory, eval fixtures). Skipping unrelated PRs
 # keeps the Anthropic bill out of CI.
 #
+# Secrets added 2026-04-22: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, CLAUDE_KEY.
+#
 # Required repo secrets:
 #   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, CLAUDE_KEY
 # Optional:
