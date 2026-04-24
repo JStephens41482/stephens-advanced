@@ -143,7 +143,8 @@ select,option{color-scheme:dark}
 .stat-gray{color:var(--status-gray)}
 html,body{height:100%;overflow:hidden;overscroll-behavior:none}
 body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--w);font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased}
-button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit;touch-action:manipulation}
+button:active,.btn-p:active,.qa-btn:active,.mode-card:active,._pressed{opacity:.72;transform:scale(.96);transition:opacity .05s,transform .05s}
 input,select,textarea{font-family:inherit;color:var(--w);background:var(--c1);border:1.5px solid var(--b1);border-radius:var(--rs);padding:11px 13px;font-size:14px;outline:none;width:100%;transition:border-color .15s}
 input:focus,select:focus,textarea:focus{border-color:var(--fire)}
 input::placeholder,textarea::placeholder{color:var(--g2)}
@@ -437,9 +438,19 @@ function guardClick(btn,asyncFn){
     delete btn.dataset.guarding;btn.style.opacity='';btn.style.pointerEvents=''
   })
 }
+// Instant touch feedback — fires on finger-down, before any async work.
+// iOS won't trigger :active reliably until the browser decides it's not a scroll.
+// This class swap happens in the same frame as the touch, making buttons feel
+// instantaneous regardless of what the click handler does.
+const _tapSel='button,.btn-p,.btn-dim,.qa-btn,.nav-cta,.mode-card,.service-link'
+document.addEventListener('touchstart',e=>{
+  const btn=e.target.closest(_tapSel)
+  if(btn){btn.classList.add('_pressed');setTimeout(()=>btn.classList.remove('_pressed'),200)}
+},{passive:true})
+
 // Prevent double-tap on ALL buttons globally
 document.addEventListener('click',e=>{
-  const btn=e.target.closest('button,.btn-p,.btn-dim,.qa-btn,.nav-cta,.mode-card,.service-link')
+  const btn=e.target.closest(_tapSel)
   if(btn&&!btn.dataset.noguard){
     if(btn.dataset.lastClick&&Date.now()-parseInt(btn.dataset.lastClick)<400){e.preventDefault();e.stopPropagation();return}
     btn.dataset.lastClick=Date.now()
@@ -643,6 +654,15 @@ function markJobDirty(){
   _jobDataDirty=true
   const ind=$('autoSaveInd');if(ind)ind.textContent='Unsaved changes...'
 }
+
+// Date formatter — turns "2026-04-22" into "Apr 22" or "Tue, Apr 22"
+function fmtD(iso, opts){
+  if(!iso) return ''
+  const d = new Date(iso + 'T12:00:00')
+  if(isNaN(d)) return iso
+  return d.toLocaleDateString('en-US', opts || {month:'short', day:'numeric'})
+}
+function fmtDW(iso){ return fmtD(iso, {weekday:'short', month:'short', day:'numeric'}) }
 
 // Debounced report auto-save (for check toggles, field edits)
 let _reportSaveDebounce=null
@@ -1704,7 +1724,7 @@ async function openRouteView(){
   routed.forEach((r,i)=>{
     const j=r.job,l=j.location||{},a=locAddr(l)
     const isOv=j.scheduled_date<t
-    const dateLabel=j.scheduled_date===t?'Today':j.scheduled_date===tom?'Tomorrow':isOv?`Overdue (${j.scheduled_date})`:j.scheduled_date
+    const dateLabel=j.scheduled_date===t?'Today':j.scheduled_date===tom?'Tomorrow':isOv?`Overdue (${fmtD(j.scheduled_date)})`:fmtDW(j.scheduled_date)
     h+=`<div style="background:var(--c1);border:1px solid var(--b1);border-radius:var(--r);padding:14px;margin-bottom:8px;display:flex;gap:12px;align-items:flex-start">
       <div style="background:var(--fire);color:#fff;border-radius:8px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;flex-shrink:0">${i+1}</div>
       <div style="flex:1;min-width:0">
@@ -4148,7 +4168,7 @@ async function openCust(id){
     locJobs.slice(0,15).forEach(j=>{
       const statC={scheduled:'var(--info)',active:'var(--ok)',completed:'var(--g1)'}[j.status]||'var(--g1)'
       const jInv=D.invs.find(i=>i.job_id===j.id)
-      h+=`<div class="ic" onclick="openJob('${j.id}')"><div class="ic-r1"><div class="ic-nm">${j.scheduled_date||'No date'}</div><span style="font-size:10px;font-weight:800;text-transform:uppercase;color:${statC}">${j.status}</span></div><div class="ic-sub">${(j.scope||[]).join(' · ')}${jInv?' · '+fmt(+jInv.total):''}</div>${jInv?`<div style="margin-top:6px" onclick="event.stopPropagation()"><button style="font-size:11px;font-weight:700;padding:6px 14px;border-radius:var(--rs);background:var(--info);color:#fff;border:none;cursor:pointer" onclick="sendInvEmail('${jInv.id}')">✉️ Resend Invoice + Reports</button></div>`:''}</div>`
+      h+=`<div class="ic" onclick="openJob('${j.id}')"><div class="ic-r1"><div class="ic-nm">${j.scheduled_date?fmtDW(j.scheduled_date):'No date'}</div><span style="font-size:10px;font-weight:800;text-transform:uppercase;color:${statC}">${j.status}</span></div><div class="ic-sub">${(j.scope||[]).join(' · ')}${jInv?' · '+fmt(+jInv.total):''}</div>${jInv?`<div style="margin-top:6px" onclick="event.stopPropagation()"><button style="font-size:11px;font-weight:700;padding:6px 14px;border-radius:var(--rs);background:var(--info);color:#fff;border:none;cursor:pointer" onclick="sendInvEmail('${jInv.id}')">✉️ Resend Invoice + Reports</button></div>`:''}</div>`
     })
     h+=`</div>`
   }
