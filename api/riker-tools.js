@@ -908,6 +908,168 @@ const add_client = {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// TOOL: create_billing_account
+// ═══════════════════════════════════════════════════════════════
+const create_billing_account = {
+  schema: {
+    name: 'create_billing_account',
+    description: "Create a new billing account (parent company). Use when Jon adds a multi-location client and needs a parent entity for consolidated billing. After creating, call assign_location_to_billing_account to link locations to it.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Company/parent name, e.g. "Acme Corp Corporate"' },
+        contact_name: { type: 'string' },
+        phone: { type: 'string' },
+        email: { type: 'string' },
+        address: { type: 'string' },
+        city: { type: 'string' },
+        state: { type: 'string', description: 'Default TX' },
+        zip: { type: 'string' },
+        notes: { type: 'string' }
+      },
+      required: ['name']
+    }
+  },
+  async handler(input, ctx) {
+    const { data, error } = await ctx.supabase.from('billing_accounts').insert({
+      name: input.name,
+      contact_name: input.contact_name || null,
+      phone: input.phone || null,
+      email: input.email || null,
+      address: input.address || null,
+      city: input.city || null,
+      state: input.state || 'TX',
+      zip: input.zip || null,
+      notes: input.notes || null
+    }).select().single()
+    if (error) return { error: error.message }
+    return { ok: true, billing_account_id: data.id, name: data.name }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOOL: list_locations_by_account
+// ═══════════════════════════════════════════════════════════════
+const list_locations_by_account = {
+  schema: {
+    name: 'list_locations_by_account',
+    description: "List all locations under a billing account (parent company). Use when Jon asks 'show me all [Company] locations' or wants to see a parent account's full client footprint.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        billing_account_id: { type: 'string', description: 'UUID of the billing account. Use this if you already have it.' },
+        billing_account_name: { type: 'string', description: 'Fuzzy name search — resolves to the best match. Use instead of billing_account_id when Jon gives a company name.' }
+      }
+    }
+  },
+  async handler(input, ctx) {
+    let baId = input.billing_account_id
+    let baName = null
+
+    if (!baId && input.billing_account_name) {
+      const { data: bas } = await ctx.supabase.from('billing_accounts')
+        .select('id, name').ilike('name', `%${input.billing_account_name}%`).limit(5)
+      if (!bas || bas.length === 0) return { error: `No billing account found matching "${input.billing_account_name}"` }
+      baId = bas[0].id
+      baName = bas[0].name
+    }
+    if (!baId) return { error: 'billing_account_id or billing_account_name required' }
+
+    const { data: ba } = await ctx.supabase.from('billing_accounts')
+      .select('id, name, contact_name, phone, email, w9_on_file, coi_on_file').eq('id', baId).maybeSingle()
+    if (!ba) return { error: 'Billing account not found' }
+
+    const { data: locs } = await ctx.supabase.from('locations')
+      .select('id, name, address, city, state, zip, contact_name, contact_phone, contact_email, deleted_at')
+      .eq('billing_account_id', baId).order('name')
+
+    const active = (locs || []).filter(l => !l.deleted_at)
+    const inactive = (locs || []).filter(l => l.deleted_at)
+
+    // Pull last job for each location
+    const locIds = active.map(l => l.id)
+    let lastJobMap = {}
+    if (locIds.length > 0) {
+      const { data: jobs } = await ctx.supabase.from('jobs')
+        .select('location_id, scheduled_date, status').in('location_id', locIds)
+        .order('scheduled_date', { ascending: false })
+      for (const j of (jobs || [])) {
+        if (!lastJobMap[j.location_id]) lastJobMap[j.location_id] = j
+      }
+    }
+
+    return {
+      billing_account: { id: ba.id, name: ba.name, contact_name: ba.contact_name, phone: ba.phone, email: ba.email, w9_on_file: ba.w9_on_file, coi_on_file: ba.coi_on_file },
+      location_count: active.length,
+      locations: active.map(l => ({
+        location_id: l.id, name: l.name, city: l.city, state: l.state,
+        address: l.address, contact_name: l.contact_name, contact_phone: l.contact_phone,
+        last_job_date: lastJobMap[l.id]?.scheduled_date || null,
+        last_job_status: lastJobMap[l.id]?.status || null
+      })),
+      ...(inactive.length > 0 ? { inactive_locations: inactive.length } : {})
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOOL: assign_location_to_billing_account
+// ═══════════════════════════════════════════════════════════════
+const assign_location_to_billing_account = {
+  schema: {
+    name: 'assign_location_to_billing_account',
+    description: "Assign a location to a billing account (parent company), or reassign it to a different one. Also updates open jobs and unpaid invoices for that location. Use when Jon says 'put [location] under [company]' or 'link these locations together'.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        location_id: { type: 'string', description: 'UUID of the location. Use lookup_client first if you only have a name.' },
+        billing_account_id: { type: 'string', description: 'UUID of the target billing account. Use create_billing_account first if it does not exist yet.' },
+        cascade_jobs: { type: 'boolean', description: 'Also update billing_account_id on open/scheduled jobs for this location. Default true.' },
+        cascade_invoices: { type: 'boolean', description: 'Also update billing_account_id on unpaid invoices for this location. Default true.' }
+      },
+      required: ['location_id', 'billing_account_id']
+    }
+  },
+  async handler(input, ctx) {
+    const cascade = { jobs: input.cascade_jobs !== false, invoices: input.cascade_invoices !== false }
+
+    // Verify both exist
+    const { data: loc } = await ctx.supabase.from('locations').select('id, name, billing_account_id').eq('id', input.location_id).maybeSingle()
+    if (!loc) return { error: 'Location not found' }
+    const { data: ba } = await ctx.supabase.from('billing_accounts').select('id, name').eq('id', input.billing_account_id).maybeSingle()
+    if (!ba) return { error: 'Billing account not found' }
+
+    const prevBaId = loc.billing_account_id
+
+    const { error } = await ctx.supabase.from('locations')
+      .update({ billing_account_id: input.billing_account_id }).eq('id', input.location_id)
+    if (error) return { error: error.message }
+
+    const result = { ok: true, location: loc.name, billing_account: ba.name, previous_account: prevBaId || null }
+
+    if (cascade.jobs) {
+      const { count } = await ctx.supabase.from('jobs')
+        .update({ billing_account_id: input.billing_account_id })
+        .eq('location_id', input.location_id)
+        .in('status', ['scheduled', 'in_progress'])
+        .select('id', { count: 'exact', head: true })
+      result.jobs_updated = count || 0
+    }
+
+    if (cascade.invoices) {
+      const { count } = await ctx.supabase.from('invoices')
+        .update({ billing_account_id: input.billing_account_id })
+        .eq('location_id', input.location_id)
+        .in('status', ['draft', 'sent', 'overdue'])
+        .select('id', { count: 'exact', head: true })
+      result.invoices_updated = count || 0
+    }
+
+    return result
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // TOOL: add_todo
 // ═══════════════════════════════════════════════════════════════
 const add_todo = {
@@ -3746,7 +3908,8 @@ const ALL_TOOLS = {
   get_schedule_slots, get_equipment, get_pending_confirmations,
   get_todos, read_memory, get_rate_card, get_jon_location,
   schedule_job, approve_pending, reject_pending, send_sms,
-  add_client, add_todo, write_memory, delete_memory, mark_invoice_paid,
+  add_client, create_billing_account, list_locations_by_account, assign_location_to_billing_account,
+  add_todo, write_memory, delete_memory, mark_invoice_paid,
   lookup_business,
   update_client, delete_client, merge_clients,
   update_invoice, void_invoice, delete_invoice,
