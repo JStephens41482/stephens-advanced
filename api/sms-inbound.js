@@ -106,7 +106,34 @@ module.exports = async function handler(req, res) {
   const from = normalizePhone(req.body.From)
   const body = (req.body.Body || '').trim()
   const messageSid = req.body.MessageSid
-  if (!from || !body) return res.status(400).send('Missing From or Body')
+  const numMedia = parseInt(req.body.NumMedia || '0', 10)
+
+  // MMS: download attached images and build Claude vision blocks
+  let attachments = []
+  if (numMedia > 0) {
+    const sid = process.env.TWILIO_ACCOUNT_SID
+    const token = process.env.TWILIO_AUTH_TOKEN
+    const auth = sid && token ? 'Basic ' + Buffer.from(sid + ':' + token).toString('base64') : null
+    for (let i = 0; i < numMedia; i++) {
+      const mediaUrl = req.body[`MediaUrl${i}`]
+      const mediaType = req.body[`MediaContentType${i}`] || 'image/jpeg'
+      if (!mediaUrl || !mediaType.startsWith('image/')) continue
+      try {
+        const headers = auth ? { Authorization: auth } : {}
+        const resp = await fetch(mediaUrl, { headers })
+        if (!resp.ok) continue
+        const buf = await resp.arrayBuffer()
+        attachments.push({
+          type: 'image',
+          source: { type: 'base64', media_type: mediaType, data: Buffer.from(buf).toString('base64') }
+        })
+      } catch (e) {
+        console.warn('[sms-inbound] MMS fetch failed:', mediaUrl, e.message)
+      }
+    }
+  }
+
+  if (!from || (!body && attachments.length === 0)) return res.status(400).send('Missing From or Body')
 
   try {
     const isJon = from === JON_PHONE
@@ -178,10 +205,11 @@ module.exports = async function handler(req, res) {
     }
 
     // Log inbound in messages (append-only audit)
+    const logBody = body || (attachments.length ? `[${attachments.length} photo${attachments.length > 1 ? 's' : ''}]` : '')
     await supabase.from('messages').insert({
       conversation_id: conv.id,
       direction: 'inbound', channel: 'sms',
-      body, twilio_sid: messageSid
+      body: logBody, twilio_sid: messageSid
     })
 
     // Mirror into riker_sessions so memory extraction + continuity can run off
@@ -194,7 +222,7 @@ module.exports = async function handler(req, res) {
       customerName: conv.customer_name || null
     })
     if (rikerSession) {
-      await core.appendToRikerSession(supabase, rikerSession.id, 'user', body, { channel: 'sms', twilio_sid: messageSid })
+      await core.appendToRikerSession(supabase, rikerSession.id, 'user', logBody, { channel: 'sms', twilio_sid: messageSid })
     }
 
     // Phase 6a completion — "One Jon". For Jon's inbound SMS we route the
@@ -214,7 +242,8 @@ module.exports = async function handler(req, res) {
         location_id: conv.location_id,
         customer_name: conv.customer_name
       },
-      message: body,
+      message: body || (attachments.length ? 'I sent you a photo.' : ''),
+      attachments: attachments.length ? attachments : undefined,
       inboundAlreadyLogged: true,
       rikerSessionId: rikerSession?.id
     })
