@@ -95,6 +95,43 @@ function minToTime(m) {
   return h12 + ':' + String(min).padStart(2, '0') + ' ' + ampm
 }
 
+// ─── Gmail helpers (used by read_inbox / read_email_thread) ─────
+async function getGmailToken() {
+  const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID || '780674517325-ar9lod4h4phk6sdbtcljoqv7e1m41g2p.apps.googleusercontent.com'
+  const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET
+  const refreshToken = process.env.GOOGLE_CALENDAR_REFRESH_TOKEN
+  if (!clientSecret || !refreshToken) throw new Error('Gmail OAuth not configured (GOOGLE_OAUTH_CLIENT_SECRET / GOOGLE_CALENDAR_REFRESH_TOKEN missing)')
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, refresh_token: refreshToken, grant_type: 'refresh_token' })
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error('Gmail token refresh failed: ' + JSON.stringify(data))
+  return data.access_token
+}
+
+async function gmailFetch(token, path) {
+  const res = await fetch('https://gmail.googleapis.com/gmail/v1/' + path, {
+    headers: { Authorization: `Bearer ${token}` }
+  })
+  const data = await res.json()
+  if (!res.ok) {
+    const msg = data.error?.message || res.statusText
+    if (msg.includes('Insufficient Permission') || msg.includes('insufficient authentication'))
+      throw new Error('Gmail scope missing — re-authorize with gmail.readonly or gmail.modify scope')
+    throw new Error('Gmail API: ' + msg)
+  }
+  return data
+}
+
+function gmailParseFrom(fromHeader) {
+  const m = fromHeader.match(/<([^>]+)>/)
+  const email = (m ? m[1] : fromHeader).trim().toLowerCase()
+  const name = m ? fromHeader.replace(/<[^>]+>/, '').trim().replace(/^"(.+)"$/, '$1') : email
+  return { email, name }
+}
+
 // ═══════════════════════════════════════════════════════════════
 // TOOL: get_today_summary
 // ═══════════════════════════════════════════════════════════════
@@ -2395,48 +2432,64 @@ const read_inbox = {
   },
   async handler(input, ctx) {
     const hours = Math.min(720, Math.max(1, Number(input.since_hours) || 48))
-    const limit = Math.min(30, Math.max(1, Number(input.limit) || 10))
-    const sinceIso = new Date(Date.now() - hours * 3600000).toISOString()
+    const limit = Math.min(30, Math.max(1, Number(input.limit) || 15))
 
-    // Pull email conversations touched in the window, newest first.
-    let convQ = ctx.supabase.from('conversations')
-      .select('id, channel, email, customer_name, location_id, email_thread_id, last_message_at, status')
-      .eq('channel', 'email')
-      .gte('last_message_at', sinceIso)
-      .order('last_message_at', { ascending: false })
-      .limit(limit * 2)  // oversample — we filter out already-replied threads below
-    if (input.from) convQ = convQ.eq('email', String(input.from).toLowerCase())
-    const { data: convs, error: cErr } = await convQ
-    if (cErr) return { error: cErr.message }
-    if (!convs || !convs.length) return { count: 0, unread_threads: [] }
+    // ── Live Gmail read ──────────────────────────────────────────
+    let token
+    try { token = await getGmailToken() }
+    catch (e) { return { error: e.message } }
 
-    // For each conv, find the newest inbound and whether any outbound follows it.
-    const unread = []
-    for (const conv of convs) {
-      const { data: lastFew } = await ctx.supabase.from('messages')
-        .select('direction, body, email_subject, email_from, created_at')
-        .eq('conversation_id', conv.id)
-        .order('created_at', { ascending: false })
-        .limit(8)
-      const msgs = lastFew || []
-      if (!msgs.length) continue
-      const latest = msgs[0]
-      // Thread is "unread" if latest is inbound (no outbound reply since).
-      if (latest.direction !== 'inbound') continue
-      unread.push({
-        conversation_id: conv.id,
-        email_thread_id: conv.email_thread_id || null,
-        from_email: latest.email_from || conv.email,
-        from_name: conv.customer_name || null,
-        subject: latest.email_subject || null,
-        preview: (latest.body || '').replace(/\s+/g, ' ').slice(0, 240),
-        received_at: latest.created_at,
-        last_message_at: conv.last_message_at,
-        location_id: conv.location_id || null
-      })
-      if (unread.length >= limit) break
+    const afterEpoch = Math.floor((Date.now() - hours * 3600000) / 1000)
+    let q = `in:inbox is:unread after:${afterEpoch} -category:promotions -category:social`
+    if (input.from) q += ` from:${input.from}`
+
+    let list
+    try { list = await gmailFetch(token, `users/me/messages?q=${encodeURIComponent(q)}&maxResults=${limit}`) }
+    catch (e) { return { error: 'Gmail list failed: ' + e.message } }
+
+    const msgIds = (list.messages || []).map(m => m.id)
+    if (!msgIds.length) return { count: 0, since_hours: hours, unread_threads: [] }
+
+    const threads = []
+    for (const gmailId of msgIds) {
+      try {
+        const msg = await gmailFetch(token,
+          `users/me/messages/${gmailId}?format=metadata` +
+          `&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date&metadataHeaders=Message-ID`)
+        const hdrs = {}
+        for (const h of (msg.payload?.headers || [])) hdrs[h.name.toLowerCase()] = h.value
+        const { email: fromEmail, name: fromName } = gmailParseFrom(hdrs['from'] || '')
+
+        // Check if we already have a reply logged in conversations
+        const { data: conv } = await ctx.supabase.from('conversations')
+          .select('id, location_id, customer_name')
+          .eq('channel', 'email').eq('email_thread_id', msg.threadId)
+          .maybeSingle()
+        let replied = false
+        if (conv) {
+          const { data: ob } = await ctx.supabase.from('messages')
+            .select('id').eq('conversation_id', conv.id).eq('direction', 'outbound').limit(1).maybeSingle()
+          replied = !!ob
+        }
+
+        threads.push({
+          gmail_message_id: gmailId,
+          thread_id: msg.threadId,
+          conversation_id: conv?.id || null,
+          from_email: fromEmail,
+          from_name: fromName,
+          subject: hdrs['subject'] || '(no subject)',
+          snippet: (msg.snippet || '').replace(/&#(\d+);/g, (_, n) => String.fromCharCode(n)).slice(0, 240),
+          date: hdrs['date'] || null,
+          riker_replied: replied,
+          location_id: conv?.location_id || null,
+          customer_name: conv?.customer_name || null
+        })
+      } catch (e) {
+        threads.push({ gmail_message_id: gmailId, error: e.message })
+      }
     }
-    return { count: unread.length, since: sinceIso, unread_threads: unread }
+    return { count: threads.length, since_hours: hours, unread_threads: threads }
   }
 }
 
@@ -2455,30 +2508,55 @@ const read_email_thread = {
   },
   async handler(input, ctx) {
     const limit = Math.min(100, Math.max(1, Number(input.limit) || 40))
+    const threadId = input.email_thread_id || input.thread_id
     let convId = input.conversation_id
-    if (!convId && input.email_thread_id) {
+
+    // Prefer DB conversation if we have one
+    if (!convId && threadId) {
       const { data: conv } = await ctx.supabase.from('conversations')
-        .select('id').eq('channel', 'email').eq('email_thread_id', input.email_thread_id)
+        .select('id').eq('channel', 'email').eq('email_thread_id', threadId)
         .order('last_message_at', { ascending: false }).limit(1).maybeSingle()
-      if (!conv) return { error: `No conversation for email_thread_id ${input.email_thread_id}` }
-      convId = conv.id
+      if (conv) convId = conv.id
     }
-    if (!convId) return { error: 'Must pass conversation_id or email_thread_id' }
-    const { data: conv } = await ctx.supabase.from('conversations')
-      .select('id, email, customer_name, email_thread_id, location_id, last_message_at')
-      .eq('id', convId).maybeSingle()
-    if (!conv) return { error: `Conversation ${convId} not found` }
-    const { data: msgs, error } = await ctx.supabase.from('messages')
-      .select('direction, channel, body, email_subject, email_from, email_to, email_message_id, created_at')
-      .eq('conversation_id', convId)
-      .order('created_at', { ascending: false })
-      .limit(limit)
-    if (error) return { error: error.message }
-    return {
-      conversation: conv,
-      count: (msgs || []).length,
-      messages: (msgs || []).reverse()  // oldest → newest
+
+    // If we have a DB conversation, read from messages table
+    if (convId) {
+      const { data: conv } = await ctx.supabase.from('conversations')
+        .select('id, email, customer_name, email_thread_id, location_id, last_message_at')
+        .eq('id', convId).maybeSingle()
+      if (!conv) return { error: `Conversation ${convId} not found` }
+      const { data: msgs, error } = await ctx.supabase.from('messages')
+        .select('direction, channel, body, email_subject, email_from, email_to, email_message_id, created_at')
+        .eq('conversation_id', convId)
+        .order('created_at', { ascending: false })
+        .limit(limit)
+      if (error) return { error: error.message }
+      return { source: 'db', conversation: conv, count: (msgs || []).length, messages: (msgs || []).reverse() }
     }
+
+    // No DB conversation — fetch directly from Gmail
+    if (!threadId) return { error: 'Must pass conversation_id, email_thread_id, or thread_id' }
+    let token
+    try { token = await getGmailToken() }
+    catch (e) { return { error: e.message } }
+    try {
+      const thread = await gmailFetch(token, `users/me/threads/${threadId}?format=full`)
+      const messages = (thread.messages || []).slice(-limit).map(msg => {
+        const hdrs = {}
+        for (const h of (msg.payload?.headers || [])) hdrs[h.name.toLowerCase()] = h.value
+        const { email: fromEmail, name: fromName } = gmailParseFrom(hdrs['from'] || '')
+        // Extract plain text body
+        let body = ''
+        const extractText = p => {
+          if (!p) return
+          if (p.mimeType === 'text/plain' && p.body?.data) { body = Buffer.from(p.body.data.replace(/-/g,'+').replace(/_/g,'/'), 'base64').toString('utf-8'); return }
+          for (const part of (p.parts || [])) extractText(part)
+        }
+        extractText(msg.payload)
+        return { direction: 'inbound', from_email: fromEmail, from_name: fromName, subject: hdrs['subject'], date: hdrs['date'], body: body.slice(0, 2000) }
+      })
+      return { source: 'gmail', thread_id: threadId, count: messages.length, messages }
+    } catch (e) { return { error: 'Gmail thread fetch failed: ' + e.message } }
   }
 }
 
