@@ -697,7 +697,7 @@ async function load(){
 
   const[j,l,i,b,r,ci,td2,mz,bq,tk,sr,pt,ce,ct,cl2,rch,pr,nf,cn]=await Promise.all([
     jobsQuery,
-    SB.from('locations').select('*,extinguishers(id,type,size,serial_number,location_in_building,manufacture_date,last_internal,last_hydro),suppression_systems(id,system_type,category,tank_count,nozzle_count,fusible_link_count),emergency_lights(id,fixture_count),billing_account:billing_accounts(*)').is('deleted_at',null).order('name'),
+    SB.from('locations').select('*,extinguishers(id,type,size,serial_number,location_in_building,manufacture_date,last_internal,last_hydro,deleted_at),suppression_systems(id,system_type,category,tank_count,nozzle_count,fusible_link_count),emergency_lights(id,fixture_count),billing_account:billing_accounts(*)').is('deleted_at',null).order('name'),
     SB.from('invoices').select('*').is('deleted_at',null).order('date',{ascending:false}).limit(100),
     SB.from('billing_accounts').select('*').order('name'),
     SB.from('rate_card').select('key,price'),
@@ -805,7 +805,7 @@ async function ensureLocationDetail(locId){
   if(cached&&Array.isArray(cached.extinguishers)&&Array.isArray(cached.suppression_systems))return cached
   try{
     const{data,error}=await SB.from('locations')
-      .select('*,extinguishers(id,type,size,serial_number,location_in_building,manufacture_date,last_internal,last_hydro),suppression_systems(id,system_type,category,tank_count,nozzle_count,fusible_link_count),emergency_lights(id,fixture_count),billing_account:billing_accounts(*)')
+      .select('*,extinguishers(id,type,size,serial_number,location_in_building,manufacture_date,last_internal,last_hydro,deleted_at),suppression_systems(id,system_type,category,tank_count,nozzle_count,fusible_link_count),emergency_lights(id,fixture_count),billing_account:billing_accounts(*)')
       .eq('id',locId).single()
     if(error||!data)return cached
     // Preserve slim count aliases so client list cards keep rendering
@@ -6854,8 +6854,7 @@ function buildInvoiceEmailHtml({invNum,custName,addr,date,dueDate,lines,total,po
         <div style="font-size:11px;color:#aaa;margin-top:8px">Secure payment via Square · Credit card, Apple Pay, or Google Pay</div>
       </div>`:''}
       <div style="margin-top:20px;padding:16px;background:#fff8f5;border-left:4px solid #f05a28;border-radius:0 8px 8px 0;font-size:13px;color:#555;line-height:1.6">
-        To pay by check, make payable to <strong>Stephens Advanced LLC</strong> and mail to:<br>
-        <strong style="color:#333">P.O. Box 166858, Irving, TX 75016-6858</strong><br>
+        To pay by check, make payable to <strong>Stephens Advanced LLC</strong> and give to your technician or call us to arrange delivery.<br>
         <span style="font-size:12px;color:#888">Questions? Reply to this email or call <strong>(214) 994-4799</strong>.</span>
       </div>
       <div style="margin-top:24px;padding:16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px">
@@ -6884,7 +6883,6 @@ function buildInvoiceEmailHtml({invNum,custName,addr,date,dueDate,lines,total,po
 }
 
 function buildInvoicePdfHtml({invNum,custName,addr,date,dueDate,lines,total,poNumber}){
-  const REMIT='P.O. Box 166858, Irving, TX 75016-6858'
   const lineRows=(lines||[]).map(l=>{
     const isTrv=(l.description||'').startsWith('Travel —')
     const qty=+l.quantity||1
