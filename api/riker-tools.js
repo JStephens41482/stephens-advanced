@@ -2542,6 +2542,1202 @@ const get_weather = {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// TOOL: add_equipment — add equipment to a location
+// ═══════════════════════════════════════════════════════════════
+const add_equipment = {
+  schema: {
+    name: 'add_equipment',
+    description: "Add a piece of equipment to a location. type must be 'suppression', 'extinguisher', or 'emergency_light'. Fields vary by type.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        location_id: { type: 'string', description: 'Location UUID. Required.' },
+        type: { type: 'string', enum: ['suppression', 'extinguisher', 'emergency_light'], description: 'Equipment category. Required.' },
+        // suppression fields
+        brand: { type: 'string' },
+        model: { type: 'string', description: 'Maps to system_type for suppression.' },
+        system_type: { type: 'string', description: 'e.g. Ansul R-102, Pyro-Chem Kitchen Knight II' },
+        agent_type: { type: 'string' },
+        tank_count: { type: 'integer' },
+        serial_number: { type: 'string' },
+        install_date: { type: 'string', description: 'YYYY-MM-DD' },
+        // extinguisher fields
+        quantity: { type: 'integer', description: 'Number of extinguishers (inserts multiple rows).' },
+        ext_type: { type: 'string', description: 'ABC, BC, CO2, Class K, etc. Maps to type column.' },
+        manufacture_date: { type: 'string', description: 'YYYY-MM-DD' },
+        last_internal: { type: 'string', description: 'YYYY-MM-DD date of last 6-year internal inspection.' },
+        last_hydro: { type: 'string', description: 'YYYY-MM-DD date of last hydrostatic test.' },
+        // emergency_light fields
+        fixture_count: { type: 'integer' },
+        last_test: { type: 'string', description: 'YYYY-MM-DD last annual test date.' }
+      },
+      required: ['location_id', 'type']
+    }
+  },
+  async handler(input, ctx) {
+    if (!input.location_id) return { error: 'location_id required' }
+    const t = input.type
+    if (t === 'suppression') {
+      const row = {
+        location_id: input.location_id,
+        system_type: input.system_type || input.model || 'Unknown',
+        category: 'standard',
+        tank_count: input.tank_count || 1,
+        agent_type: input.agent_type || null,
+        serial_number: input.serial_number || null,
+        manufacture_date: input.install_date || null
+      }
+      const { data, error } = await ctx.supabase.from('suppression_systems').insert(row).select('id').single()
+      if (error) return { error: error.message }
+      return { ok: true, id: data.id, type: 'suppression' }
+    } else if (t === 'extinguisher') {
+      const qty = Math.max(1, Number(input.quantity) || 1)
+      const rows = Array.from({ length: qty }, () => ({
+        location_id: input.location_id,
+        type: input.ext_type || 'ABC',
+        serial_number: input.serial_number || null,
+        manufacture_date: input.manufacture_date || null,
+        last_6year: input.last_internal || null,
+        last_hydro: input.last_hydro || null
+      }))
+      const { data, error } = await ctx.supabase.from('extinguishers').insert(rows).select('id')
+      if (error) return { error: error.message }
+      return { ok: true, ids: (data || []).map(r => r.id), count: data?.length || qty, type: 'extinguisher' }
+    } else if (t === 'emergency_light') {
+      const row = {
+        location_id: input.location_id,
+        fixture_count: input.fixture_count || 0,
+        last_annual_test: input.last_test || null
+      }
+      const { data, error } = await ctx.supabase.from('emergency_lights').insert(row).select('id').single()
+      if (error) return { error: error.message }
+      return { ok: true, id: data.id, type: 'emergency_light' }
+    }
+    return { error: 'type must be suppression, extinguisher, or emergency_light' }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOOL: update_equipment
+// ═══════════════════════════════════════════════════════════════
+const update_equipment = {
+  schema: {
+    name: 'update_equipment',
+    description: "Update fields on a piece of equipment. Pass equipment_id and type to identify the row, then any fields to change.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        equipment_id: { type: 'string', description: 'UUID of the equipment row. Required.' },
+        type: { type: 'string', enum: ['suppression', 'extinguisher', 'emergency_light'], description: 'Required to know which table.' },
+        system_type: { type: 'string' },
+        agent_type: { type: 'string' },
+        tank_count: { type: 'integer' },
+        serial_number: { type: 'string' },
+        ext_type: { type: 'string', description: 'Maps to type column on extinguishers.' },
+        manufacture_date: { type: 'string', description: 'YYYY-MM-DD' },
+        last_internal: { type: 'string', description: 'YYYY-MM-DD. Maps to last_6year on extinguishers.' },
+        last_hydro: { type: 'string', description: 'YYYY-MM-DD' },
+        fixture_count: { type: 'integer' },
+        last_test: { type: 'string', description: 'YYYY-MM-DD. Maps to last_annual_test on emergency_lights.' },
+        notes: { type: 'string' },
+        status: { type: 'string', description: 'e.g. active, condemned, removed (extinguishers only)' }
+      },
+      required: ['equipment_id', 'type']
+    }
+  },
+  async handler(input, ctx) {
+    if (!input.equipment_id) return { error: 'equipment_id required' }
+    const t = input.type
+    let table, patch = {}
+    if (t === 'suppression') {
+      table = 'suppression_systems'
+      if (input.system_type !== undefined) patch.system_type = input.system_type
+      if (input.agent_type !== undefined) patch.agent_type = input.agent_type
+      if (input.tank_count !== undefined) patch.tank_count = input.tank_count
+      if (input.serial_number !== undefined) patch.serial_number = input.serial_number
+      if (input.notes !== undefined) patch.notes = input.notes
+    } else if (t === 'extinguisher') {
+      table = 'extinguishers'
+      if (input.ext_type !== undefined) patch.type = input.ext_type
+      if (input.manufacture_date !== undefined) patch.manufacture_date = input.manufacture_date
+      if (input.last_internal !== undefined) patch.last_6year = input.last_internal
+      if (input.last_hydro !== undefined) patch.last_hydro = input.last_hydro
+      if (input.serial_number !== undefined) patch.serial_number = input.serial_number
+      if (input.notes !== undefined) patch.notes = input.notes
+      if (input.status !== undefined) patch.status = input.status
+    } else if (t === 'emergency_light') {
+      table = 'emergency_lights'
+      if (input.fixture_count !== undefined) patch.fixture_count = input.fixture_count
+      if (input.last_test !== undefined) patch.last_annual_test = input.last_test
+      if (input.notes !== undefined) patch.notes = input.notes
+    } else {
+      return { error: 'type must be suppression, extinguisher, or emergency_light' }
+    }
+    if (Object.keys(patch).length === 0) return { error: 'Nothing to update — pass at least one field.' }
+    const { error } = await ctx.supabase.from(table).update(patch).eq('id', input.equipment_id)
+    if (error) return { error: error.message }
+    return { ok: true, equipment_id: input.equipment_id, updated: Object.keys(patch) }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOOL: delete_equipment
+// ═══════════════════════════════════════════════════════════════
+const delete_equipment = {
+  schema: {
+    name: 'delete_equipment',
+    description: "Delete (soft if possible, else hard) a piece of equipment. Pass equipment_id and type.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        equipment_id: { type: 'string', description: 'UUID of the equipment row. Required.' },
+        type: { type: 'string', enum: ['suppression', 'extinguisher', 'emergency_light'], description: 'Required to know which table.' },
+        reason: { type: 'string', description: 'Short reason for audit trail.' }
+      },
+      required: ['equipment_id', 'type']
+    }
+  },
+  async handler(input, ctx) {
+    if (!input.equipment_id) return { error: 'equipment_id required' }
+    const t = input.type
+    let table
+    if (t === 'suppression') table = 'suppression_systems'
+    else if (t === 'extinguisher') table = 'extinguishers'
+    else if (t === 'emergency_light') table = 'emergency_lights'
+    else return { error: 'type must be suppression, extinguisher, or emergency_light' }
+
+    // Try soft-delete first (deleted_at column — extinguishers has it from schema)
+    // extinguishers has deleted_at; suppression_systems and emergency_lights do not per schema
+    const softDeleteTables = new Set(['extinguishers'])
+    if (softDeleteTables.has(table)) {
+      const { data: row } = await ctx.supabase.from(table).select('*').eq('id', input.equipment_id).maybeSingle()
+      if (row) {
+        await trashRecord(ctx.supabase, {
+          tableName: table, recordId: input.equipment_id, recordData: row,
+          deletedBy: 'ai_chat', reason: input.reason || null, context: ctx.context
+        })
+      }
+      const { error } = await ctx.supabase.from(table).update({ deleted_at: new Date().toISOString() }).eq('id', input.equipment_id)
+      if (error) {
+        // deleted_at doesn't exist — fall through to hard delete
+        const { error: delErr } = await ctx.supabase.from(table).delete().eq('id', input.equipment_id)
+        if (delErr) return { error: delErr.message }
+      }
+    } else {
+      const { error } = await ctx.supabase.from(table).delete().eq('id', input.equipment_id)
+      if (error) return { error: error.message }
+    }
+    return { ok: true, equipment_id: input.equipment_id, type: t }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOOL: reschedule_job
+// ═══════════════════════════════════════════════════════════════
+const reschedule_job = {
+  schema: {
+    name: 'reschedule_job',
+    description: "Reschedule a job to a new date (and optionally new time). Writes to audit_log. If notify_customer=true and the location has a phone, sends an SMS.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        job_id: { type: 'string', description: 'Job UUID. Required.' },
+        new_date: { type: 'string', description: 'YYYY-MM-DD. Required.' },
+        new_time: { type: 'string', description: 'HH:MM (24h). Optional — keeps existing time if omitted.' },
+        notify_customer: { type: 'boolean', description: 'If true, send SMS to location contact phone. Default false.' },
+        reason: { type: 'string', description: 'Short reason for audit trail.' }
+      },
+      required: ['job_id', 'new_date']
+    }
+  },
+  async handler(input, ctx) {
+    if (!input.job_id) return { error: 'job_id required' }
+    if (!input.new_date) return { error: 'new_date required' }
+
+    const { data: job } = await ctx.supabase.from('jobs')
+      .select('id, scheduled_date, scheduled_time, status, location:locations(name, contact_phone, contact_email)')
+      .eq('id', input.job_id).is('deleted_at', null).maybeSingle()
+    if (!job) return { error: 'Job not found' }
+
+    const patch = {
+      scheduled_date: input.new_date,
+      updated_at: new Date().toISOString()
+    }
+    if (input.new_time !== undefined) patch.scheduled_time = input.new_time
+
+    const { error } = await ctx.supabase.from('jobs').update(patch).eq('id', input.job_id)
+    if (error) return { error: error.message }
+
+    // Write to audit_log
+    const summary = `Job rescheduled from ${job.scheduled_date} to ${input.new_date}` + (input.reason ? ' — ' + input.reason : '')
+    await ctx.supabase.from('audit_log').insert({
+      action: 'rescheduled', entity_type: 'job', entity_id: input.job_id,
+      actor: 'ai_chat',
+      changes: { old_date: job.scheduled_date, new_date: input.new_date, new_time: input.new_time || null, reason: input.reason || null },
+      summary
+    }).catch(() => {})
+
+    let notified = false
+    if (input.notify_customer && job.location?.contact_phone) {
+      try {
+        const name = job.location?.name || 'your location'
+        const timeStr = input.new_time || job.scheduled_time || ''
+        const msg = `Hi, this is Jon with Stephens Advanced. Your service appointment at ${name} has been rescheduled to ${input.new_date}${timeStr ? ' at ' + timeStr : ''}. Sorry for any inconvenience — please call or text if you have questions.`
+        let to = String(job.location.contact_phone).replace(/[\s\-\(\)\.]/g, '')
+        if (!to.startsWith('+')) to = '+1' + to.replace(/^1/, '')
+        await sendSMSRaw(to, msg)
+        notified = true
+      } catch (e) {
+        console.warn('[reschedule_job] SMS notify failed:', e.message)
+      }
+    }
+
+    return {
+      ok: true,
+      job_id: input.job_id,
+      new_date: input.new_date,
+      new_time: input.new_time || job.scheduled_time || null,
+      customer_notified: notified
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOOL: get_invoice_lines
+// ═══════════════════════════════════════════════════════════════
+const get_invoice_lines = {
+  schema: {
+    name: 'get_invoice_lines',
+    description: "Get all line items for an invoice. Returns each line's id, description, quantity, unit_price, and total.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        invoice_id: { type: 'string', description: 'Invoice UUID. Required.' }
+      },
+      required: ['invoice_id']
+    }
+  },
+  async handler(input, ctx) {
+    if (!input.invoice_id) return { error: 'invoice_id required' }
+    const { data, error } = await ctx.supabase.from('invoice_lines')
+      .select('id, description, quantity, unit_price, total, sort_order')
+      .eq('invoice_id', input.invoice_id)
+      .order('sort_order')
+    if (error) return { error: error.message }
+    return { invoice_id: input.invoice_id, count: (data || []).length, lines: data || [] }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOOL: add_invoice_line
+// ═══════════════════════════════════════════════════════════════
+const add_invoice_line = {
+  schema: {
+    name: 'add_invoice_line',
+    description: "Add a line item to an invoice and recalculate the invoice total.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        invoice_id: { type: 'string', description: 'Invoice UUID. Required.' },
+        description: { type: 'string', description: 'Line item description. Required.' },
+        quantity: { type: 'number', description: 'Default 1.' },
+        unit_price: { type: 'number', description: 'Price per unit. Required.' }
+      },
+      required: ['invoice_id', 'description', 'unit_price']
+    }
+  },
+  async handler(input, ctx) {
+    if (!input.invoice_id) return { error: 'invoice_id required' }
+    const qty = Number(input.quantity) || 1
+    const up = Number(input.unit_price) || 0
+    const lineTotal = Math.round(qty * up * 100) / 100
+
+    // Get current sort_order max
+    const { data: existing } = await ctx.supabase.from('invoice_lines')
+      .select('sort_order').eq('invoice_id', input.invoice_id).order('sort_order', { ascending: false }).limit(1)
+    const nextSort = ((existing?.[0]?.sort_order) ?? -1) + 1
+
+    const { data: line, error } = await ctx.supabase.from('invoice_lines').insert({
+      invoice_id: input.invoice_id,
+      description: String(input.description || '').trim(),
+      quantity: qty,
+      unit_price: up,
+      total: lineTotal,
+      sort_order: nextSort
+    }).select('id').single()
+    if (error) return { error: error.message }
+
+    // Recalculate invoice total
+    const { data: allLines } = await ctx.supabase.from('invoice_lines')
+      .select('total').eq('invoice_id', input.invoice_id)
+    const newTotal = Math.round((allLines || []).reduce((s, l) => s + Number(l.total || 0), 0) * 100) / 100
+    await ctx.supabase.from('invoices').update({ total: newTotal, subtotal: newTotal }).eq('id', input.invoice_id)
+
+    return { ok: true, line_id: line.id, new_total: newTotal }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOOL: update_invoice_line
+// ═══════════════════════════════════════════════════════════════
+const update_invoice_line = {
+  schema: {
+    name: 'update_invoice_line',
+    description: "Update a line item on an invoice and recalculate the invoice total.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        line_id: { type: 'string', description: 'invoice_lines UUID. Required.' },
+        description: { type: 'string' },
+        quantity: { type: 'number' },
+        unit_price: { type: 'number' }
+      },
+      required: ['line_id']
+    }
+  },
+  async handler(input, ctx) {
+    if (!input.line_id) return { error: 'line_id required' }
+    // Fetch current row to get invoice_id and compute new total
+    const { data: cur } = await ctx.supabase.from('invoice_lines').select('*').eq('id', input.line_id).maybeSingle()
+    if (!cur) return { error: 'Line not found' }
+    const patch = {}
+    if (input.description !== undefined) patch.description = input.description
+    if (input.quantity !== undefined) patch.quantity = Number(input.quantity)
+    if (input.unit_price !== undefined) patch.unit_price = Number(input.unit_price)
+    if (Object.keys(patch).length === 0) return { error: 'Nothing to update' }
+    const qty = patch.quantity ?? Number(cur.quantity)
+    const up = patch.unit_price ?? Number(cur.unit_price)
+    patch.total = Math.round(qty * up * 100) / 100
+    const { error } = await ctx.supabase.from('invoice_lines').update(patch).eq('id', input.line_id)
+    if (error) return { error: error.message }
+    // Recalculate invoice total
+    const { data: allLines } = await ctx.supabase.from('invoice_lines')
+      .select('total').eq('invoice_id', cur.invoice_id)
+    const newTotal = Math.round((allLines || []).reduce((s, l) => s + Number(l.total || 0), 0) * 100) / 100
+    await ctx.supabase.from('invoices').update({ total: newTotal, subtotal: newTotal }).eq('id', cur.invoice_id)
+    return { ok: true, new_total: newTotal }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOOL: delete_invoice_line
+// ═══════════════════════════════════════════════════════════════
+const delete_invoice_line = {
+  schema: {
+    name: 'delete_invoice_line',
+    description: "Remove a line item from an invoice and recalculate the invoice total.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        line_id: { type: 'string', description: 'invoice_lines UUID. Required.' },
+        invoice_id: { type: 'string', description: 'Pass to avoid an extra lookup, but the tool can resolve it from line_id.' }
+      },
+      required: ['line_id']
+    }
+  },
+  async handler(input, ctx) {
+    if (!input.line_id) return { error: 'line_id required' }
+    let invoiceId = input.invoice_id
+    if (!invoiceId) {
+      const { data: cur } = await ctx.supabase.from('invoice_lines').select('invoice_id').eq('id', input.line_id).maybeSingle()
+      if (!cur) return { error: 'Line not found' }
+      invoiceId = cur.invoice_id
+    }
+    const { error } = await ctx.supabase.from('invoice_lines').delete().eq('id', input.line_id)
+    if (error) return { error: error.message }
+    // Recalculate invoice total
+    const { data: allLines } = await ctx.supabase.from('invoice_lines')
+      .select('total').eq('invoice_id', invoiceId)
+    const newTotal = Math.round((allLines || []).reduce((s, l) => s + Number(l.total || 0), 0) * 100) / 100
+    await ctx.supabase.from('invoices').update({ total: newTotal, subtotal: newTotal }).eq('id', invoiceId)
+    return { ok: true, new_total: newTotal }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOOL: generate_portal_link
+// ═══════════════════════════════════════════════════════════════
+const generate_portal_link = {
+  schema: {
+    name: 'generate_portal_link',
+    description: "Generate a customer portal access link for a location or billing account. Creates a portal_tokens row (15-day expiry) and returns the URL. Use when Jon or a customer needs portal access.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        location_id: { type: 'string', description: 'Location UUID — one of location_id or billing_account_id required.' },
+        billing_account_id: { type: 'string', description: 'Billing account UUID — alternative to location_id.' }
+      }
+    }
+  },
+  async handler(input, ctx) {
+    if (!input.location_id && !input.billing_account_id) return { error: 'location_id or billing_account_id required' }
+    const token = crypto.randomBytes(16).toString('hex')
+    const expiresAt = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString()
+    const { error } = await ctx.supabase.from('portal_tokens').insert({
+      token,
+      location_id: input.location_id || null,
+      billing_account_id: input.billing_account_id || null,
+      is_active: true,
+      expires_at: expiresAt
+    })
+    if (error) return { error: error.message }
+    const portalUrl = 'https://stephensadvanced.com/portal?t=' + token
+    return { ok: true, portal_url: portalUrl, token, expires_at: expiresAt }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOOL: list_techs
+// ═══════════════════════════════════════════════════════════════
+const list_techs = {
+  schema: {
+    name: 'list_techs',
+    description: "List all technicians. Returns id, name, phone, email, license_number, color, and active status.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        active_only: { type: 'boolean', description: 'If true, only return active techs. Default false (all).' }
+      }
+    }
+  },
+  async handler(input, ctx) {
+    let q = ctx.supabase.from('techs').select('id, name, phone, email, license_number, color, active, created_at').order('name')
+    if (input.active_only) q = q.eq('active', true)
+    const { data, error } = await q
+    if (error) return { error: error.message }
+    return { count: (data || []).length, techs: data || [] }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOOL: add_tech
+// ═══════════════════════════════════════════════════════════════
+const add_tech = {
+  schema: {
+    name: 'add_tech',
+    description: "Add a new technician to the techs table.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Full name. Required.' },
+        phone: { type: 'string' },
+        email: { type: 'string' },
+        license_number: { type: 'string', description: 'FEL or other license number.' },
+        color: { type: 'string', description: 'Hex color for calendar display. Default #f05a28.' }
+      },
+      required: ['name']
+    }
+  },
+  async handler(input, ctx) {
+    if (!input.name) return { error: 'name required' }
+    const { data, error } = await ctx.supabase.from('techs').insert({
+      name: input.name,
+      phone: input.phone || null,
+      email: input.email || null,
+      license_number: input.license_number || null,
+      color: input.color || '#f05a28',
+      active: true
+    }).select('id').single()
+    if (error) return { error: error.message }
+    return { ok: true, id: data.id, name: input.name }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOOL: update_tech
+// ═══════════════════════════════════════════════════════════════
+const update_tech = {
+  schema: {
+    name: 'update_tech',
+    description: "Update technician info. Pass tech_id and any fields to change.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        tech_id: { type: 'string', description: 'Techs UUID. Required.' },
+        name: { type: 'string' },
+        phone: { type: 'string' },
+        email: { type: 'string' },
+        license_number: { type: 'string' },
+        color: { type: 'string' },
+        active: { type: 'boolean' }
+      },
+      required: ['tech_id']
+    }
+  },
+  async handler(input, ctx) {
+    if (!input.tech_id) return { error: 'tech_id required' }
+    const patch = {}
+    if (input.name !== undefined) patch.name = input.name
+    if (input.phone !== undefined) patch.phone = input.phone
+    if (input.email !== undefined) patch.email = input.email
+    if (input.license_number !== undefined) patch.license_number = input.license_number
+    if (input.color !== undefined) patch.color = input.color
+    if (input.active !== undefined) patch.active = input.active
+    if (Object.keys(patch).length === 0) return { error: 'Nothing to update — pass at least one field.' }
+    const { error } = await ctx.supabase.from('techs').update(patch).eq('id', input.tech_id)
+    if (error) return { error: error.message }
+    return { ok: true, tech_id: input.tech_id, updated: Object.keys(patch) }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOOL: assign_job_to_tech
+// ═══════════════════════════════════════════════════════════════
+const assign_job_to_tech = {
+  schema: {
+    name: 'assign_job_to_tech',
+    description: "Assign a job to a specific technician by setting jobs.assigned_to. Pass null or empty string to unassign.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        job_id: { type: 'string', description: 'Job UUID. Required.' },
+        tech_id: { type: 'string', description: 'Techs UUID. Pass empty string to unassign.' }
+      },
+      required: ['job_id']
+    }
+  },
+  async handler(input, ctx) {
+    if (!input.job_id) return { error: 'job_id required' }
+    const techId = input.tech_id || null
+    const { error } = await ctx.supabase.from('jobs').update({ assigned_to: techId }).eq('id', input.job_id)
+    if (error) return { error: error.message }
+    await ctx.supabase.from('audit_log').insert({
+      action: 'assigned', entity_type: 'job', entity_id: input.job_id,
+      actor: 'ai_chat', changes: { assigned_to: techId },
+      summary: techId ? `Job assigned to tech ${techId}` : 'Job unassigned'
+    }).catch(() => {})
+    return { ok: true, job_id: input.job_id, assigned_to: techId }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOOL: get_brycer_queue
+// ═══════════════════════════════════════════════════════════════
+const get_brycer_queue = {
+  schema: {
+    name: 'get_brycer_queue',
+    description: "Get jobs pending Brycer compliance submission (submitted=false). Returns job_id, location name, address, system_type, and job date.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        limit: { type: 'integer', description: 'Max rows (default 25, cap 100).' }
+      }
+    }
+  },
+  async handler(input, ctx) {
+    const limit = Math.min(100, Number(input.limit) || 25)
+    const { data, error } = await ctx.supabase.from('brycer_queue')
+      .select('id, job_id, location_id, location_name, system_type, job_date, submitted, report_generated, created_at')
+      .eq('submitted', false)
+      .order('created_at')
+      .limit(limit)
+    if (error) return { error: error.message }
+    // Enrich with location address
+    const locIds = [...new Set((data || []).map(r => r.location_id).filter(Boolean))]
+    let locMap = {}
+    if (locIds.length) {
+      const { data: locs } = await ctx.supabase.from('locations')
+        .select('id, address, city, state, zip').in('id', locIds)
+      for (const l of (locs || [])) locMap[l.id] = l
+    }
+    const enriched = (data || []).map(r => ({
+      ...r,
+      address: r.location_id && locMap[r.location_id]
+        ? [locMap[r.location_id].address, locMap[r.location_id].city, locMap[r.location_id].state].filter(Boolean).join(', ')
+        : null
+    }))
+    return { count: enriched.length, pending: enriched }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOOL: mark_brycer_submitted
+// ═══════════════════════════════════════════════════════════════
+const mark_brycer_submitted = {
+  schema: {
+    name: 'mark_brycer_submitted',
+    description: "Mark a Brycer queue entry as submitted. Pass either job_id or brycer_queue_id.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        job_id: { type: 'string', description: 'Job UUID. The tool looks up the queue entry by job_id.' },
+        brycer_queue_id: { type: 'string', description: 'Direct brycer_queue row UUID.' }
+      }
+    }
+  },
+  async handler(input, ctx) {
+    if (!input.job_id && !input.brycer_queue_id) return { error: 'job_id or brycer_queue_id required' }
+    const today = new Date().toISOString().split('T')[0]
+    let q = ctx.supabase.from('brycer_queue').update({ submitted: true, submitted_date: today })
+    if (input.brycer_queue_id) {
+      q = q.eq('id', input.brycer_queue_id)
+    } else {
+      q = q.eq('job_id', input.job_id)
+    }
+    const { error } = await q
+    if (error) return { error: error.message }
+    return { ok: true, submitted_date: today }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOOL: list_contracts
+// ═══════════════════════════════════════════════════════════════
+const list_contracts = {
+  schema: {
+    name: 'list_contracts',
+    description: "List service contracts. Optionally filter by location_id. Returns id, location_id, location_name, status, created_at, signed_at, and signer info.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        location_id: { type: 'string', description: 'Filter to a specific location (optional).' },
+        status: { type: 'string', description: 'draft, active, expired, cancelled, or all (default all).' },
+        limit: { type: 'integer', description: 'Max rows (default 20, cap 100).' }
+      }
+    }
+  },
+  async handler(input, ctx) {
+    const limit = Math.min(100, Number(input.limit) || 20)
+    let q = ctx.supabase.from('contracts')
+      .select('id, location_id, billing_account_id, type, frequency, status, signed, signed_at, annual_value, start_date, end_date, notes, created_at, location:locations(name,city)')
+      .order('created_at', { ascending: false })
+      .limit(limit)
+    if (input.location_id) q = q.eq('location_id', input.location_id)
+    if (input.status && input.status !== 'all') q = q.eq('status', input.status)
+    const { data, error } = await q
+    if (error) return { error: error.message }
+    return {
+      count: (data || []).length,
+      contracts: (data || []).map(c => ({
+        id: c.id,
+        location_id: c.location_id,
+        location_name: c.location?.name || null,
+        city: c.location?.city || null,
+        status: c.status,
+        type: c.type,
+        frequency: c.frequency,
+        annual_value: c.annual_value,
+        signed: c.signed,
+        signed_at: c.signed_at,
+        start_date: c.start_date,
+        end_date: c.end_date,
+        created_at: c.created_at,
+        notes: c.notes
+      }))
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOOL: create_contract
+// ═══════════════════════════════════════════════════════════════
+const create_contract = {
+  schema: {
+    name: 'create_contract',
+    description: "Create a service contract for a location in draft status.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        location_id: { type: 'string', description: 'Location UUID. Required.' },
+        contract_type: { type: 'string', description: "Contract type: 'recurring' or 'one-time'. Default 'recurring'." },
+        frequency: { type: 'string', description: "annual, semi-annual, quarterly — service frequency." },
+        annual_value: { type: 'number', description: 'Annual contract value in dollars.' },
+        notes: { type: 'string' }
+      },
+      required: ['location_id']
+    }
+  },
+  async handler(input, ctx) {
+    if (!input.location_id) return { error: 'location_id required' }
+    // Look up billing_account_id from location
+    const { data: loc } = await ctx.supabase.from('locations').select('billing_account_id').eq('id', input.location_id).maybeSingle()
+    const { data, error } = await ctx.supabase.from('contracts').insert({
+      location_id: input.location_id,
+      billing_account_id: loc?.billing_account_id || null,
+      type: input.contract_type || 'recurring',
+      frequency: input.frequency || null,
+      annual_value: input.annual_value || null,
+      status: 'draft',
+      notes: input.notes || null
+    }).select('id').single()
+    if (error) return { error: error.message }
+    return { ok: true, contract_id: data.id, status: 'draft' }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOOL: send_contract
+// ═══════════════════════════════════════════════════════════════
+const send_contract = {
+  schema: {
+    name: 'send_contract',
+    description: "Send a contract signing email to the customer. Updates contract status to 'sent'. Uses the same branded email template as /api/send-contract.js.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        contract_id: { type: 'string', description: 'Contract UUID. Required.' },
+        recipient_email: { type: 'string', description: 'Override the email address on file (optional).' },
+        recipient_name: { type: 'string', description: 'Override the contact name on file (optional).' }
+      },
+      required: ['contract_id']
+    }
+  },
+  async handler(input, ctx) {
+    if (!input.contract_id) return { error: 'contract_id required' }
+    const apiKey = process.env.RESEND_API_KEY
+    if (!apiKey) return { error: 'RESEND_API_KEY not configured' }
+
+    // Load contract + location
+    const { data: contract, error: cErr } = await ctx.supabase.from('contracts')
+      .select('*, location_id, billing_account_id').eq('id', input.contract_id).maybeSingle()
+    if (cErr || !contract) return { error: 'Contract not found' }
+
+    let location = null
+    if (contract.location_id) {
+      const { data: l } = await ctx.supabase.from('locations').select('*').eq('id', contract.location_id).maybeSingle()
+      location = l
+    }
+
+    const customerName = input.recipient_name || location?.contact_name || contract.customer_name || 'Valued Customer'
+    const customerEmail = input.recipient_email || contract.customer_email || location?.contact_email
+    if (!customerEmail) return { error: 'No customer email on file — pass recipient_email' }
+
+    const locationName = location?.name || ''
+    const signUrl = `https://www.stephensadvanced.com/sign-contract?token=${input.contract_id}`
+
+    // Simple text email (full HTML template lives in send-contract.js; replicate core content)
+    const body = [
+      `Dear ${customerName},`,
+      '',
+      `Your service agreement${locationName ? ' for ' + locationName : ''} is ready to review and sign.`,
+      '',
+      `Sign here: ${signUrl}`,
+      '',
+      'Benefits: Priority scheduling, price lock, and customer portal access.',
+      '',
+      'Questions? Call or text (817) 320-4911 or reply to this email.',
+      '',
+      'Thank you,',
+      'Jon Stephens — Stephens Advanced LLC'
+    ].join('\n')
+
+    try {
+      await sendEmailRaw({
+        to: customerEmail,
+        subject: `Your Service Agreement is Ready — Stephens Advanced${locationName ? ' | ' + locationName : ''}`,
+        body
+      })
+    } catch (e) {
+      return { error: 'Email send failed: ' + e.message }
+    }
+
+    const now = new Date().toISOString()
+    await ctx.supabase.from('contracts').update({ status: 'sent', sent_at: now, sent_to: customerEmail }).eq('id', input.contract_id).catch(() => {})
+    await ctx.supabase.from('audit_log').insert({
+      action: 'sent', entity_type: 'contract', entity_id: input.contract_id,
+      actor: 'ai_chat', summary: `Contract sent to ${customerEmail}`
+    }).catch(() => {})
+
+    return { ok: true, contract_id: input.contract_id, sent_to_email: customerEmail, sent_at: now }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOOL: get_business_report
+// ═══════════════════════════════════════════════════════════════
+const get_business_report = {
+  schema: {
+    name: 'get_business_report',
+    description: "Business performance summary for a period. Includes total revenue, outstanding AR, job count, average job value, and top clients by revenue.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        period: { type: 'string', enum: ['today', 'week', 'month', 'ytd'], description: "Default 'month'." }
+      }
+    }
+  },
+  async handler(input, ctx) {
+    const period = input.period || 'month'
+    const now = new Date()
+    const todayStr = now.toISOString().split('T')[0]
+    let dateFrom
+    if (period === 'today') {
+      dateFrom = todayStr
+    } else if (period === 'week') {
+      const d = new Date(now); d.setDate(d.getDate() - 7)
+      dateFrom = d.toISOString().split('T')[0]
+    } else if (period === 'month') {
+      dateFrom = todayStr.slice(0, 7) + '-01'
+    } else { // ytd
+      dateFrom = now.getFullYear() + '-01-01'
+    }
+
+    const [paidInvs, unpaidInvs, completedJobs] = await Promise.all([
+      ctx.supabase.from('invoices').select('total, billing_account_id, location:locations(name)')
+        .eq('status', 'paid').gte('paid_at', dateFrom + 'T00:00:00').is('deleted_at', null),
+      ctx.supabase.from('invoices').select('total, invoice_number, location:locations(name)')
+        .not('status', 'in', '(paid,void,record,factored)').is('deleted_at', null),
+      ctx.supabase.from('jobs').select('id, estimated_value, location:locations(name)')
+        .eq('status', 'completed').gte('scheduled_date', dateFrom).is('deleted_at', null)
+    ])
+
+    const revenue = Math.round((paidInvs.data || []).reduce((s, i) => s + Number(i.total || 0), 0) * 100) / 100
+    const outstanding = Math.round((unpaidInvs.data || []).reduce((s, i) => s + Number(i.total || 0), 0) * 100) / 100
+    const jobCount = (completedJobs.data || []).length
+    const totalJobValue = (completedJobs.data || []).reduce((s, j) => s + Number(j.estimated_value || 0), 0)
+    const avgJobValue = jobCount > 0 ? Math.round(totalJobValue / jobCount * 100) / 100 : 0
+
+    // Top clients by revenue
+    const clientRevMap = {}
+    for (const inv of (paidInvs.data || [])) {
+      const name = inv.location?.name || 'Unknown'
+      clientRevMap[name] = (clientRevMap[name] || 0) + Number(inv.total || 0)
+    }
+    const topClients = Object.entries(clientRevMap)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 5)
+      .map(([name, total]) => ({ name, total: Math.round(total * 100) / 100 }))
+
+    return {
+      period,
+      date_from: dateFrom,
+      date_to: todayStr,
+      revenue_usd: revenue,
+      outstanding_ar_usd: outstanding,
+      outstanding_invoice_count: (unpaidInvs.data || []).length,
+      jobs_completed: jobCount,
+      avg_job_value_usd: avgJobValue,
+      top_clients_by_revenue: topClients
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOOL: get_ar_aging
+// ═══════════════════════════════════════════════════════════════
+const get_ar_aging = {
+  schema: {
+    name: 'get_ar_aging',
+    description: "Accounts receivable aging report. Buckets open invoices by age: current (0-30 days), 31-60, 61-90, 90+ days past due.",
+    input_schema: { type: 'object', properties: {} }
+  },
+  async handler(_input, ctx) {
+    const { data, error } = await ctx.supabase.from('invoices')
+      .select('id, invoice_number, total, due_date, date, location:locations(name,city)')
+      .not('status', 'in', '(paid,void,record,factored)')
+      .is('deleted_at', null)
+      .order('due_date')
+    if (error) return { error: error.message }
+
+    const today = new Date()
+    const buckets = { current: [], days_31_60: [], days_61_90: [], over_90: [] }
+    for (const inv of (data || [])) {
+      const due = new Date(inv.due_date || inv.date)
+      const ageDays = Math.floor((today - due) / 86400000)
+      const item = {
+        invoice_id: inv.id,
+        invoice_number: inv.invoice_number,
+        client: inv.location?.name || null,
+        city: inv.location?.city || null,
+        total: Number(inv.total || 0),
+        due_date: inv.due_date,
+        age_days: ageDays
+      }
+      if (ageDays <= 30) buckets.current.push(item)
+      else if (ageDays <= 60) buckets.days_31_60.push(item)
+      else if (ageDays <= 90) buckets.days_61_90.push(item)
+      else buckets.over_90.push(item)
+    }
+
+    const sum = arr => Math.round(arr.reduce((s, i) => s + i.total, 0) * 100) / 100
+    return {
+      total_usd: sum([...buckets.current, ...buckets.days_31_60, ...buckets.days_61_90, ...buckets.over_90]),
+      current: { count: buckets.current.length, total_usd: sum(buckets.current), invoices: buckets.current },
+      days_31_60: { count: buckets.days_31_60.length, total_usd: sum(buckets.days_31_60), invoices: buckets.days_31_60 },
+      days_61_90: { count: buckets.days_61_90.length, total_usd: sum(buckets.days_61_90), invoices: buckets.days_61_90 },
+      over_90: { count: buckets.over_90.length, total_usd: sum(buckets.over_90), invoices: buckets.over_90 }
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOOL: get_audit_log
+// ═══════════════════════════════════════════════════════════════
+const get_audit_log = {
+  schema: {
+    name: 'get_audit_log',
+    description: "Get recent audit log entries. Optionally filter by entity_type and/or entity_id.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        entity_type: { type: 'string', description: "job, invoice, contract, portal_token, etc." },
+        entity_id: { type: 'string', description: 'UUID of the specific entity.' },
+        limit: { type: 'integer', description: 'Max rows (default 20, cap 100).' }
+      }
+    }
+  },
+  async handler(input, ctx) {
+    const limit = Math.min(100, Number(input.limit) || 20)
+    let q = ctx.supabase.from('audit_log')
+      .select('id, action, entity_type, entity_id, actor, summary, changes, created_at')
+      .order('created_at', { ascending: false })
+      .limit(limit)
+    if (input.entity_type) q = q.eq('entity_type', input.entity_type)
+    if (input.entity_id) q = q.eq('entity_id', input.entity_id)
+    const { data, error } = await q
+    if (error) return { error: error.message }
+    return {
+      count: (data || []).length,
+      entries: (data || []).map(e => ({
+        action: e.action,
+        entity_type: e.entity_type,
+        entity_id: e.entity_id,
+        actor: e.actor,
+        summary: e.summary || null,
+        details: e.changes || null,
+        created_at: e.created_at
+      }))
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOOL: list_service_requests
+// ═══════════════════════════════════════════════════════════════
+const list_service_requests = {
+  schema: {
+    name: 'list_service_requests',
+    description: "List service requests from the customer portal. Filter by status: pending, acknowledged, scheduled, closed, rejected. Default 'pending'.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        status: { type: 'string', description: "pending, acknowledged, scheduled, closed, rejected, or all. Default 'pending'." },
+        limit: { type: 'integer', description: 'Max rows (default 20, cap 100).' }
+      }
+    }
+  },
+  async handler(input, ctx) {
+    const limit = Math.min(100, Number(input.limit) || 20)
+    const status = input.status || 'pending'
+    let q = ctx.supabase.from('service_requests')
+      .select('id, location_id, billing_account_id, job_id, request_type, requested_date, notes, reason, status, source, created_at, location:locations(name,city,address)')
+      .order('created_at', { ascending: false })
+      .limit(limit)
+    if (status !== 'all') q = q.eq('status', status)
+    const { data, error } = await q
+    if (error) {
+      // Table might use different column names — graceful fallback
+      if (error.message && error.message.includes('does not exist')) {
+        return { error: 'service_requests table not yet migrated — run migrations/018-riker-tool-tables.sql' }
+      }
+      return { error: error.message }
+    }
+    return {
+      count: (data || []).length,
+      requests: (data || []).map(r => ({
+        id: r.id,
+        location_id: r.location_id,
+        location_name: r.location?.name || null,
+        city: r.location?.city || null,
+        request_type: r.request_type || null,
+        description: r.reason || r.notes || null,
+        requested_date: r.requested_date,
+        status: r.status,
+        job_id: r.job_id,
+        created_at: r.created_at
+      }))
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOOL: respond_to_service_request
+// ═══════════════════════════════════════════════════════════════
+const respond_to_service_request = {
+  schema: {
+    name: 'respond_to_service_request',
+    description: "Approve or decline a portal service request. If approved with a date, optionally creates a scheduled job.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        request_id: { type: 'string', description: 'service_requests UUID. Required.' },
+        action: { type: 'string', enum: ['approve', 'decline'], description: 'Required.' },
+        scheduled_date: { type: 'string', description: 'YYYY-MM-DD — date for the new job (if approving).' },
+        scheduled_time: { type: 'string', description: 'HH:MM — time for the new job (if approving).' },
+        notes: { type: 'string', description: 'Internal notes.' }
+      },
+      required: ['request_id', 'action']
+    }
+  },
+  async handler(input, ctx) {
+    if (!input.request_id) return { error: 'request_id required' }
+    if (!input.action) return { error: 'action required' }
+
+    const { data: req } = await ctx.supabase.from('service_requests').select('*').eq('id', input.request_id).maybeSingle()
+    if (!req) return { error: 'Service request not found' }
+
+    const now = new Date().toISOString()
+    let newJobId = null
+
+    if (input.action === 'approve') {
+      const patch = { status: 'scheduled', responded_at: now }
+      if (input.notes) patch.notes = input.notes
+
+      // Optionally create a job
+      if (input.scheduled_date && req.location_id) {
+        const { data: job } = await ctx.supabase.from('jobs').insert({
+          location_id: req.location_id,
+          billing_account_id: req.billing_account_id || null,
+          scheduled_date: input.scheduled_date,
+          scheduled_time: input.scheduled_time || null,
+          status: 'scheduled',
+          type: 'inspection',
+          notes: req.reason || req.notes || 'From portal service request'
+        }).select('id').single()
+        if (job) {
+          newJobId = job.id
+          patch.job_id = job.id
+        }
+      }
+      await ctx.supabase.from('service_requests').update(patch).eq('id', input.request_id)
+      return { ok: true, action: 'approved', request_id: input.request_id, job_id: newJobId }
+    } else {
+      await ctx.supabase.from('service_requests').update({
+        status: 'rejected', responded_at: now, notes: input.notes || null
+      }).eq('id', input.request_id)
+      return { ok: true, action: 'declined', request_id: input.request_id }
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOOL: list_custom_items
+// ═══════════════════════════════════════════════════════════════
+const list_custom_items = {
+  schema: {
+    name: 'list_custom_items',
+    description: "List saved custom line items (reusable invoice line item templates). Returns id, description, and unit_price.",
+    input_schema: { type: 'object', properties: {} }
+  },
+  async handler(_input, ctx) {
+    const { data, error } = await ctx.supabase.from('custom_items')
+      .select('id, description, unit_price, normalized_key').order('description')
+    if (error) {
+      if (error.message && (error.message.includes('does not exist') || error.message.includes('relation'))) {
+        return { error: 'custom_items table not yet migrated — run migrations/018-riker-tool-tables.sql' }
+      }
+      return { error: error.message }
+    }
+    return { count: (data || []).length, items: data || [] }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOOL: add_custom_item
+// ═══════════════════════════════════════════════════════════════
+const add_custom_item = {
+  schema: {
+    name: 'add_custom_item',
+    description: "Save a reusable custom line item for quick invoice entry.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        description: { type: 'string', description: 'Line item description. Required.' },
+        unit_price: { type: 'number', description: 'Price in dollars. Required.' }
+      },
+      required: ['description', 'unit_price']
+    }
+  },
+  async handler(input, ctx) {
+    if (!input.description) return { error: 'description required' }
+    const desc = String(input.description).trim()
+    const nk = desc.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')
+    const { data, error } = await ctx.supabase.from('custom_items')
+      .upsert({ normalized_key: nk, description: desc, unit_price: Number(input.unit_price) || 0 }, { onConflict: 'normalized_key' })
+      .select('id').single()
+    if (error) {
+      if (error.message && (error.message.includes('does not exist') || error.message.includes('relation'))) {
+        return { error: 'custom_items table not yet migrated — run migrations/018-riker-tool-tables.sql' }
+      }
+      return { error: error.message }
+    }
+    return { ok: true, id: data.id, description: desc, unit_price: Number(input.unit_price) || 0 }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOOL: delete_custom_item
+// ═══════════════════════════════════════════════════════════════
+const delete_custom_item = {
+  schema: {
+    name: 'delete_custom_item',
+    description: "Remove a saved custom line item.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        item_id: { type: 'string', description: 'custom_items UUID. Required.' }
+      },
+      required: ['item_id']
+    }
+  },
+  async handler(input, ctx) {
+    if (!input.item_id) return { error: 'item_id required' }
+    const { error } = await ctx.supabase.from('custom_items').delete().eq('id', input.item_id)
+    if (error) {
+      if (error.message && (error.message.includes('does not exist') || error.message.includes('relation'))) {
+        return { error: 'custom_items table not yet migrated — run migrations/018-riker-tool-tables.sql' }
+      }
+      return { error: error.message }
+    }
+    return { ok: true, item_id: input.item_id }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOOL: send_on_my_way
+// ═══════════════════════════════════════════════════════════════
+const send_on_my_way = {
+  schema: {
+    name: 'send_on_my_way',
+    description: "Send an 'on my way' SMS to the customer at a job site. Looks up the location's contact phone and sends a friendly ETA message from Jon.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        job_id: { type: 'string', description: 'Job UUID. Required.' },
+        eta_minutes: { type: 'integer', description: 'Estimated minutes until arrival (optional). If omitted, says "heading your way now".' }
+      },
+      required: ['job_id']
+    }
+  },
+  async handler(input, ctx) {
+    if (!input.job_id) return { error: 'job_id required' }
+    const { data: job } = await ctx.supabase.from('jobs')
+      .select('id, location:locations(name, contact_phone, contact_name)')
+      .eq('id', input.job_id).maybeSingle()
+    if (!job) return { error: 'Job not found' }
+    const phone = job.location?.contact_phone
+    if (!phone) return { error: 'No contact phone on file for this location. Update the client record first.' }
+
+    const businessName = job.location?.name || 'your location'
+    const msg = input.eta_minutes
+      ? `Hi, this is Jon with Stephens Advanced — I'm on my way to ${businessName} and should arrive in about ${input.eta_minutes} minutes. See you soon!`
+      : `Hi, this is Jon with Stephens Advanced — I'm heading your way to ${businessName} now. See you soon!`
+
+    let to = String(phone).replace(/[\s\-\(\)\.]/g, '')
+    if (!to.startsWith('+')) to = '+1' + to.replace(/^1/, '')
+
+    try {
+      const sid = await sendSMSRaw(to, msg)
+      // Stamp the job with customer_notified_at
+      await ctx.supabase.from('jobs').update({ customer_notified_at: new Date().toISOString() }).eq('id', input.job_id).catch(() => {})
+      return { ok: true, sent_to: to, message: msg, sid }
+    } catch (e) {
+      return { error: 'SMS send failed: ' + e.message }
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // REGISTRY + CONTEXT FILTERING
 // ═══════════════════════════════════════════════════════════════
 
@@ -2564,7 +3760,19 @@ const ALL_TOOLS = {
   // Phase 3 — email inbox copilot
   read_inbox, read_email_thread, draft_email_reply, approve_email_draft,
   // Phase 4 — web lookup
-  web_search_brave, web_fetch, get_weather
+  web_search_brave, web_fetch, get_weather,
+  // Phase 5 — extended ops tools
+  add_equipment, update_equipment, delete_equipment,
+  reschedule_job,
+  get_invoice_lines, add_invoice_line, update_invoice_line, delete_invoice_line,
+  generate_portal_link,
+  list_techs, add_tech, update_tech, assign_job_to_tech,
+  get_brycer_queue, mark_brycer_submitted,
+  list_contracts, create_contract, send_contract,
+  get_business_report, get_ar_aging, get_audit_log,
+  list_service_requests, respond_to_service_request,
+  list_custom_items, add_custom_item, delete_custom_item,
+  send_on_my_way
 }
 
 // null = all tools. Keeps Jon contexts unrestricted; trims customer contexts.
