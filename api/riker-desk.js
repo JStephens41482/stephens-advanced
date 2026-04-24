@@ -47,7 +47,7 @@ async function buildRikersDesk(supabase, { context = 'app', identity = {}, now =
     hour: 'numeric', minute: '2-digit', hour12: true,
     timeZoneName: 'short'
   })
-  parts.push(`CURRENT TIME: ${nowCST}`)
+  parts.push(`CURRENT TIME (server clock — computed fresh this request, accurate to the second): ${nowCST}`)
 
   // Run every section in parallel — any failure is tolerated as empty.
   const [pulse, deskNotes, liveTranscript, auditTail, openThreads, unreadInbox, pendingDrafts] = await Promise.all([
