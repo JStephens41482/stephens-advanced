@@ -41,7 +41,11 @@ module.exports = async function handler(req, res) {
   const debugOverride = req.query?.override === 'debug'
 
   try {
-    // ─── 1. Snapshot pending queue (join billing for customer phone) ───
+    // ─── 1. Snapshot pending queue ───
+    // Phone: prefer the `customer_phone` snapshot written at stamp time
+    // (set from billing_accounts.phone OR locations.contact_phone, whichever
+    // was available). Fall back to a live billing join for any legacy rows
+    // written before the customer_phone column existed.
     let q = supabase
       .from('mazon_queue')
       .select('*, billing:billing_accounts(phone)')
@@ -51,7 +55,7 @@ module.exports = async function handler(req, res) {
     const { data: pendingRaw, error: pErr } = await q
     if (pErr) return res.status(500).json({ error: 'Queue read failed: ' + pErr.message })
     if (!pendingRaw?.length) return res.status(400).json({ error: 'No pending queue rows to submit' })
-    const pending = pendingRaw.map(r => ({ ...r, phone: r.billing?.phone || '' }))
+    const pending = pendingRaw.map(r => ({ ...r, phone: r.customer_phone || r.billing?.phone || '' }))
 
     const total = pending.reduce((s, r) => s + Number(r.amount), 0)
     const totalCents = Math.round(total * 100)
