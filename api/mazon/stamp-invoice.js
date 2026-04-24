@@ -66,11 +66,17 @@ module.exports = async function handler(req, res) {
       .single()
     if (invErr || !inv) return res.status(404).json({ error: 'Invoice not found' })
 
-    // Preflight — redundant with UI check, but catches API misuse
-    const billing = inv.billing
-    if (!billing) return res.status(400).json({ error: 'Invoice has no billing account — Mazon requires one' })
-    if (!billing.phone || !billing.phone.trim()) return res.status(400).json({ error: 'Billing account has no phone number — required by Mazon' })
-    if (!billing.mazon_approved) return res.status(400).json({ error: 'Billing account is not mazon_approved' })
+    // Preflight — billing_account is optional. If present, use its phone +
+    // approval flag; if absent, fall back to the location's own contact info
+    // (Jon wants customers that were "entered as the customer" without a
+    // separate billing_account to still be factorable).
+    const billing = inv.billing || null
+    const loc = inv.location || {}
+    const mazonPhone = (billing?.phone || loc.contact_phone || '').trim()
+    if (!mazonPhone) return res.status(400).json({ error: 'No customer phone on file (billing_accounts.phone or locations.contact_phone) — Mazon requires one' })
+    if (billing && billing.mazon_approved === false) {
+      return res.status(400).json({ error: 'Billing account is explicitly not mazon_approved' })
+    }
     if (inv.mazon_queue_id) return res.status(409).json({ error: 'Invoice already queued for Mazon (mazon_queue_id: ' + inv.mazon_queue_id + ')' })
 
     const FIVE_YEARS = 60 * 60 * 24 * 365 * 5
@@ -108,15 +114,16 @@ module.exports = async function handler(req, res) {
     const backupUrl = bkSigRes.data.signedUrl
 
     // ─── 4. Insert mazon_queue row ───
-    const locAddr = [inv.location?.address, inv.location?.city, inv.location?.state, inv.location?.zip].filter(Boolean).join(', ')
+    const locAddr = [loc.address, loc.city, loc.state, loc.zip].filter(Boolean).join(', ')
     const { data: queueRow, error: qErr } = await supabase.from('mazon_queue').insert({
       invoice_id: invoiceId,
-      billing_account_id: billing.id,
+      billing_account_id: billing?.id || null,
       customer_name: printed_name,
       location_address: locAddr,
       date_of_service: inv.job?.completed_at ? new Date(inv.job.completed_at).toISOString().slice(0, 10) : (inv.date ? new Date(inv.date).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10)),
       amount: Number(inv.total),
       invoice_number: inv.invoice_number,
+      customer_phone: mazonPhone,
       signature_url: signatureUrl,
       signature_printed_name: printed_name,
       signed_at: new Date().toISOString(),
