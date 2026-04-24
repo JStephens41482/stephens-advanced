@@ -175,10 +175,17 @@ async function openWeatherMap(supabase, city, { date = null, units = 'imperial' 
   if (!key) return { error: 'OPENWEATHERMAP_KEY not configured' }
 
   try {
-    // Geocode
+    // Geocode — try as-is, then strip state/country suffix if no match
     const geoRes = await fetch(`https://api.openweathermap.org/geo/1.0/direct?q=${encodeURIComponent(c)}&limit=1&appid=${key}`)
     if (!geoRes.ok) return { error: 'owm geocode ' + geoRes.status }
-    const geo = await geoRes.json()
+    let geo = await geoRes.json()
+    if (!Array.isArray(geo) || !geo.length) {
+      const bareCity = c.split(',')[0].trim()
+      if (bareCity && bareCity !== c) {
+        const geoRes2 = await fetch(`https://api.openweathermap.org/geo/1.0/direct?q=${encodeURIComponent(bareCity)}&limit=1&appid=${key}`)
+        if (geoRes2.ok) geo = await geoRes2.json()
+      }
+    }
     if (!Array.isArray(geo) || !geo.length) return { error: `No geocode match for "${c}"` }
     const { lat, lon, name, state, country } = geo[0]
 

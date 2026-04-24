@@ -1834,7 +1834,7 @@ const get_conversation_history = {
     }
     const limit = Math.min(100, Number(input.limit) || 20)
     let convQ = ctx.supabase.from('conversations')
-      .select('id, channel, phone, email, customer_name, location_id, started_at, last_message_at')
+      .select('id, channel, phone, email, customer_name, location_id, created_at, last_message_at')
       .order('last_message_at', { ascending: false }).limit(10)
     if (input.location_id) convQ = convQ.eq('location_id', input.location_id)
     if (input.phone) {
