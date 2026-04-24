@@ -209,6 +209,8 @@ select{-webkit-appearance:none;appearance:none}
 .cc-meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;font-size:11px;color:var(--g1)}
 .cc-meta b{color:var(--w2);font-weight:700}
 .cc-bry{color:var(--warn);font-weight:700}
+.cc-tag{background:var(--c2);color:var(--g1);padding:1px 6px;border-radius:4px;font-size:10px;text-transform:uppercase;letter-spacing:.5px}
+.cc-owe{color:var(--fire);font-weight:700}
 .cc-arr{font-size:22px;color:var(--g2);flex-shrink:0}
 .ic{background:var(--c1);border:1px solid var(--b1);border-radius:var(--r);padding:14px;margin-bottom:8px;cursor:pointer;transition:border-color .12s}
 .ic:active{border-color:var(--fire)}
@@ -4061,87 +4063,11 @@ async function openCust(id){
   }
   h+=`</div>`
 
-  // auto-populate equipment from last invoice if none on file
-  if((!l.suppression_systems?.length||!l.extinguishers?.length)&&locInvs.length){
-    const lastInv=locInvs.sort((a,b)=>(b.date||'').localeCompare(a.date||''))[0]
-    if(lastInv){
-      const{data:ll}=await SB.from('invoice_lines').select('description,quantity').eq('invoice_id',lastInv.id).is('deleted_at',null)
-      const lines2=ll||[]
-      if(!l.suppression_systems?.length){
-        const syss=lines2.filter(ln=>(ln.description||'').toLowerCase().match(/semi.?annual|suppression|kitchen|ansul|pyro|buckeye|kidde|captive|clean.?agent|fm.?200|dry.?chem|dry chemical|paint|booth/))
-        for(const s of syss){
-          try{await SB.from('suppression_systems').insert({location_id:id,system_type:s.description.split('|')[0].trim(),category:'standard',tank_count:1,nozzle_count:0,fusible_link_count:0})}catch(e){}
-        }
-        if(syss.length){await load();l.suppression_systems=D.locs.find(x=>x.id===id)?.suppression_systems||[]}
-      }
-      if(!l.extinguishers?.length){
-        const extLine=lines2.find(ln=>(ln.description||'').toLowerCase().match(/extinguisher/))
-        if(extLine){
-          const qty=+(extLine.quantity)||1
-          for(let ei=0;ei<qty;ei++){
-            try{await SB.from('extinguishers').insert({location_id:id,type:'ABC Dry Chemical',size:'10lb'})}catch(e){}
-          }
-          await load();l.extinguishers=D.locs.find(x=>x.id===id)?.extinguishers||[]
-        }
-      }
-    }
-  }
-
-  if(l.suppression_systems?.length){
-    h+=`<div class="ds"><div class="ds-t" style="display:flex;justify-content:space-between;align-items:center"><span>Suppression Systems · ${l.suppression_systems.length}</span><button style="font-size:11px;font-weight:700;color:var(--fire)" onclick="openAddSupp('${l.id}')">+ Add</button></div>`
-    l.suppression_systems.forEach(s=>{
-      const sid=s.id
-      h+=`<div class="eq">
-        <div class="eq-r1">
-          <div><div class="eq-nm">${esc(s.system_type)}</div><div class="eq-sub">${s.tank_count}T · ${s.nozzle_count} nozzles · ${s.fusible_link_count} links${s.category&&s.category!=='standard'?' · '+s.category:''}</div></div>
-          <div style="display:flex;gap:6px;flex-shrink:0">
-            <button style="font-size:11px;font-weight:700;color:var(--fire);padding:4px 8px" onclick="editSupp('${sid}','${l.id}')">Edit</button>
-            <button class="del-eq" onclick="toggleDelConfirm('dsupp-${sid}')">Delete</button>
-          </div>
-        </div>
-        <div class="del-confirm" id="dsupp-${sid}" style="margin-top:10px;margin-bottom:0">
-          <div class="del-confirm-msg">Delete ${esc(s.system_type)}?</div>
-          <div class="del-confirm-btns">
-            <button class="del-no" onclick="toggleDelConfirm('dsupp-${sid}')">Cancel</button>
-            <button class="del-yes" onclick="delSuppSystem('${sid}','${l.id}')">Delete</button>
-          </div>
-        </div>
-      </div>`
-    })
-    h+=`</div>`
-  }else{
-    h+=`<div class="ds"><div class="ds-t" style="display:flex;justify-content:space-between;align-items:center"><span>Suppression Systems</span><button style="font-size:11px;font-weight:700;color:var(--fire)" onclick="openAddSupp('${l.id}')">+ Add</button></div><div class="ds-info">None on file</div></div>`
-  }
-  if(l.extinguishers?.length){
-    h+=`<div class="ds"><div class="ds-t" style="display:flex;justify-content:space-between;align-items:center"><span>Extinguishers · ${l.extinguishers.length}</span><button style="font-size:11px;font-weight:700;color:var(--fire)" onclick="openAddExt('${l.id}')">+ Add</button></div>`
-    l.extinguishers.forEach(e=>{
-      const eid=e.id
-      h+=`<div class="eq">
-        <div class="eq-r1">
-          <div><div class="eq-nm">${esc(e.type)} ${esc(e.size||'')}</div><div class="eq-sub">${esc(e.location_in_building||'')}${e.manufacture_date?' · Mfg: '+e.manufacture_date:''}</div></div>
-          <div style="display:flex;gap:6px;flex-shrink:0">
-            <button style="font-size:11px;font-weight:700;color:var(--fire);padding:4px 8px" onclick="editExt('${eid}','${l.id}')">Edit</button>
-            <button class="del-eq" onclick="toggleDelConfirm('dext-${eid}')">Delete</button>
-          </div>
-        </div>
-        <div class="del-confirm" id="dext-${eid}" style="margin-top:10px;margin-bottom:0">
-          <div class="del-confirm-msg">Delete ${esc(e.type)} ${esc(e.size||'')}?</div>
-          <div class="del-confirm-btns">
-            <button class="del-no" onclick="toggleDelConfirm('dext-${eid}')">Cancel</button>
-            <button class="del-yes" onclick="delExtinguisher('${eid}','${l.id}')">Delete</button>
-          </div>
-        </div>
-      </div>`
-    })
-    h+=`</div>`
-  }else{
-    h+=`<div class="ds"><div class="ds-t" style="display:flex;justify-content:space-between;align-items:center"><span>Extinguishers</span><button style="font-size:11px;font-weight:700;color:var(--fire)" onclick="openAddExt('${l.id}')">+ Add</button></div><div class="ds-info">None on file</div></div>`
-  }
-  if(l.emergency_lights?.[0]?.fixture_count){
-    h+=`<div class="ds"><div class="ds-t" style="display:flex;justify-content:space-between;align-items:center"><span>Emergency Lighting</span><button style="font-size:11px;font-weight:700;color:var(--fire)" onclick="openAddELight('${l.id}')">Edit</button></div><div class="eq"><div class="eq-nm">${l.emergency_lights[0].fixture_count} fixtures</div></div></div>`
-  }else{
-    h+=`<div class="ds"><div class="ds-t" style="display:flex;justify-content:space-between;align-items:center"><span>Emergency Lighting</span><button style="font-size:11px;font-weight:700;color:var(--fire)" onclick="openAddELight('${l.id}')">+ Add</button></div><div class="ds-info">None on file</div></div>`
-  }
+  // Equipment at this site — derived read-only summary (from inspection reports + billed invoice lines).
+  // NOT manually manipulated. Kept in sync with what we've actually inspected or billed for.
+  h+=`<div class="ds"><div class="ds-t">Equipment at this site</div>
+    <div id="loc-eq-derived" style="font-size:12px;color:var(--g2)">Analyzing reports & billing…</div>
+  </div>`
 
   if(locJobs.length){
     h+=`<div class="ds" id="cust-jobs-section"><div class="ds-t">Job History · ${locJobs.length}</div>`
@@ -4156,6 +4082,156 @@ async function openCust(id){
   // Invoices are shown inline within Job History — completed jobs open the unified view
   h+=`</div>`
   push(h)
+  renderDerivedEquipment(l.id)
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DERIVED EQUIPMENT SUMMARY
+// Replaces the old manually-maintained extinguishers / suppression_systems /
+// emergency_lights tables in the customer view. Truth-source is (a) what we
+// found during inspections (reports.report_data) and (b) what the customer
+// was billed for (invoice_lines). Read-only — if a count is wrong, edit the
+// invoice or re-inspect; don't fight the data.
+// ═══════════════════════════════════════════════════════════════
+async function renderDerivedEquipment(locId){
+  const el=$('loc-eq-derived');if(!el)return
+  try{
+    const summary=await deriveLocEquipment(locId)
+    el.outerHTML=buildDerivedEquipmentHtml(summary,locId)
+  }catch(e){
+    console.error('derive equipment:',e)
+    el.textContent='Could not build equipment summary.'
+  }
+}
+
+async function deriveLocEquipment(locId){
+  const locJobs=D.jobs.filter(j=>j.location_id===locId)
+  const jobIds=locJobs.map(j=>j.id)
+  let reports=[]
+  if(jobIds.length){
+    const{data:r}=await SB.from('reports').select('id,report_type,report_data,created_at,job_id').in('job_id',jobIds).order('created_at',{ascending:false})
+    reports=r||[]
+  }
+  const locInvs=D.invs.filter(i=>i.location_id===locId).map(i=>i.id)
+  let lines=[]
+  if(locInvs.length){
+    const{data:ll}=await SB.from('invoice_lines').select('description,quantity,invoice_id').in('invoice_id',locInvs).is('deleted_at',null)
+    lines=ll||[]
+  }
+
+  // SUPPRESSION / CLEAN-AGENT / DRY-CHEM SYSTEMS — unique types seen in reports
+  const systems=new Map()
+  reports.forEach(r=>{
+    const t=r.report_type;if(t!=='kitchen_suppression'&&t!=='dry_chemical'&&t!=='clean_agent')return
+    const sd=r.report_data||{}
+    const name=(sd.system_type||sd.sysType||sd.systemType||sd.sysLocation||(t==='kitchen_suppression'?'Kitchen Hood Suppression':t==='dry_chemical'?'Dry Chemical':'Clean Agent')).toString().trim()
+    const key=(t+'|'+name).toLowerCase()
+    if(!systems.has(key)){
+      systems.set(key,{name,type:t,lastReport:r.created_at,tankCount:+(sd.tankCount||sd.tank_count)||null,nozzleCount:+(sd.nozzleCount||sd.nozzle_count)||null,fusibleLinks:+(sd.fusibleLinkCount||sd.fusible_link_count)||null})
+    }
+  })
+  // also infer system presence from suppression-ish billing lines that never became a report
+  const suppKw=/semi.?annual|suppression|kitchen hood|ansul|pyro.?chem|range guard|captive.?aire/i
+  const caKw=/clean.?agent|fm.?200|fm200|novec|halon|inergen|co2 (system|flooding)/i
+  const dcKw=/dry.?chem|paint.?booth|spray.?booth/i
+  lines.forEach(ln=>{
+    const d=(ln.description||'').trim();if(!d)return
+    if(caKw.test(d)){const k='clean_agent|'+d.toLowerCase();if(!systems.has(k))systems.set(k,{name:d,type:'clean_agent',source:'billed'})}
+    else if(dcKw.test(d)){const k='dry_chemical|'+d.toLowerCase();if(!systems.has(k))systems.set(k,{name:d,type:'dry_chemical',source:'billed'})}
+    else if(suppKw.test(d)){const k='kitchen_suppression|'+d.toLowerCase();if(!systems.has(k))systems.set(k,{name:d,type:'kitchen_suppression',source:'billed'})}
+  })
+
+  // EXTINGUISHERS — prefer report unit count, else sum qty across invoices tagged "extinguisher"
+  let extCount=0, extSource='', extReport=null
+  for(const r of reports){if(r.report_type==='extinguisher'){extReport=r;break}}
+  if(extReport?.report_data?.units?.length){
+    extCount=extReport.report_data.units.length
+    extSource='From inspection report · '+new Date(extReport.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})
+  }else{
+    const extLines=lines.filter(l=>/extinguisher/i.test(l.description||''))
+    let totQty=0;extLines.forEach(l=>{totQty+=Math.max(+l.quantity||0,1)})
+    extCount=totQty
+    if(extLines.length)extSource='Based on '+extLines.length+' billed line'+(extLines.length>1?'s':'')+' across '+new Set(extLines.map(l=>l.invoice_id)).size+' invoice'+(new Set(extLines.map(l=>l.invoice_id)).size>1?'s':'')
+  }
+
+  // EMERGENCY LIGHTS — report first, else invoice lines
+  let lightCount=0, lightSource=''
+  const lightReport=reports.find(r=>{const sd=r.report_data||{};return +(sd.emergency_lights||sd.lightCount||sd.emergencyLightCount)>0})
+  if(lightReport){
+    const sd=lightReport.report_data||{}
+    lightCount=+(sd.emergency_lights||sd.lightCount||sd.emergencyLightCount)||0
+    lightSource='From inspection report · '+new Date(lightReport.created_at).toLocaleDateString('en-US',{month:'short',year:'numeric'})
+  }else{
+    const lightLines=lines.filter(l=>/emergency.?light|exit.?sign|e-?light|e light/i.test(l.description||''))
+    let totQ=0;lightLines.forEach(l=>{totQ+=Math.max(+l.quantity||0,1)})
+    lightCount=totQ
+    if(lightLines.length)lightSource='Based on '+lightLines.length+' billed line'+(lightLines.length>1?'s':'')
+  }
+
+  return {
+    systems:Array.from(systems.values()),
+    extinguishers:{count:extCount,source:extSource},
+    emergency_lights:{count:lightCount,source:lightSource},
+    reportCount:reports.length,
+    invoiceLineCount:lines.length
+  }
+}
+
+function buildDerivedEquipmentHtml(s,locId){
+  const hasAny=s.systems.length||s.extinguishers.count||s.emergency_lights.count
+  if(!hasAny){
+    return`<div class="ds"><div class="ds-t">Equipment at this site</div>
+      <div class="ds-info" style="font-size:12px;color:var(--g2);line-height:1.55">
+        No equipment found yet. Inventory is computed automatically once this location has an inspection report or billed line items.
+      </div>
+    </div>`
+  }
+  const icon=t=>t==='kitchen_suppression'?'🔥':t==='dry_chemical'?'🏭':t==='clean_agent'?'💨':'🧯'
+  const typeLabel=t=>t==='kitchen_suppression'?'Kitchen Hood Suppression':t==='dry_chemical'?'Dry Chemical / Paint Booth':t==='clean_agent'?'Clean Agent':t
+  let h=`<div class="ds"><div class="ds-t" style="display:flex;justify-content:space-between;align-items:center">
+    <span>Equipment at this site</span>
+    <span style="font-size:9px;font-weight:800;color:var(--g2);letter-spacing:.5px">DERIVED</span>
+  </div>
+  <div style="font-size:11px;color:var(--g2);line-height:1.55;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--b1)">
+    Computed from ${s.reportCount} inspection report${s.reportCount!==1?'s':''} + ${s.invoiceLineCount} billed line${s.invoiceLineCount!==1?'s':''}. If a count looks off, fix it at the source (invoice or report) — it's not edited here.
+  </div>`
+
+  if(s.systems.length){
+    s.systems.forEach(sys=>{
+      const sub=[typeLabel(sys.type)]
+      if(sys.tankCount)sub.push(sys.tankCount+'T')
+      if(sys.nozzleCount)sub.push(sys.nozzleCount+' nozzles')
+      if(sys.fusibleLinks)sub.push(sys.fusibleLinks+' links')
+      if(sys.lastReport)sub.push('last inspected '+new Date(sys.lastReport).toLocaleDateString('en-US',{month:'short',year:'numeric'}))
+      else if(sys.source==='billed')sub.push('from billing — not yet inspected')
+      h+=`<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--b1)">
+        <span style="font-size:22px">${icon(sys.type)}</span>
+        <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--w)">${esc(sys.name)}</div>
+          <div style="font-size:10px;color:var(--g1)">${sub.join(' · ')}</div></div>
+      </div>`
+    })
+  }
+
+  if(s.extinguishers.count){
+    h+=`<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--b1)">
+      <span style="font-size:22px">🧯</span>
+      <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--w)">Portable Extinguishers · ${s.extinguishers.count}</div>
+        ${s.extinguishers.source?`<div style="font-size:10px;color:var(--g1)">${esc(s.extinguishers.source)}</div>`:''}
+      </div>
+    </div>`
+  }
+
+  if(s.emergency_lights.count){
+    h+=`<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--b1)">
+      <span style="font-size:22px">💡</span>
+      <div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--w)">Emergency Lights / Exit Signs · ${s.emergency_lights.count}</div>
+        ${s.emergency_lights.source?`<div style="font-size:10px;color:var(--g1)">${esc(s.emergency_lights.source)}</div>`:''}
+      </div>
+    </div>`
+  }
+
+  h+=`</div>`
+  return h
 }
 
 // EDIT CLIENT
@@ -4550,6 +4626,7 @@ async function openInvDetail(id){
         <input id="det-email-to" type="email" placeholder="${esc(locEmail||'Customer email')}" value="${esc(locEmail||'')}" style="flex:1;min-height:44px;font-size:13px;background:var(--c1);color:var(--w);border:1.5px solid var(--b1);border-radius:var(--rs);padding:0 12px">
         <button id="det-send-btn" style="background:var(--info);color:#fff;padding:0 16px;border-radius:var(--rs);font-size:13px;font-weight:800;min-height:44px;white-space:nowrap;flex-shrink:0" onclick="sendInvEmail('${id}')">✉️ Send</button>
       </div>
+      <button style="margin-top:4px;width:100%;min-height:52px;background:linear-gradient(135deg,var(--fire),#ff8c3a);color:#fff;border:none;border-radius:var(--r);font-size:15px;font-weight:900;letter-spacing:.5px;box-shadow:0 4px 14px rgba(240,90,40,.35);cursor:pointer" onclick="startCustomerKiosk('${id}')">🤝 Hand to Customer</button>
       <div id="det-email-status" style="font-size:12px;color:var(--g1);text-align:center;min-height:16px"></div>
       <button class="btn-dim" style="margin-top:4px" onclick="pop()">← Back</button>
     </div></div>`
@@ -4797,11 +4874,19 @@ async function markUnpaid(id){
 const MAZON_CONST={
   LEGAL_NAME:'Mazon Associates, Inc.',
   REMIT_ADDRESS:'P.O. Box 166858, Irving, TX 75016-6858',
-  PHONE:'(972) 554-6967',
+  REMIT_ADDR_LINES:['Mazon Associates, Inc.','P.O. Box 166858','Irving, TX 75016-6858'],
+  PHONE:'972-554-6967',
+  FAX:'972-554-0951',
   CLIENT_NUMBER:'1410',
   BATCH_THRESHOLD:1000.00,
   SAME_DAY_CUTOFF:'10:00 AM CT',
-  ASSIGNMENT_LANG:`By signing below, I authorize Stephens Advanced LLC to assign this invoice to Mazon Associates, Inc. for factoring. I agree to remit payment for this invoice directly to Mazon Associates, Inc. at the address shown on the invoice. I acknowledge that Stephens Advanced LLC has performed the services described in this invoice to my satisfaction.`
+  BANK_NAME:'Frost Bank',
+  BANK_ABA:'114000093',
+  BANK_ACCOUNT:'980003506',
+  BANK_BENEFICIARY:'Mazon Associates, Inc.',
+  ASSIGNMENT_LANG:`By signing below, I authorize Stephens Advanced LLC to assign this invoice to Mazon Associates, Inc. for factoring. I agree to remit payment for this invoice directly to Mazon Associates, Inc. at the address shown on the invoice. I acknowledge that Stephens Advanced LLC has performed the services described in this invoice to my satisfaction.`,
+  STAMP_NOTICE_TITLE:'PLEASE NOTE',
+  STAMP_NOTICE_BODY:'The right to payment under this invoice has been sold and assigned to Mazon Associates, Inc., and all payments hereunder are to be directed to the assignee at the address noted below. Remittance to other than Mazon does not constitute payment of this invoice. Mazon must be given notification of any claims, agreements or merchandise returns which would affect the payment of all or part of this invoice on the due date.'
 }
 
 // Entry point — invoked from invoice detail "Mazon" button.
@@ -4942,28 +5027,62 @@ async function submitMazon(invId,custName,total){
 
     audit('factored','invoice',invId,'jon',{queue_id:data.queue_id,amount:+total||0},'Invoice queued for Mazon — '+(name||custName))
 
-    // Email the stamped invoice to the customer
+    // Email the stamped invoice to the customer — PDF attached, official Mazon language
     try{
       const inv=D.invs.find(x=>x.id===invId)||{}
       const loc=D.locs.find(x=>x.id===inv.location_id)||{}
       const email=loc.contact_email
       if(email){
+        // Fetch the stamped PDF bytes so we can attach (not just link)
+        let pdfB64=null
+        try{
+          const pdfRes=await fetch(data.invoice_url)
+          if(pdfRes.ok){
+            const buf=await pdfRes.arrayBuffer()
+            // base64-encode in chunks so we don't blow the stack on large PDFs
+            const bytes=new Uint8Array(buf)
+            let bin=''
+            const chunk=0x8000
+            for(let i=0;i<bytes.length;i+=chunk)bin+=String.fromCharCode.apply(null,bytes.subarray(i,i+chunk))
+            pdfB64=btoa(bin)
+          }
+        }catch(pe){console.error('pdf fetch for attach:',pe)}
+
+        const invNum=inv.invoice_number||''
         await fetch('/api/send-email',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
           to:email,
-          subject:`Your invoice ${inv.invoice_number||''} from Stephens Advanced — remit to ${MAZON_CONST.LEGAL_NAME}`,
+          subject:`Stephens Advanced invoice ${invNum} — remit payment to Mazon Associates, Inc.`,
           html:`<div style="font-family:Arial,sans-serif;font-size:14px;color:#222;max-width:600px;line-height:1.6">
             <p>Hi ${esc(name||custName)},</p>
-            <p>Thanks for your business. Your invoice <b>${esc(inv.invoice_number||'')}</b> is attached.</p>
-            <p style="background:#fff7e6;border-left:4px solid #c94c1a;padding:12px 14px;margin:16px 0">
-              <b>Please remit payment to:</b><br>
-              ${esc(MAZON_CONST.LEGAL_NAME)}<br>
-              ${esc(MAZON_CONST.REMIT_ADDRESS)}<br>
-              Questions: ${esc(MAZON_CONST.PHONE)}
+            <p>Thanks for your business. Your invoice <b>${esc(invNum)}</b> is attached.</p>
+            <p style="background:#fafafa;border:1px solid #ddd;padding:14px 16px;margin:16px 0;font-size:13px;line-height:1.55">
+              <b>PLEASE NOTE</b><br>
+              The right to payment under this invoice has been sold and assigned to Mazon Associates, Inc., and all payments hereunder are to be directed to the assignee at the address noted below. Remittance to other than Mazon does not constitute payment of this invoice. Mazon must be given notification of any claims, agreements or merchandise returns which would affect the payment of all or part of this invoice on the due date.
             </p>
-            <p>A link to your stamped invoice: <a href="${data.invoice_url}">View invoice PDF</a></p>
+            <table cellpadding="0" cellspacing="0" style="width:100%;margin:16px 0;border-collapse:collapse">
+              <tr>
+                <td style="width:50%;vertical-align:top;padding:12px 14px;background:#fff;border:1px solid #ddd;font-size:13px;line-height:1.55">
+                  <b>If payment by regular mail:</b><br>
+                  Mazon Associates, Inc.<br>
+                  P.O. Box 166858<br>
+                  Irving, TX 75016-6858<br>
+                  972-554-6967, Fax 972-554-0951
+                </td>
+                <td style="width:50%;vertical-align:top;padding:12px 14px;background:#fff;border:1px solid #ddd;border-left:none;font-size:13px;line-height:1.55">
+                  <b>If payment by electronic transfer:</b><br>
+                  Bank: Frost Bank<br>
+                  ABA No: 114000093<br>
+                  Beneficiary: Mazon Associates, Inc.<br>
+                  Account No: 980003506
+                </td>
+              </tr>
+            </table>
+            <p style="font-size:13px;color:#555">Questions about payment: call Mazon at 972-554-6967.<br>
+            Questions about service: reply to this email or call (214) 994-4799.</p>
             <p>— Jonathan Stephens<br>Stephens Advanced LLC</p>
           </div>`,
-          invoiceNumber:inv.invoice_number
+          invoiceNumber:invNum,
+          attachments:pdfB64?[{filename:`invoice_${invNum||invId}.pdf`,content:pdfB64}]:undefined
         })})
       }
     }catch(e){console.error('customer email:',e)}
@@ -5245,27 +5364,30 @@ function rCust(){
 }
 function cHtml(ls){
   if(!ls.length)return`<div class="ey"><div class="ey-i">👤</div><div class="ey-t">No clients yet. Tap + Add to create one.</div></div>`
-  // Slim projection surfaces counts via ext_count[0].count / sys_count[0].count.
-  // After ensureLocationDetail runs for a location, the real arrays are also present.
-  const extN=l=>Array.isArray(l.extinguishers)?l.extinguishers.length:(l.ext_count?.[0]?.count||0)
-  const sysN=l=>Array.isArray(l.suppression_systems)?l.suppression_systems.length:(l.sys_count?.[0]?.count||0)
-  const elN=l=>{
-    if(Array.isArray(l.emergency_lights)&&l.emergency_lights[0]?.fixture_count)return l.emergency_lights[0].fixture_count
-    if(Array.isArray(l.el_info)&&l.el_info[0]?.fixture_count)return l.el_info[0].fixture_count
-    return 0
-  }
-  return ls.map(l=>`<div class="cc" onclick="openCust('${l.id}')">
-    <div class="cc-l">
-      <div class="cc-nm">${esc(l.name)}</div>
-      <div class="cc-addr">${esc([l.address,l.city].filter(Boolean).join(', '))||'No address'}</div>
-      <div class="cc-meta">
-        <span><b>${extN(l)}</b> ext</span>
-        <span><b>${sysN(l)}</b> sys</span>
-        ${elN(l)?`<span><b>${elN(l)}</b> lights</span>`:''}
-        ${l.is_brycer_jurisdiction?'<span class="cc-bry">BRYCER</span>':''}
-      </div>
-    </div><div class="cc-arr">›</div>
-  </div>`).join('')
+  // Derived stats — no manual equipment table to read. Count each location's
+  // completed jobs and open invoices; show the last service date.
+  return ls.map(l=>{
+    const jobs=(D.jobs||[]).filter(j=>(j.location_id||j.location?.id)===l.id)
+    const done=jobs.filter(j=>j.status==='completed')
+    const last=done.map(j=>j.completed_at||j.scheduled_date).filter(Boolean).sort().pop()
+    const unpaid=(D.invs||[]).filter(i=>i.location_id===l.id&&!['paid','void','record'].includes(i.status))
+    const unpaidTot=unpaid.reduce((s,i)=>s+(+i.total||0),0)
+    const scopes=new Set()
+    done.forEach(j=>(j.scope||[]).forEach(s=>scopes.add(s)))
+    const scopeBadges=[...scopes].slice(0,3).map(s=>`<span class="cc-tag">${esc(s)}</span>`).join('')
+    return `<div class="cc" onclick="openCust('${l.id}')">
+      <div class="cc-l">
+        <div class="cc-nm">${esc(l.name)}</div>
+        <div class="cc-addr">${esc([l.address,l.city].filter(Boolean).join(', '))||'No address'}</div>
+        <div class="cc-meta">
+          ${last?`<span>Last svc <b>${last.slice(0,10)}</b></span>`:'<span style="color:#888">No service yet</span>'}
+          ${scopeBadges}
+          ${unpaid.length?`<span class="cc-owe"><b>${fmtD(unpaidTot)}</b> owed</span>`:''}
+          ${l.is_brycer_jurisdiction?'<span class="cc-bry">BRYCER</span>':''}
+        </div>
+      </div><div class="cc-arr">›</div>
+    </div>`
+  }).join('')
 }
 function fC(q){$('cL').innerHTML=cHtml(D.locs.filter(l=>l.name.toLowerCase().includes(q.toLowerCase())||(l.city||'').toLowerCase().includes(q.toLowerCase())||(l.address||'').toLowerCase().includes(q.toLowerCase())))}
 
@@ -5534,7 +5656,7 @@ function showRecNewCust(name){
         <div style="font-size:12px;font-weight:700;color:var(--w);margin-bottom:8px">Does a parent company handle billing?</div>
         <div style="display:flex;gap:6px">
           <button style="flex:1;padding:8px;border-radius:var(--rs);background:var(--info);color:#fff;font-size:12px;font-weight:800;border:none;cursor:pointer" onclick="showParentBilling('rec')">Yes — Select Parent</button>
-          <button style="flex:1;padding:8px;border-radius:var(--rs);background:var(--c2);color:var(--g1);font-size:12px;font-weight:700;border:1px solid var(--b1);cursor:pointer" onclick="this.parentElement.parentElement.style.display='none'">No — Bills Independently</button>
+          <button style="flex:1;padding:8px;border-radius:var(--rs);background:var(--c2);color:var(--g1);font-size:12px;font-weight:700;border:1px solid var(--b1);cursor:pointer" onclick="_parentBillingId=null;this.parentElement.parentElement.style.display='none'">No — Bills Independently</button>
         </div>
       </div>
     `:''}
@@ -5880,7 +6002,7 @@ function showAiNewCust(name){
         <div style="font-size:12px;font-weight:700;color:var(--w);margin-bottom:8px">Does a parent company handle billing?</div>
         <div style="display:flex;gap:6px">
           <button style="flex:1;padding:8px;border-radius:var(--rs);background:var(--info);color:#fff;font-size:12px;font-weight:800;border:none;cursor:pointer" onclick="showParentBilling('ai')">Yes — Select Parent</button>
-          <button style="flex:1;padding:8px;border-radius:var(--rs);background:var(--c2);color:var(--g1);font-size:12px;font-weight:700;border:1px solid var(--b1);cursor:pointer" onclick="this.parentElement.parentElement.style.display='none'">No — Bills Independently</button>
+          <button style="flex:1;padding:8px;border-radius:var(--rs);background:var(--c2);color:var(--g1);font-size:12px;font-weight:700;border:1px solid var(--b1);cursor:pointer" onclick="_parentBillingId=null;this.parentElement.parentElement.style.display='none'">No — Bills Independently</button>
         </div>
       </div>
     `:''}
@@ -5956,6 +6078,32 @@ async function createParentBilling(name,ctx){
     <div class="err" id="par-err"></div>
   </div>`
   push(h2)
+}
+
+// Resolve _parentBillingId ('ba-<id>' | 'loc-<id>' | null) to a real billing_account_id.
+// If the user picked a sibling location that has no billing_account, promote it: create
+// a billing_accounts row from that location's data and link the location to it.
+async function _resolveParentBillingToBaId(){
+  const ref=_parentBillingId
+  if(!ref)return null
+  if(ref.startsWith('ba-'))return ref.slice(3)
+  if(ref.startsWith('loc-')){
+    const siblingId=ref.slice(4)
+    const sibling=D.locs.find(x=>x.id===siblingId)
+    if(!sibling)return null
+    if(sibling.billing_account_id)return sibling.billing_account_id
+    // promote sibling to its own billing_account
+    const{data:ba,error}=await SB.from('billing_accounts').insert({
+      name:sibling.name,contact_name:sibling.contact_name||null,
+      phone:sibling.contact_phone||null,email:sibling.contact_email||null,
+      address:sibling.address||null,city:sibling.city||null,
+      state:sibling.state||null,zip:sibling.zip||null
+    }).select().single()
+    if(error||!ba){console.error('promote sibling BA:',error);return null}
+    await SB.from('locations').update({billing_account_id:ba.id}).eq('id',siblingId)
+    return ba.id
+  }
+  return null
 }
 
 async function saveParentBilling(ctx){
@@ -6144,7 +6292,7 @@ async function saveRecordInvoice(){
     const nm=$('ai-nc-name')?.value?.trim()
     if(!nm){toast('Select a customer',false);resetBtn();return}
     const city=$('ai-nc-city')?.value?.trim()||''
-    const baId2=_parentBillingId?.startsWith('ba-')?_parentBillingId.slice(3):null
+    const baId2=await _resolveParentBillingToBaId()
     const{data:newLoc,error}=await SB.from('locations').insert({
       name:nm,address:$('ai-nc-addr')?.value?.trim()||null,city:city||null,
       state:$('ai-nc-st')?.value?.trim()||'TX',zip:$('ai-nc-zip')?.value?.trim()||null,
@@ -6287,7 +6435,7 @@ async function saveAIInv(ro){
     const nm=$('ai-nc-name')?.value?.trim()
     if(!nm){toast('Select or confirm a customer',false);setLoad('aiSaveBtn',false,'Save Invoice');return}
     const city=$('ai-nc-city')?.value?.trim()||''
-    const baId=_parentBillingId?.startsWith('ba-')?_parentBillingId.slice(3):null
+    const baId=await _resolveParentBillingToBaId()
     const{data:newLoc,error}=await SB.from('locations').insert({
       name:nm,address:$('ai-nc-addr')?.value?.trim()||null,city:city||null,
       state:$('ai-nc-st')?.value?.trim()||'TX',zip:$('ai-nc-zip')?.value?.trim()||null,
@@ -6801,6 +6949,362 @@ async function _confirmSendEmail(){
   }
 }
 
+// ═══════════════════════════════════════════════════════════════
+// CUSTOMER KIOSK — hand-to-customer flow
+// Intro pitch → card-on-file pitch → sign → pay → thank-you
+// ═══════════════════════════════════════════════════════════════
+async function startCustomerKiosk(invId){
+  const{data:invFresh}=await SB.from('invoices').select('*').eq('id',invId).single()
+  const inv=invFresh||D.invs.find(x=>x.id===invId)||{}
+  if(!inv.id){toast('Invoice not found',false);return}
+  const{data:lines}=await SB.from('invoice_lines').select('*').eq('invoice_id',invId).is('deleted_at',null).order('sort_order')
+  const ls=lines||[]
+  const total=ls.reduce((s,l)=>s+(+l.total||0),0)||+inv.total||0
+  const loc=D.locs.find(x=>x.id===inv.location_id)||{}
+  let ba=null
+  if(loc.billing_account_id){
+    ba=(D.bas||[]).find(b=>b.id===loc.billing_account_id)
+    if(!ba){const{data:baRow}=await SB.from('billing_accounts').select('*').eq('id',loc.billing_account_id).maybeSingle();ba=baRow||null}
+  }
+  let rpts=[]
+  if(inv.job_id){
+    const{data:r}=await SB.from('reports').select('id,report_type,report_data,created_at').eq('job_id',inv.job_id).order('created_at')
+    rpts=r||[]
+  }
+  const atts=await loadInvoiceAttachments(invId)
+  window._kiosk={invId,inv,ls,total,loc,ba,rpts,atts,custName:loc.name||ba?.name||'',invNum:inv.invoice_number||'',sigData:'',step:1}
+  kioskRenderStep1()
+}
+
+function _kioskShell(title,body,step,totalSteps){
+  const dots=Array.from({length:totalSteps},(_,i)=>`<div style="width:8px;height:8px;border-radius:50%;background:${i<step?'var(--fire)':'rgba(255,255,255,.15)'}"></div>`).join('')
+  return`<div class="ov-hdr" style="background:linear-gradient(135deg,var(--c2),var(--c1));border-bottom:1px solid var(--b1)">
+    <button class="ov-back" onclick="if(confirm('Exit customer hand-off?'))pop()">✕</button>
+    <div class="ov-title" style="flex:1;text-align:center">${esc(title)}</div>
+    <div style="display:flex;gap:5px;padding-right:8px">${dots}</div>
+  </div>
+  <div class="ov-body" style="padding:20px 18px 24px">${body}</div>`
+}
+
+function kioskRenderStep1(){
+  const d=window._kiosk;if(!d)return
+  const custLine=d.custName?`<div style="font-size:15px;font-weight:700;color:var(--w);margin-bottom:2px">${esc(d.custName)}</div>`:''
+  const addr=[d.loc.address,d.loc.city,d.loc.state,d.loc.zip].filter(Boolean).join(', ')
+  const addrLine=addr?`<div style="font-size:12px;color:var(--g1)">${esc(addr)}</div>`:''
+  const rptLines=d.rpts.map(r=>{
+    const icon=r.report_type==='extinguisher'?'🧯':r.report_type==='dry_chemical'?'🏭':r.report_type==='clean_agent'?'💨':'🔥'
+    const name=r.report_type==='extinguisher'?'Extinguisher Inspection Report':r.report_type==='dry_chemical'?'Dry Chemical / Paint Booth Report':r.report_type==='clean_agent'?'Clean Agent Report':'Kitchen Hood Suppression Report'
+    return`<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--b1)"><span style="font-size:20px">${icon}</span><div style="flex:1;font-size:13px;font-weight:600;color:var(--w)">${name}</div><span style="font-size:10px;font-weight:800;color:var(--ok)">PDF</span></div>`
+  }).join('')
+  const docLines=d.atts.map(a=>`<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--b1)"><span style="font-size:20px">📎</span><div style="flex:1;font-size:13px;font-weight:600;color:var(--w)">${esc(a.file_name||'Document')}</div></div>`).join('')
+  const body=`
+    <div style="text-align:center;margin-bottom:20px">
+      <div style="font-size:13px;font-weight:700;color:var(--g1);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:6px">Thank you for choosing</div>
+      <div style="font-size:22px;font-weight:900;color:var(--fire);letter-spacing:.3px">Stephens Advanced LLC</div>
+      <div style="font-size:11px;color:var(--g2);margin-top:4px">Fire Protection · Since we got here today</div>
+    </div>
+    <div style="background:linear-gradient(135deg,var(--c2),rgba(240,90,40,.06));border:1.5px solid var(--fire);border-radius:var(--r);padding:20px;margin-bottom:18px;text-align:center">
+      <div style="font-size:10px;font-weight:800;color:var(--g1);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:6px">Today's Invoice</div>
+      <div style="font-size:36px;font-weight:900;color:var(--fire);font-variant-numeric:tabular-nums;margin-bottom:8px">$${d.total.toFixed(2)}</div>
+      ${custLine}${addrLine}
+      <div style="font-size:11px;color:var(--g1);margin-top:8px">Invoice ${esc(d.invNum)}</div>
+    </div>
+    <div style="background:var(--c2);border-radius:var(--r);padding:14px 16px;margin-bottom:14px">
+      <div style="font-size:10px;font-weight:800;color:var(--g1);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px">Work Completed</div>
+      ${d.ls.map(l=>`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--b1);font-size:13px"><div style="flex:1;color:var(--w);padding-right:10px">${esc(l.description||'')}</div><div style="color:var(--ok);font-weight:700;white-space:nowrap">$${(+l.total).toFixed(2)}</div></div>`).join('')}
+    </div>
+    ${d.rpts.length?`<div style="background:var(--c2);border-radius:var(--r);padding:14px 16px;margin-bottom:14px">
+      <div style="font-size:10px;font-weight:800;color:var(--g1);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:4px">Reports You'll Receive · ${d.rpts.length}</div>
+      ${rptLines}
+    </div>`:''}
+    ${d.atts.length?`<div style="background:var(--c2);border-radius:var(--r);padding:14px 16px;margin-bottom:14px">
+      <div style="font-size:10px;font-weight:800;color:var(--g1);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:4px">Attached Documents · ${d.atts.length}</div>
+      ${docLines}
+    </div>`:''}
+    <div style="background:rgba(99,102,241,.08);border:1px solid var(--info);border-radius:var(--r);padding:14px 16px;margin-bottom:20px">
+      <div style="font-size:13px;font-weight:800;color:var(--info);margin-bottom:4px">Next: sign & pay</div>
+      <div style="font-size:12px;color:var(--g1);line-height:1.5">You'll sign to acknowledge the work, then pick how you'd like to pay. Everything gets emailed to you on the spot.</div>
+    </div>
+    <button style="width:100%;min-height:58px;background:var(--fire);color:#fff;border:none;border-radius:var(--r);font-size:16px;font-weight:900;letter-spacing:.5px;box-shadow:0 4px 14px rgba(240,90,40,.35);cursor:pointer" onclick="kioskGotoStep2()">Continue →</button>
+  `
+  const html=_kioskShell('Invoice Review',body,1,4)
+  if(d.step===1){push(html)}else{
+    const slot=stk[stk.length-1];if(slot){const el=document.getElementById(slot);if(el)el.innerHTML=html}
+  }
+  d.step=1
+}
+
+function kioskGotoStep2(){
+  const d=window._kiosk;if(!d)return
+  const hasCard=!!(d.ba?.card_on_file)
+  const brand=esc(d.ba?.card_brand||'Card')
+  const last4=esc(d.ba?.card_last4||'****')
+  const body=hasCard?`
+    <div style="text-align:center;margin-bottom:20px">
+      <div style="font-size:28px;margin-bottom:10px">💳</div>
+      <div style="font-size:20px;font-weight:900;color:var(--w);margin-bottom:6px">Card on File Confirmed</div>
+      <div style="font-size:13px;color:var(--g1);line-height:1.55">We have your ${brand} ending in ${last4} ready to go for today's invoice and any future work.</div>
+    </div>
+    <div style="background:rgba(16,185,129,.08);border:1.5px solid var(--ok);border-radius:var(--r);padding:16px 18px;margin-bottom:18px">
+      <div style="font-size:11px;font-weight:800;color:var(--ok);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px">Why you're set up for success</div>
+      <div style="font-size:13px;color:var(--w);line-height:1.7">
+        ⚡ Priority scheduling during busy season<br>
+        🔔 Automatic annual inspection reminders<br>
+        📋 No chasing invoices or checks<br>
+        🎯 Prompt-pay discount applied automatically
+      </div>
+    </div>
+    <button style="width:100%;min-height:58px;background:var(--fire);color:#fff;border:none;border-radius:var(--r);font-size:16px;font-weight:900;cursor:pointer;margin-bottom:10px" onclick="kioskGotoStep3()">Continue to Signature →</button>
+    <button style="width:100%;min-height:44px;background:transparent;color:var(--g1);border:none;font-size:12px;cursor:pointer" onclick="kioskRenderStep1()">← Back</button>
+  `:`
+    <div style="text-align:center;margin-bottom:20px">
+      <div style="font-size:28px;margin-bottom:10px">💳</div>
+      <div style="font-size:20px;font-weight:900;color:var(--w);margin-bottom:6px">Keep a Card on File?</div>
+      <div style="font-size:13px;color:var(--g1);line-height:1.55">Optional — makes future visits faster and gets you on our priority list.</div>
+    </div>
+    <div style="background:linear-gradient(135deg,var(--c2),rgba(240,90,40,.04));border:1.5px solid var(--fire);border-radius:var(--r);padding:18px;margin-bottom:18px">
+      <div style="font-size:11px;font-weight:800;color:var(--fire);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:12px">What you get</div>
+      <div style="font-size:13px;color:var(--w);line-height:1.9">
+        <div style="display:flex;gap:10px;align-items:flex-start"><span style="font-size:18px;line-height:1">⚡</span><div><b>Priority scheduling</b> — booked ahead of non-file customers during busy season</div></div>
+        <div style="display:flex;gap:10px;align-items:flex-start;margin-top:10px"><span style="font-size:18px;line-height:1">🔔</span><div><b>Automatic reminders</b> — never miss an annual inspection or permit deadline</div></div>
+        <div style="display:flex;gap:10px;align-items:flex-start;margin-top:10px"><span style="font-size:18px;line-height:1">📋</span><div><b>No chasing invoices</b> — we run the card after the work is done, no checks to write</div></div>
+        <div style="display:flex;gap:10px;align-items:flex-start;margin-top:10px"><span style="font-size:18px;line-height:1">🎯</span><div><b>Auto prompt-pay discount</b> — 10% off when you're paid within 24 hours, applied for you</div></div>
+        <div style="display:flex;gap:10px;align-items:flex-start;margin-top:10px"><span style="font-size:18px;line-height:1">🔒</span><div><b>Secure storage</b> — card is tokenized through Square, we never see or store the number</div></div>
+      </div>
+    </div>
+    <button style="width:100%;min-height:58px;background:var(--fire);color:#fff;border:none;border-radius:var(--r);font-size:16px;font-weight:900;cursor:pointer;margin-bottom:8px" onclick="kioskGotoStep3()">Continue to Signature →</button>
+    <div style="font-size:11px;color:var(--g2);text-align:center">You can add a card at the payment step — no pressure either way.</div>
+  `
+  const html=_kioskShell('Card on File',body,2,4)
+  const slot=stk[stk.length-1];if(slot){const el=document.getElementById(slot);if(el)el.innerHTML=html}
+  d.step=2
+}
+
+function kioskGotoStep3(){
+  const d=window._kiosk;if(!d)return
+  const body=`
+    <div style="text-align:center;margin-bottom:16px">
+      <div style="font-size:20px;font-weight:900;color:var(--w);margin-bottom:6px">Acknowledge the Work</div>
+      <div style="font-size:12px;color:var(--g1);line-height:1.55">By signing you're confirming the work described was performed to your satisfaction. Your signature covers the invoice and every attached report.</div>
+    </div>
+    <div style="background:var(--c2);border:1.5px solid var(--b1);border-radius:var(--r);padding:14px;margin-bottom:16px">
+      <div style="font-size:11px;font-weight:800;color:var(--g1);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px">Please sign below</div>
+      <div class="sig-wrap" id="kiosk-sig-wrap" style="min-height:180px"><canvas id="kioskSig"></canvas><div class="sig-ph" id="kioskSigPh">Sign here</div><button class="sig-clr" onclick="kioskClrSig()">Clear</button></div>
+      <div style="font-size:10px;color:var(--g2);margin-top:8px;text-align:center">Customer signature · ${esc(d.custName||'')}</div>
+    </div>
+    <button id="kioskSignContinue" style="width:100%;min-height:58px;background:var(--fire);color:#fff;border:none;border-radius:var(--r);font-size:16px;font-weight:900;cursor:pointer;margin-bottom:10px;opacity:.45" onclick="kioskGotoStep4()">Continue to Payment →</button>
+    <button style="width:100%;min-height:44px;background:transparent;color:var(--g1);border:none;font-size:12px;cursor:pointer" onclick="kioskGotoStep2()">← Back</button>
+  `
+  const html=_kioskShell('Signature',body,3,4)
+  const slot=stk[stk.length-1];if(slot){const el=document.getElementById(slot);if(el)el.innerHTML=html}
+  d.step=3
+  setTimeout(()=>{
+    initRptSig('kiosk','kioskSig','kioskSigPh')
+    const cv=$('kioskSig');if(cv){cv.addEventListener('pointerup',()=>{const btn=$('kioskSignContinue');if(btn)btn.style.opacity='1'})}
+  },400)
+}
+function kioskClrSig(){const ph=$('kioskSigPh');if(ph)ph.style.display='flex';const cv=$('kioskSig');if(cv){const ctx=cv.getContext('2d');ctx.clearRect(0,0,cv.width,cv.height)}const btn=$('kioskSignContinue');if(btn)btn.style.opacity='.45'}
+
+function kioskGotoStep4(){
+  const d=window._kiosk;if(!d)return
+  const cv=$('kioskSig')
+  if(cv&&cv.width>0){
+    try{
+      const w=cv.width,h=cv.height
+      const tmp=document.createElement('canvas');tmp.width=w;tmp.height=h
+      const tctx=tmp.getContext('2d');tctx.fillStyle='#ffffff';tctx.fillRect(0,0,w,h);tctx.drawImage(cv,0,0)
+      d.sigData=tmp.toDataURL('image/jpeg',0.7)||''
+    }catch(e){console.error('kiosk sig capture:',e)}
+  }
+  if(!d.sigData||d.sigData.length<200){toast('Please sign to continue',false);return}
+  const hasCard=!!(d.ba?.card_on_file)
+  const brand=esc(d.ba?.card_brand||'Card')
+  const last4=esc(d.ba?.card_last4||'****')
+  const body=`
+    <div style="text-align:center;margin-bottom:16px">
+      <div style="font-size:10px;font-weight:800;color:var(--g1);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:4px">Balance Due</div>
+      <div style="font-size:38px;font-weight:900;color:var(--fire);font-variant-numeric:tabular-nums">$${d.total.toFixed(2)}</div>
+    </div>
+    <div style="font-size:10px;font-weight:800;color:var(--g2);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px;text-align:center">How would you like to pay?</div>
+    ${hasCard?`<button style="width:100%;min-height:64px;margin-bottom:10px;background:linear-gradient(135deg,var(--ok),#0ea86a);color:#fff;border:none;border-radius:var(--r);font-size:15px;font-weight:900;cursor:pointer;box-shadow:0 4px 14px rgba(16,185,129,.35)" onclick="kioskPayCardOnFile()">💳 Charge ${brand} ····${last4}<div style="font-size:11px;font-weight:600;opacity:.9;margin-top:2px">Fastest · auto 10% prompt-pay discount</div></button>`:''}
+    <button style="width:100%;min-height:64px;margin-bottom:10px;background:var(--c2);color:var(--w);border:1.5px solid var(--fire);border-radius:var(--r);font-size:15px;font-weight:800;cursor:pointer" onclick="kioskPayNewCard()">📱 Pay with Card / Apple Pay / Google Pay<div style="font-size:11px;font-weight:500;color:var(--g1);margin-top:2px">${hasCard?'Use a different card':'Securely save this card for next time (optional)'}</div></button>
+    <button style="width:100%;min-height:52px;margin-bottom:8px;background:var(--c2);color:var(--w);border:1.5px solid var(--b1);border-radius:var(--r);font-size:14px;font-weight:700;cursor:pointer" onclick="kioskPayOffline('check')">✓ Paying by Check</button>
+    <button style="width:100%;min-height:52px;margin-bottom:8px;background:var(--c2);color:var(--w);border:1.5px solid var(--b1);border-radius:var(--r);font-size:14px;font-weight:700;cursor:pointer" onclick="kioskPayOffline('cash')">💵 Paying Cash</button>
+    <button style="width:100%;min-height:52px;margin-bottom:16px;background:var(--c2);color:var(--g1);border:1.5px dashed var(--b1);border-radius:var(--r);font-size:13px;font-weight:700;cursor:pointer" onclick="kioskPayOffline('later')">⏳ Pay Later (net-30 invoice by email)</button>
+    <button style="width:100%;min-height:44px;background:transparent;color:var(--g1);border:none;font-size:12px;cursor:pointer" onclick="kioskGotoStep3()">← Back to signature</button>
+  `
+  const html=_kioskShell('Payment',body,4,4)
+  const slot=stk[stk.length-1];if(slot){const el=document.getElementById(slot);if(el)el.innerHTML=html}
+  d.step=4
+}
+
+async function kioskSaveSignatureToJob(){
+  const d=window._kiosk;if(!d||!d.sigData||!d.inv.job_id)return
+  try{await SB.from('jobs').update({signature_data:d.sigData}).eq('id',d.inv.job_id)}catch(e){console.error('kiosk sig save:',e)}
+}
+
+async function kioskPayCardOnFile(){
+  const d=window._kiosk;if(!d)return
+  await kioskSaveSignatureToJob()
+  kioskShowLoading('Charging card…')
+  try{
+    const res=await fetch('/api/square',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:'charge_card',customerId:d.ba.square_customer_id,cardId:d.ba.square_card_id,amount:d.total,invoiceId:d.invId,invoiceNumber:d.invNum})
+    })
+    const j=await res.json()
+    if(!j.success)throw new Error(j.error||'Charge failed')
+    await SB.from('invoices').update({status:'paid',payment_method:'card',paid_at:new Date().toISOString(),payment_note:'Card on file — charged at kiosk'}).eq('id',d.invId)
+    audit('paid','invoice',d.invId,'jon',{method:'card_on_file'},'Paid at kiosk via card on file')
+    await kioskEmailInvoice(true)
+    kioskShowThankYou('paid','Paid with '+(d.ba.card_brand||'card')+' ····'+(d.ba.card_last4||''))
+  }catch(e){
+    console.error('kiosk charge:',e)
+    kioskShowError('Charge failed: '+e.message,()=>kioskGotoStep4())
+  }
+}
+
+async function kioskPayNewCard(){
+  const d=window._kiosk;if(!d)return
+  await kioskSaveSignatureToJob()
+  kioskShowLoading('Building secure payment link…')
+  try{
+    let customerId=d.ba?.square_customer_id||null
+    if(!customerId){
+      const cr=await fetch('/api/square',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({action:'create_or_find',name:d.custName,email:d.loc.contact_email||d.ba?.email||'',phone:d.loc.contact_phone||d.ba?.phone||'',locationId:d.loc.id})
+      })
+      const cj=await cr.json();if(cj.success)customerId=cj.customerId
+    }
+    const res=await fetch('/api/square',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:'checkout_and_save_card',customerId,amount:d.total,invoiceNumber:d.invNum,customerName:d.custName,invoiceId:d.invId,email:d.loc.contact_email||d.ba?.email||''})
+    })
+    const j=await res.json()
+    if(!j.success||!j.paymentLink)throw new Error(j.error||'Could not build link')
+    window.open(j.paymentLink,'_blank')
+    await kioskEmailInvoice(false)
+    kioskShowThankYou('link','Payment link opened — finish up in the browser tab, we also emailed it for your records.')
+  }catch(e){
+    console.error('kiosk new card:',e)
+    kioskShowError('Could not create payment link: '+e.message,()=>kioskGotoStep4())
+  }
+}
+
+async function kioskPayOffline(method){
+  const d=window._kiosk;if(!d)return
+  await kioskSaveSignatureToJob()
+  let note='',status=null
+  if(method==='check'){
+    const num=prompt('Check number (optional):')||''
+    status='paid';note='Check'+(num?' #'+num.trim():'')+' — collected at kiosk'
+  }else if(method==='cash'){
+    if(!confirm('Mark paid in full — cash?'))return
+    status='paid';note='Cash — collected at kiosk'
+  }else{
+    note='Customer chose pay-later at kiosk'
+  }
+  kioskShowLoading('Saving…')
+  try{
+    const upd=status?{status:'paid',payment_method:method,paid_at:new Date().toISOString(),payment_note:note}:{payment_note:note}
+    await SB.from('invoices').update(upd).eq('id',d.invId)
+    audit(status?'paid':'updated','invoice',d.invId,'jon',{method},note)
+    await kioskEmailInvoice(status==='paid')
+    const msg=method==='check'?'Marked paid — '+note:method==='cash'?'Marked paid — cash':'Invoice emailed — payment due by due date'
+    kioskShowThankYou(status||'pending',msg)
+  }catch(e){
+    console.error('kiosk offline:',e)
+    kioskShowError('Save failed: '+e.message,()=>kioskGotoStep4())
+  }
+}
+
+async function kioskEmailInvoice(paid){
+  const d=window._kiosk;if(!d)return
+  const to=d.loc.contact_email||d.ba?.email||''
+  if(!to)return
+  try{
+    let portalUrl='',payUrl=''
+    try{const pTk=await getOrCreatePortalToken(d.loc.id,d.loc.billing_account_id||null);if(pTk)portalUrl='https://stephensadvanced.com/portal?t='+pTk}catch(e){}
+    if(!paid){
+      try{
+        const payRes=await fetch('/api/create-payment-link',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({invoiceNumber:d.invNum,customerName:d.custName,amount:d.total,invoiceId:d.invId,customerEmail:to})})
+        const pj=await payRes.json();if(pj.success&&pj.paymentLink)payUrl=pj.paymentLink
+      }catch(e){}
+    }
+    const html=buildInvoiceEmailHtml({
+      invNum:d.invNum,custName:d.custName,
+      addr:[d.loc.address,d.loc.city,d.loc.state,d.loc.zip].filter(Boolean).join(', '),
+      date:d.inv.date?new Date(d.inv.date).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):'',
+      dueDate:d.inv.due_date?new Date(d.inv.due_date).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):'',
+      lines:d.ls,total:d.total,portalUrl,payUrl:paid?'':payUrl,
+      poNumber:d.inv.po_number||'',docs:d.atts,rpts:d.rpts
+    })
+    await fetch('/api/send-email',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({to,subject:`${paid?'Receipt':'Invoice'} ${d.invNum} — Stephens Advanced LLC`,html,invoiceNumber:d.invNum,customerName:d.custName})
+    })
+  }catch(e){console.error('kiosk email:',e)}
+}
+
+function kioskShowLoading(msg){
+  const body=`<div style="padding:60px 20px;text-align:center"><div class="spin" style="width:48px;height:48px;border-width:4px;margin:0 auto 20px"></div><div style="font-size:15px;font-weight:700;color:var(--w)">${esc(msg)}</div></div>`
+  const html=_kioskShell('Processing',body,4,4)
+  const slot=stk[stk.length-1];if(slot){const el=document.getElementById(slot);if(el)el.innerHTML=html}
+}
+
+function kioskShowError(msg,onRetry){
+  const body=`<div style="padding:40px 20px;text-align:center">
+    <div style="font-size:48px;margin-bottom:16px">⚠️</div>
+    <div style="font-size:16px;font-weight:800;color:var(--bad);margin-bottom:10px">Something went wrong</div>
+    <div style="font-size:13px;color:var(--g1);line-height:1.55;margin-bottom:24px">${esc(msg)}</div>
+    <button style="width:100%;min-height:54px;background:var(--fire);color:#fff;border:none;border-radius:var(--r);font-size:15px;font-weight:800;cursor:pointer" onclick="(${onRetry.toString()})()">← Try Another Payment Option</button>
+  </div>`
+  const html=_kioskShell('Error',body,4,4)
+  const slot=stk[stk.length-1];if(slot){const el=document.getElementById(slot);if(el)el.innerHTML=html}
+}
+
+function kioskShowThankYou(status,detail){
+  const d=window._kiosk;if(!d)return
+  const paid=status==='paid'
+  const icon=paid?'✅':status==='link'?'🔗':'📧'
+  const headline=paid?'Payment Received':status==='link'?'Almost Done':'Invoice Sent'
+  const body=`
+    <div style="text-align:center;padding:20px 0 24px">
+      <div style="font-size:64px;margin-bottom:12px">${icon}</div>
+      <div style="font-size:24px;font-weight:900;color:var(--w);margin-bottom:6px">${headline}</div>
+      <div style="font-size:13px;color:var(--g1);line-height:1.55;max-width:320px;margin:0 auto">${esc(detail||'')}</div>
+    </div>
+    <div style="background:var(--c2);border-radius:var(--r);padding:16px;margin-bottom:18px;text-align:center">
+      <div style="font-size:10px;font-weight:800;color:var(--g1);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:4px">Invoice</div>
+      <div style="font-size:18px;font-weight:800;color:var(--fire);margin-bottom:2px">${esc(d.invNum)}</div>
+      <div style="font-size:24px;font-weight:900;color:var(--w);font-variant-numeric:tabular-nums">$${d.total.toFixed(2)}</div>
+    </div>
+    <div style="background:rgba(99,102,241,.06);border:1px solid var(--info);border-radius:var(--r);padding:14px 16px;margin-bottom:20px">
+      <div style="font-size:12px;color:var(--w);line-height:1.6">📧 A copy of ${d.rpts.length?'your invoice and '+d.rpts.length+' report'+(d.rpts.length>1?'s':''):'your invoice'} has been emailed to <b>${esc(d.loc.contact_email||d.ba?.email||'your email on file')}</b>.</div>
+    </div>
+    <div style="text-align:center;margin:24px 0 16px">
+      <div style="font-size:15px;font-weight:700;color:var(--w);margin-bottom:4px">Thank you for trusting us with your fire protection.</div>
+      <div style="font-size:12px;color:var(--g1);line-height:1.55">Questions? Call (214) 994-4799 anytime.</div>
+    </div>
+    <button style="width:100%;min-height:54px;background:var(--fire);color:#fff;border:none;border-radius:var(--r);font-size:15px;font-weight:800;cursor:pointer" onclick="kioskFinish()">Hand Back to Technician</button>
+  `
+  const html=_kioskShell('Thank You',body,4,4)
+  const slot=stk[stk.length-1];if(slot){const el=document.getElementById(slot);if(el)el.innerHTML=html}
+}
+
+async function kioskFinish(){
+  const d=window._kiosk;if(!d){pop();return}
+  // close job if paid and job exists
+  try{
+    const{data:fresh}=await SB.from('invoices').select('status').eq('id',d.invId).maybeSingle()
+    if(fresh?.status==='paid'&&d.inv.job_id){
+      await SB.from('jobs').update({status:'completed',completed_at:new Date().toISOString()}).eq('id',d.inv.job_id)
+      try{await SB.from('calendar_events').update({color:'#9ca3af'}).eq('job_id',d.inv.job_id)}catch(e){}
+    }
+  }catch(e){console.error('kiosk finish:',e)}
+  await load()
+  window._kiosk=null
+  pop()
+}
+
 async function getOrCreatePortalToken(locId,baId){
   // check for existing token
   const col=baId?'billing_account_id':'location_id'
@@ -6965,8 +7469,8 @@ function buildInvoicePdfHtml({invNum,custName,addr,date,dueDate,lines,total,poNu
           <div style="font-size:12px;font-weight:700;color:#f05a28">stephensadvanced.com &nbsp;(card, Apple Pay, Google Pay)</div>
         </div>
         <div>
-          <div style="font-size:11px;color:#888;margin-bottom:2px">Mail check payable to <strong style="color:#333">Stephens Advanced LLC</strong>:</div>
-          <div style="font-size:12px;font-weight:700;color:#333">${REMIT}</div>
+          <div style="font-size:11px;color:#888;margin-bottom:2px">Check payable to <strong style="color:#333">Stephens Advanced LLC</strong>:</div>
+          <div style="font-size:12px;font-weight:700;color:#333">Call (214) 994-4799 to arrange pickup or mailing</div>
         </div>
       </div>
     </div>
@@ -7536,87 +8040,6 @@ async function delCust(id){
   popAll();rCust()
 }
 
-async function delExtinguisher(eid,locId){
-  try{await trash('extinguisher_results',{extinguisher_id:eid},'Extinguisher deleted — cascade','jon','app')}catch(e){}
-  const res=await trash('extinguishers',{id:eid},'Extinguisher deleted','jon','app')
-  if(res.error){toast('Error deleting extinguisher: '+res.error,false);return}
-  audit('deleted','extinguisher',eid,'jon',null,'Extinguisher soft-deleted — record preserved in trash')
-  await load()
-  toast('Extinguisher deleted')
-  const slot=stk[stk.length-1]
-  if(slot){
-    stk.pop()
-    document.getElementById(slot).classList.remove('open')
-    document.getElementById(slot).style.display='none'
-    document.getElementById(slot).innerHTML=''
-    setTimeout(()=>openCust(locId),50)
-  }
-}
-
-async function delSuppSystem(sid,locId){
-  try{await trash('suppression_results',{suppression_system_id:sid},'Suppression system deleted — cascade','jon','app')}catch(e){}
-  const res=await trash('suppression_systems',{id:sid},'Suppression system deleted','jon','app')
-  if(res.error){toast('Error deleting system: '+res.error,false);return}
-  audit('deleted','suppression_system',sid,'jon',null,'System soft-deleted — record preserved in trash')
-  await load()
-  toast('System deleted')
-  const slot=stk[stk.length-1]
-  if(slot){
-    stk.pop()
-    document.getElementById(slot).classList.remove('open')
-    document.getElementById(slot).style.display='none'
-    document.getElementById(slot).innerHTML=''
-    setTimeout(()=>openCust(locId),50)
-  }
-}
-
-// ADD EQUIPMENT
-function openAddEquip(locId){
-  push(`<div class="ov-hdr">
-    <button class="ov-back" onclick="pop()">‹</button>
-    <div class="ov-title">Add Equipment</div>
-  </div><div class="ov-body">
-    <div class="mode-card" onclick="pop();openAddExt('${locId}')"><div class="mode-icon">🧯</div><div><div class="mode-title">Extinguisher</div><div class="mode-desc">Add a portable fire extinguisher to this location.</div></div></div>
-    <div class="mode-card" onclick="pop();openAddSupp('${locId}')"><div class="mode-icon">🔧</div><div><div class="mode-title">Suppression System</div><div class="mode-desc">Add a kitchen or commercial suppression system.</div></div></div>
-    <div class="mode-card" onclick="pop();openAddELight('${locId}')"><div class="mode-icon">💡</div><div><div class="mode-title">Emergency Lighting</div><div class="mode-desc">Add emergency light fixtures.</div></div></div>
-  </div>`)
-}
-
-function openAddExt(locId){
-  push(`<div class="ov-hdr">
-    <button class="ov-back" onclick="pop()">‹</button>
-    <div class="ov-title">Add Extinguisher</div>
-    <button class="ov-act" id="saveExtBtn" onclick="saveExt('${locId}')">Save</button>
-  </div><div class="ov-body">
-    <div class="fg"><label class="fg-l">Type *</label>
-      <select id="ext-type" onchange="updateExtSizes()">
-        <option>ABC Dry Chemical</option>
-        <option>Class K</option>
-        <option>CO2</option>
-        <option>Water</option>
-        <option>Halotron</option>
-        <option>Halon</option>
-        <option>Class D</option>
-        <option>Purple K</option>
-        <option>Clean Agent</option>
-        <option value="_custom">+ Add Type...</option>
-      </select>
-    </div>
-    <div id="ext-custom-type" style="display:none;margin-top:6px;margin-bottom:10px">
-      <input id="ext-custom-name" placeholder="Enter custom type name..." style="margin-bottom:6px">
-      <button class="btn-dim" style="width:auto;padding:8px 16px;font-size:12px" onclick="applyCustomExtType()">Use This Type</button>
-    </div>
-    <div class="fg"><label class="fg-l">Size *</label>
-      <select id="ext-size">
-        <option>2.5lb</option><option>5lb</option><option>10lb</option><option>20lb</option><option>30lb</option>
-      </select>
-    </div>
-    <div class="fg"><label class="fg-l">Location in Building</label><input id="ext-loc" placeholder="e.g. Kitchen, Front Counter, Hood"></div>
-    <div class="fg"><label class="fg-l">Manufacture Date</label><input type="month" id="ext-mfg"></div>
-    <div class="err" id="ext-err"></div>
-  </div>`)
-}
-
 // ═══ EXTINGUISHER INVENTORY SESSION — 3-Photo Barcode Scanner ═══
 // Walk a building. 3 photos per unit: location, barcode/label, maintenance tag.
 // Barcode auto-reads serial/manufacturer. AI analyzes label for type/size/dates.
@@ -7633,7 +8056,6 @@ const EXT_SIZES={
 }
 const MFR_PATTERNS={Amerex:[/^B\d{3}/i,/^A\d{3}/i],Kidde:[/^XY/i,/^PRO/i],Buckeye:[/^BK/i],Ansul:[/^AN/i,/^SEN/i],'Pyro-Chem':[/^PC/i],Badger:[/^BG/i],'First Alert':[/^FE/i],'Strike First':[/^SF/i]}
 function guessManufacturer(raw){for(const[name,pats]of Object.entries(MFR_PATTERNS)){if(pats.some(p=>p.test(raw)))return name}return null}
-const BC_FORMATS=['code_128','code_39','ean_13','upc_a','upc_e']
 let _hasBarcodeAPI=typeof window!=='undefined'&&'BarcodeDetector' in window
 // ─── Inventory Session State ───
 // Each unit: 3 photos (photoLocation, photoLabel, photoMaint) + barcode data + AI data
@@ -7653,10 +8075,9 @@ async function openExtReport(jobId,editMode){
   _extJobId=jobId;_extLocId=l.id||j.location_id
   window._extJobId=jobId;window._extLoc=l
 
-  // load previous report or build from extinguishers on file
+  // Load prior report data (if any). No pre-fill from on-file equipment — tech scans fresh every time.
   const{data:prevRpt}=await SB.from('reports').select('report_data').eq('job_id',jobId).eq('report_type','extinguisher').limit(1)
   const prev=prevRpt?.[0]?.report_data||{}
-  const exts=l.extinguishers||[]
 
   if(prev.units?.length){
     _extUnits=prev.units.map((u,i)=>({
@@ -7668,15 +8089,6 @@ async function openExtReport(jobId,editMode){
       flagged:u.flagged||u.condition==='fail',flagNote:u.flagNote||'',
       serial:u.serial||'',manufacturer:u.manufacturer||'',
       barcodeRaw:u.barcodeRaw||'',photo:u.photoB64||u.photo||''
-    }))
-  }else if(exts.length){
-    _extUnits=exts.map((e,i)=>({
-      id:e.id,number:i+1,
-      type:e.type||'ABC Dry Chemical',size:e.size||'10lb',
-      location:e.location_in_building||'',mfgDate:e.manufacture_date||'',
-      lastInternal:e.last_internal||'',lastHydro:e.last_hydro||'',
-      condition:'pass',notes:'',flagged:false,flagNote:'',
-      serial:e.serial_number||'',manufacturer:'',barcodeRaw:'',photo:''
     }))
   }else{
     _extUnits=[]
@@ -8145,48 +8557,6 @@ async function finishExtReport(jobId,silent){
   updateJobChecklist()
 }
 
-function updateExtSizes(){
-  const type=$('ext-type')?.value
-  if(type==='_custom'){
-    const cw=$('ext-custom-type');if(cw)cw.style.display='block'
-    return
-  }
-  const cw=$('ext-custom-type');if(cw)cw.style.display='none'
-  const sizes=EXT_SIZES[type]||['2.5lb','5lb','10lb','20lb','30lb']
-  const sel=$('ext-size');if(!sel)return
-  sel.innerHTML=sizes.map(s=>`<option>${s}</option>`).join('')
-}
-function applyCustomExtType(){
-  const name=$('ext-custom-name')?.value?.trim()
-  if(!name){toast('Enter a type name',false);return}
-  const sel=$('ext-type')
-  // add the custom option before the "+ Add Type..." option
-  const opt=document.createElement('option');opt.value=name;opt.textContent=name
-  sel.insertBefore(opt,sel.querySelector('option[value="_custom"]'))
-  sel.value=name
-  const cw=$('ext-custom-type');if(cw)cw.style.display='none'
-  // default sizes for unknown type
-  updateExtSizes()
-}
-async function saveExt(locId){
-  const b=$('saveExtBtn');if(b){b.textContent='Saving...';b.style.opacity='.5';b.style.pointerEvents='none'}
-  let type=$('ext-type')?.value
-  if(type==='_custom')type=$('ext-custom-name')?.value?.trim()||''
-  if(!type){if($('ext-err'))$('ext-err').textContent='Select a type.';if(b){b.textContent='Save';b.style.opacity='';b.style.pointerEvents=''}return}
-  const{error}=await SB.from('extinguishers').insert({
-    location_id:locId,type,size:$('ext-size')?.value||null,
-    location_in_building:$('ext-loc')?.value?.trim()||null,
-    manufacture_date:$('ext-mfg')?.value||null
-  })
-  if(error){if($('ext-err'))$('ext-err').textContent='Error: '+error.message;if(b){b.textContent='Save';b.style.opacity='';b.style.pointerEvents=''}return}
-  await load();toast('Extinguisher added')
-  pop()
-  // client detail is still on stack below — refresh it
-  const slot=stk[stk.length-1]
-  if(slot){stk.pop();document.getElementById(slot).classList.remove('open');document.getElementById(slot).style.display='none';document.getElementById(slot).innerHTML=''}
-  setTimeout(()=>openCust(locId),50)
-}
-
 // ═══ EXTINGUISHER INSPECTION REPORT ═══
 const NFPA10={
   'ABC Dry Chemical':{hydro:12,internal:6,hydroLabel:'12-year hydro',intLabel:'6-year internal'},
@@ -8333,300 +8703,6 @@ function buildCleanAgentReportFromData(d,loc,inv,custSig){
 }
 
 
-// EDIT EQUIPMENT
-function editSupp(sysId,locId){
-  const l=D.locs.find(x=>x.id===locId)||{}
-  const s=(l.suppression_systems||[]).find(x=>x.id===sysId);if(!s)return
-  push(`<div class="ov-hdr">
-    <button class="ov-back" onclick="pop()">‹</button>
-    <div class="ov-title">Edit System</div>
-    <button class="ov-act" id="saveSuppEditBtn" onclick="saveSuppEdit('${sysId}','${locId}')">Save</button>
-  </div><div class="ov-body">
-    <div class="fg"><label class="fg-l">System Type</label><input id="es-type" value="${esc(s.system_type||'')}"></div>
-    <div class="fg"><label class="fg-l">Category</label>
-      <select id="es-cat">
-        <option value="standard"${s.category==='standard'?' selected':''}>Standard ($250)</option>
-        <option value="captiveaire_tank"${s.category==='captiveaire_tank'?' selected':''}>Captive-Aire Tank ($450)</option>
-        <option value="captiveaire_core"${s.category==='captiveaire_core'?' selected':''}>Captive-Aire CORE ($650)</option>
-      </select>
-    </div>
-    <div class="fg"><label class="fg-l">Tanks</label><input type="number" id="es-tanks" value="${s.tank_count||1}" min="1"></div>
-    <div class="fg"><label class="fg-l">Nozzles</label><input type="number" id="es-nozzles" value="${s.nozzle_count||0}" min="0"></div>
-    <div class="fg"><label class="fg-l">Fusible Links</label><input type="number" id="es-links" value="${s.fusible_link_count||0}" min="0"></div>
-    <div class="err" id="es-err"></div>
-  </div>`)
-}
-
-async function saveSuppEdit(sysId,locId){
-  const b=$('saveSuppEditBtn');if(b){b.textContent='Saving...';b.style.opacity='.5'}
-  const{error}=await SB.from('suppression_systems').update({
-    system_type:$('es-type')?.value?.trim()||'Suppression System',
-    category:$('es-cat')?.value||'standard',
-    tank_count:parseInt($('es-tanks')?.value)||1,
-    nozzle_count:parseInt($('es-nozzles')?.value)||0,
-    fusible_link_count:parseInt($('es-links')?.value)||0
-  }).eq('id',sysId)
-  if(error){if($('es-err'))$('es-err').textContent='Error: '+error.message;if(b){b.textContent='Save';b.style.opacity=''}return}
-  await load();toast('System updated')
-  pop()
-  const slot=stk[stk.length-1]
-  if(slot){stk.pop();document.getElementById(slot).classList.remove('open');document.getElementById(slot).style.display='none';document.getElementById(slot).innerHTML=''}
-  setTimeout(()=>openCust(locId),50)
-}
-
-function editExt(extId,locId){
-  const l=D.locs.find(x=>x.id===locId)||{}
-  const e=(l.extinguishers||[]).find(x=>x.id===extId);if(!e)return
-  const EXT_TYPES=['ABC Dry Chemical','Class K','CO2','Water','Halotron','Halon','Class D','Purple K','Clean Agent']
-  const typeOpts=EXT_TYPES.map(t=>`<option${t===e.type?' selected':''}>${t}</option>`).join('')+(EXT_TYPES.includes(e.type)?'':`<option selected>${esc(e.type)}</option>`)
-  push(`<div class="ov-hdr">
-    <button class="ov-back" onclick="pop()">‹</button>
-    <div class="ov-title">Edit Extinguisher</div>
-    <button class="ov-act" id="saveExtEditBtn" onclick="saveExtEdit('${extId}','${locId}')">Save</button>
-  </div><div class="ov-body">
-    <div class="fg"><label class="fg-l">Type</label><select id="ee-type">${typeOpts}</select></div>
-    <div class="fg"><label class="fg-l">Size</label><input id="ee-size" value="${esc(e.size||'')}"></div>
-    <div class="fg"><label class="fg-l">Location in Building</label><input id="ee-loc" value="${esc(e.location_in_building||'')}"></div>
-    <div class="fg"><label class="fg-l">Manufacture Date</label><input type="month" id="ee-mfg" value="${e.manufacture_date||''}"></div>
-    <div class="err" id="ee-err"></div>
-  </div>`)
-}
-
-async function saveExtEdit(extId,locId){
-  const b=$('saveExtEditBtn');if(b){b.textContent='Saving...';b.style.opacity='.5'}
-  const{error}=await SB.from('extinguishers').update({
-    type:$('ee-type')?.value||'ABC Dry Chemical',
-    size:$('ee-size')?.value?.trim()||null,
-    location_in_building:$('ee-loc')?.value?.trim()||null,
-    manufacture_date:$('ee-mfg')?.value||null
-  }).eq('id',extId)
-  if(error){if($('ee-err'))$('ee-err').textContent='Error: '+error.message;if(b){b.textContent='Save';b.style.opacity=''}return}
-  await load();toast('Extinguisher updated')
-  pop()
-  const slot=stk[stk.length-1]
-  if(slot){stk.pop();document.getElementById(slot).classList.remove('open');document.getElementById(slot).style.display='none';document.getElementById(slot).innerHTML=''}
-  setTimeout(()=>openCust(locId),50)
-}
-
-// suppression system data — brands, models, tank sizes
-const SUPP_DATA={
-  'Wet Chemical':{
-    'Ansul':{models:{'R-102':{tanks:['1.5 gal','3.0 gal']},'Piranha':{tanks:['1.5 gal','3.0 gal']}},addNew:true},
-    'Amerex':{models:{'KP275':{tanks:['2.75 gal']},'KP375':{tanks:['3.75 gal']},'KP475':{tanks:['4.75 gal']},'KP600':{tanks:['6.0 gal']},'ZD':{tanks:['2.75 gal','3.75 gal','4.75 gal','6.0 gal']}},addNew:true},
-    'Buckeye':{models:{'BFR Kitchen Mister':{tanks:['BFR-5 (5 flow pts)','BFR-10 (10 flow pts)','BFR-15 (15 flow pts)','BFR-20 (20 flow pts)']}},addNew:true},
-    'Kidde':{models:{'WHDR':{tanks:['WHDR-125 (1.3 gal)','WHDR-260 (2.6 gal)','WHDR-400S (4.0 gal short)','WHDR-400M (4.0 gal med)','WHDR-600 (6.0 gal)']}},addNew:true},
-    'Badger':{models:{'Range Guard':{tanks:['RG-1.25G (1.25 gal)','RG-2.5G (2.5 gal)','RG-4GS (4 gal short)','RG-4GM (4 gal med)','RG-6G (6 gal)']}},addNew:true},
-    'Lehavot':{models:{'WCK':{tanks:['WCK6 (6L / 1.6 gal)','WCK9 (9L / 2.4 gal)','WCK16 (16L / 4.2 gal)','WCK20 (20L / 5.3 gal)','WCK26 (26L / 6.9 gal)']}},addNew:true},
-    'Pyro-Chem':{models:{'Kitchen Knight II':{tanks:['PCL-160 (1.6 gal)','PCL-300 (3.0 gal)','PCL-460 (4.6 gal)','PCL-600 (6.0 gal)']}},addNew:true},
-    'Protex':{models:{'L-Series':{tanks:['L1600 (1.6 gal)','L3000 (3.0 gal)','L4600 (4.6 gal)','L6000 (6.0 gal)']}},addNew:true},
-    'Captive-Aire':{models:{'Tank System':{tanks:['Standard']}},addNew:false}
-  },
-  'Dry Chemical':{
-    'Ansul':{models:{'A-101':{tanks:['10 lb','20 lb','30 lb','50 lb','125 lb','250 lb']},'I-101':{tanks:['12.5 lb','17 lb','25 lb','35 lb','50 lb','70 lb']}},addNew:true},
-    'Pyro-Chem':{models:{'Monarch':{tanks:['PCI-17 (17 lb)','PCI-25S (25 lb)','PCI-35 (35 lb)','PCI-50S (50 lb)','PCI-70 (70 lb)']}},addNew:true},
-    'Kidde':{models:{'Kidde DC':{tanks:['10 lb','20 lb','30 lb','50 lb']}},addNew:true},
-    'Badger':{models:{'IndustryGuard':{tanks:['125 lb','175 lb']}},addNew:true}
-  },
-  'Clean Agent':{
-    'Kidde':{models:{'FM-200':{tanks:['Various']},'Novec 1230':{tanks:['Various']}},addNew:true},
-    'Fike':{models:{'FM-200':{tanks:['Various']},'Novec 1230':{tanks:['Various']}},addNew:true},
-    'Ansul':{models:{'Sapphire':{tanks:['Various']},'Inergen':{tanks:['Various']}},addNew:true}
-  },
-  'Water+':{
-    'Captive-Aire':{models:{'CORE System':{tanks:['Standard']}},addNew:false}
-  }
-}
-
-function openAddSupp(locId){
-  const agentTypes=Object.keys(SUPP_DATA)
-  push(`<div class="ov-hdr">
-    <button class="ov-back" onclick="pop()">‹</button>
-    <div class="ov-title">Add Suppression System</div>
-    <button class="ov-act" id="saveSuppBtn" onclick="saveSupp('${locId}')">Save</button>
-  </div><div class="ov-body">
-    <div class="fg"><label class="fg-l">Agent Type *</label>
-      <select id="supp-agent" onchange="suppAgentChanged()">
-        <option value="">-- Select --</option>
-        ${agentTypes.map(t=>`<option value="${t}">${t}</option>`).join('')}
-        <option value="_custom">+ Add New Type...</option>
-      </select>
-      <input id="supp-agent-custom" placeholder="Enter agent type..." style="display:none;margin-top:6px">
-    </div>
-    <div class="fg" id="supp-brand-wrap" style="display:none"><label class="fg-l">Brand *</label>
-      <select id="supp-brand" onchange="suppBrandChanged()"></select>
-    </div>
-    <div class="fg" id="supp-model-wrap" style="display:none"><label class="fg-l">Model *</label>
-      <select id="supp-model" onchange="suppModelChanged()"></select>
-      <input id="supp-model-custom" placeholder="Enter model name..." style="display:none;margin-top:6px">
-    </div>
-    <div class="fg" id="supp-tank-wrap" style="display:none"><label class="fg-l">Tank Size</label>
-      <select id="supp-tank-size"></select>
-    </div>
-    <div class="fg"><label class="fg-l">Number of Tanks</label><input type="number" id="supp-tanks" value="1" min="1"></div>
-    <div class="fg"><label class="fg-l">Nozzles</label><input type="number" id="supp-nozzles" value="0" min="0"></div>
-    <div class="fg"><label class="fg-l">Fusible Links</label><input type="number" id="supp-links" value="0" min="0"></div>
-    <div id="supp-price-note" style="display:none;background:var(--infos);border:1px solid var(--info);border-radius:var(--rs);padding:10px;margin-bottom:14px;font-size:12px;color:var(--info)"></div>
-    <div class="err" id="supp-err"></div>
-  </div>`)
-}
-
-function suppAgentChanged(){
-  const agent=$('supp-agent')?.value
-  const brandWrap=$('supp-brand-wrap')
-  const modelWrap=$('supp-model-wrap')
-  const tankWrap=$('supp-tank-wrap')
-  const customInput=$('supp-agent-custom')
-  const priceNote=$('supp-price-note')
-
-  if(agent==='_custom'){
-    if(customInput)customInput.style.display='block'
-    if(brandWrap)brandWrap.style.display='none'
-    if(modelWrap)modelWrap.style.display='none'
-    if(tankWrap)tankWrap.style.display='none'
-    if(priceNote)priceNote.style.display='none'
-    return
-  }
-  if(customInput)customInput.style.display='none'
-  if(!agent||!SUPP_DATA[agent]){
-    if(brandWrap)brandWrap.style.display='none'
-    if(modelWrap)modelWrap.style.display='none'
-    if(tankWrap)tankWrap.style.display='none'
-    if(priceNote)priceNote.style.display='none'
-    return
-  }
-
-  // show price note for Water+ / CORE
-  if(agent==='Water+'){
-    if(priceNote){priceNote.style.display='block';priceNote.textContent='Captive-Aire CORE — $650.00 per 6-month test & maintenance'}
-  }else{if(priceNote)priceNote.style.display='none'}
-
-  const brands=Object.keys(SUPP_DATA[agent])
-  const sel=$('supp-brand')
-  sel.innerHTML=`<option value="">-- Select Brand --</option>`+brands.map(b=>`<option value="${b}">${b}</option>`).join('')+`<option value="_custom">+ Add Brand...</option>`
-  if(brandWrap)brandWrap.style.display='block'
-  if(modelWrap)modelWrap.style.display='none'
-  if(tankWrap)tankWrap.style.display='none'
-
-  // auto-select if only one brand
-  if(brands.length===1){sel.value=brands[0];suppBrandChanged()}
-}
-
-function suppBrandChanged(){
-  const agent=$('supp-agent')?.value
-  const brand=$('supp-brand')?.value
-  const modelWrap=$('supp-model-wrap')
-  const tankWrap=$('supp-tank-wrap')
-
-  if(!brand||brand==='_custom'||!agent||!SUPP_DATA[agent]?.[brand]){
-    if(modelWrap)modelWrap.style.display='none'
-    if(tankWrap)tankWrap.style.display='none'
-    return
-  }
-
-  const brandData=SUPP_DATA[agent][brand]
-  const models=Object.keys(brandData.models)
-  const sel=$('supp-model')
-  const customM=$('supp-model-custom')
-  if(customM)customM.style.display='none'
-  sel.innerHTML=`<option value="">-- Select Model --</option>`+models.map(m=>`<option value="${m}">${m}</option>`).join('')+(brandData.addNew?`<option value="_custom">+ Add Model...</option>`:'')
-  if(modelWrap)modelWrap.style.display='block'
-  if(tankWrap)tankWrap.style.display='none'
-
-  // auto-select if only one model
-  if(models.length===1){sel.value=models[0];suppModelChanged()}
-}
-
-function suppModelChanged(){
-  const agent=$('supp-agent')?.value
-  const brand=$('supp-brand')?.value
-  const model=$('supp-model')?.value
-  const tankWrap=$('supp-tank-wrap')
-  const customM=$('supp-model-custom')
-
-  if(model==='_custom'){
-    if(customM)customM.style.display='block'
-    if(tankWrap)tankWrap.style.display='none'
-    return
-  }
-  if(customM)customM.style.display='none'
-
-  if(!model||!agent||!SUPP_DATA[agent]?.[brand]?.models?.[model]){
-    if(tankWrap)tankWrap.style.display='none'
-    return
-  }
-
-  const tanks=SUPP_DATA[agent][brand].models[model].tanks||[]
-  const sel=$('supp-tank-size')
-  sel.innerHTML=tanks.map(t=>`<option>${t}</option>`).join('')
-  if(tankWrap)tankWrap.style.display=tanks.length?'block':'none'
-}
-
-async function saveSupp(locId){
-  const b=$('saveSuppBtn');if(b){b.textContent='Saving...';b.style.opacity='.5';b.style.pointerEvents='none'}
-  // build system_type from cascading selections
-  let agent=$('supp-agent')?.value||''
-  if(agent==='_custom')agent=$('supp-agent-custom')?.value?.trim()||'Custom'
-  let brand=$('supp-brand')?.value||''
-  if(brand==='_custom')brand=''
-  let model=$('supp-model')?.value||''
-  if(model==='_custom')model=$('supp-model-custom')?.value?.trim()||''
-  const tankSize=$('supp-tank-size')?.value||''
-  const sysType=[brand,model].filter(Boolean).join(' ')||agent||'Suppression System'
-  // determine category for pricing
-  let cat='standard'
-  if(agent==='Water+'||brand==='Captive-Aire'&&model==='CORE System')cat='captiveaire_core'
-  else if(brand==='Captive-Aire')cat='captiveaire_tank'
-  const{error}=await SB.from('suppression_systems').insert({
-    location_id:locId,
-    system_type:sysType+(tankSize&&tankSize!=='Standard'&&tankSize!=='Various'?' ('+tankSize+')':''),
-    category:cat,
-    tank_count:parseInt($('supp-tanks')?.value)||1,
-    nozzle_count:parseInt($('supp-nozzles')?.value)||0,
-    fusible_link_count:parseInt($('supp-links')?.value)||0
-  })
-  if(error){if($('supp-err'))$('supp-err').textContent='Error: '+error.message;if(b){b.textContent='Save';b.style.opacity='';b.style.pointerEvents=''}return}
-  await load();toast('Suppression system added')
-  pop()
-  const slot=stk[stk.length-1]
-  if(slot){stk.pop();document.getElementById(slot).classList.remove('open');document.getElementById(slot).style.display='none';document.getElementById(slot).innerHTML=''}
-  setTimeout(()=>openCust(locId),50)
-}
-
-function openAddELight(locId){
-  push(`<div class="ov-hdr">
-    <button class="ov-back" onclick="pop()">‹</button>
-    <div class="ov-title">Add Emergency Lighting</div>
-    <button class="ov-act" id="saveELBtn" onclick="saveELight('${locId}')">Save</button>
-  </div><div class="ov-body">
-    <div class="fg"><label class="fg-l">Number of Fixtures *</label><input type="number" id="el-count" value="1" min="1"></div>
-    <div class="fg"><label class="fg-l">Notes</label><input id="el-notes" placeholder="Optional"></div>
-    <div class="err" id="el-err"></div>
-  </div>`)
-}
-
-async function saveELight(locId){
-  const b=$('saveELBtn');if(b){b.textContent='Saving...';b.style.opacity='.5';b.style.pointerEvents='none'}
-  const count=parseInt($('el-count')?.value)||0
-  if(!count){if($('el-err'))$('el-err').textContent='Enter fixture count.';if(b){b.textContent='Save';b.style.opacity='';b.style.pointerEvents=''}return}
-  // check if one already exists — update instead
-  const existing=D.locs.find(x=>x.id===locId)?.emergency_lights?.[0]
-  let error
-  if(existing){
-    const r=await SB.from('emergency_lights').update({fixture_count:count,notes:$('el-notes')?.value?.trim()||null}).eq('id',existing.id)
-    error=r.error
-  }else{
-    const r=await SB.from('emergency_lights').insert({location_id:locId,fixture_count:count,notes:$('el-notes')?.value?.trim()||null})
-    error=r.error
-  }
-  if(error){if($('el-err'))$('el-err').textContent='Error: '+error.message;if(b){b.textContent='Save';b.style.opacity='';b.style.pointerEvents=''}return}
-  await load();toast('Emergency lighting saved')
-  pop()
-  const slot=stk[stk.length-1]
-  if(slot){stk.pop();document.getElementById(slot).classList.remove('open');document.getElementById(slot).style.display='none';document.getElementById(slot).innerHTML=''}
-  setTimeout(()=>openCust(locId),50)
-}
-
-
 // ═══ STAT CARD DRILL-DOWN ═══
 function showJobList(filter){
   const t=new Date().toISOString().split('T')[0]
@@ -8670,7 +8746,6 @@ function filterInvs(filter){
 async function openDryChemReport(jobId,sysId){
   const j=D.jobs.find(x=>x.id===jobId)||{}
   const l=D.locs.find(x=>x.id===(j.location_id||j.location?.id))||j.location||{}
-  const sys=(l.suppression_systems||[]).find(s=>s.id===sysId)||(l.suppression_systems||[])[0]||{}
   const a=[l.address,l.city,l.state,l.zip].filter(Boolean).join(', ')
 
   // load previous — this job first, then last report for this location
@@ -8731,13 +8806,13 @@ async function openDryChemReport(jobId,sysId){
   <div class="ds"><div class="ds-t">System Information</div>
     <div class="ds-row"><div class="ds-lbl">System Brand</div><div class="ds-val">
       <select id="dc-sys-type" style="text-align:right;border:none;background:var(--c1);color:var(--w);font-size:13px;font-weight:600;width:100%;border-radius:6px;padding:4px">
-        ${['','Amerex','Ansul','Badger','Buckeye','Kidde','Monarch','Pyro-Chem','Range Guard','Other'].map(m=>{const cur=prev.sysType||sys.system_type||'';return`<option value="${m}"${cur===m?' selected':''}>${m||'— Select —'}</option>`}).join('')}
-        ${(()=>{const cur=prev.sysType||sys.system_type||'';const known=['','Amerex','Ansul','Badger','Buckeye','Kidde','Monarch','Pyro-Chem','Range Guard','Other'];return cur&&!known.includes(cur)?`<option value="${esc(cur)}" selected>${esc(cur)}</option>`:''})()}
+        ${['','Amerex','Ansul','Badger','Buckeye','Kidde','Monarch','Pyro-Chem','Range Guard','Other'].map(m=>{const cur=prev.sysType||'';return`<option value="${m}"${cur===m?' selected':''}>${m||'— Select —'}</option>`}).join('')}
+        ${(()=>{const cur=prev.sysType||'';const known=['','Amerex','Ansul','Badger','Buckeye','Kidde','Monarch','Pyro-Chem','Range Guard','Other'];return cur&&!known.includes(cur)?`<option value="${esc(cur)}" selected>${esc(cur)}</option>`:''})()}
       </select>
     </div></div>
     <div class="ds-row"><div class="ds-lbl">Agent Type</div><div class="ds-val"><input id="dc-agent" placeholder="ABC, BC, Purple K..." value="${esc(prev.agent||'')}" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600"></div></div>
-    <div class="ds-row"><div class="ds-lbl">Cylinder Count</div><div class="ds-val"><input id="dc-cyls" type="number" value="${prev.cylCount||sys.tank_count||1}" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600;width:60px"></div></div>
-    <div class="ds-row"><div class="ds-lbl">Nozzle Count</div><div class="ds-val"><input id="dc-nozzles" type="number" value="${prev.nozzleCount||sys.nozzle_count||0}" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600;width:60px"></div></div>
+    <div class="ds-row"><div class="ds-lbl">Cylinder Count</div><div class="ds-val"><input id="dc-cyls" type="number" value="${prev.cylCount||1}" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600;width:60px"></div></div>
+    <div class="ds-row"><div class="ds-lbl">Nozzle Count</div><div class="ds-val"><input id="dc-nozzles" type="number" value="${prev.nozzleCount||0}" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600;width:60px"></div></div>
     <div class="ds-row"><div class="ds-lbl">Last Hydro Test</div><div class="ds-val"><input id="dc-hydro" type="date" value="${prev.lastHydro||''}" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600"></div></div>
     <div class="ds-row"><div class="ds-lbl">Protected Area</div><div class="ds-val"><input id="dc-area" placeholder="Paint booth, spray area..." value="${esc(prev.area||'')}" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600"></div></div>
   </div>
@@ -8857,7 +8932,6 @@ function buildDryChemReportHtml(jobId,sysId){
 async function openSuppReport(jobId,sysId,preLocation){
   const j=D.jobs.find(x=>x.id===jobId)||{}
   const l=D.locs.find(x=>x.id===(j.location_id||j.location?.id))||j.location||{}
-  const sys=l.suppression_systems?.find(s=>s.id===sysId)||l.suppression_systems?.[0]||{}
   const a=[l.address,l.city,l.state,l.zip].filter(Boolean).join(', ')
 
   // fetch last saved report for pre-population
@@ -8950,12 +9024,12 @@ async function openSuppReport(jobId,sysId,preLocation){
   <div class="ds"><div class="ds-t">System Information</div>
     <div class="ds-row"><div class="ds-lbl">Manufacturer</div><div class="ds-val">
       <select id="rpt-mfg" style="text-align:right;border:none;background:var(--c1);color:var(--w);font-size:13px;font-weight:600;width:100%;border-radius:6px;padding:4px" onchange="updateRptModels()">
-        ${['','Amerex','Ansul','Badger','Buckeye','Captive-Aire','Kidde','Lehavot','Protex','Pyro-Chem','Range Guard','Other'].map(m=>`<option value="${m}"${(prev.mfg||(sys.system_type||'').split(' ')[0]||'')===m?' selected':''}>${m||'— Select —'}</option>`).join('')}
+        ${['','Amerex','Ansul','Badger','Buckeye','Captive-Aire','Kidde','Lehavot','Protex','Pyro-Chem','Range Guard','Other'].map(m=>`<option value="${m}"${(prev.mfg||'')===m?' selected':''}>${m||'— Select —'}</option>`).join('')}
       </select>
     </div></div>
     <div class="ds-row"><div class="ds-lbl">Model</div><div class="ds-val">
       <select id="rpt-model" style="text-align:right;border:none;background:var(--c1);color:var(--w);font-size:13px;font-weight:600;width:100%;border-radius:6px;padding:4px">
-        <option value="${esc(prev.model||sys.system_type||'')}">${esc(prev.model||sys.system_type||'— Select —')}</option>
+        <option value="${esc(prev.model||'')}">${esc(prev.model||'— Select —')}</option>
       </select>
     </div></div>
     <div class="ds-row"><div class="ds-lbl">Serial Number</div><div class="ds-val"><input id="rpt-serial" placeholder="Serial #" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600" value="${esc(prev.serial||'')}"></div></div>
@@ -8969,7 +9043,7 @@ async function openSuppReport(jobId,sysId,preLocation){
     <button style="margin:4px 12px 8px;padding:6px 12px;border-radius:var(--rs);background:var(--c2);border:1px solid var(--b1);color:var(--fire);font-size:11px;font-weight:700;cursor:pointer" onclick="addRptTank()">+ Add Additional Tank</button>
     <div class="ds-row"><div class="ds-lbl">Last Hydro Test</div><div class="ds-val"><input id="rpt-hydro" type="date" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600" value="${prev.hydro||''}"></div></div>
     <div class="ds-row"><div class="ds-lbl">Last Recharge</div><div class="ds-val"><input id="rpt-recharge" type="date" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600" value="${prev.recharge||''}"></div></div>
-    <div class="ds-row"><div class="ds-lbl">Fusible Links</div><div class="ds-val"><input id="rpt-links" placeholder="Qty & temp ratings" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600" value="${esc(prev.links||(sys.fusible_link_count?sys.fusible_link_count+' links':''))}"></div></div>
+    <div class="ds-row"><div class="ds-lbl">Fusible Links</div><div class="ds-val"><input id="rpt-links" placeholder="Qty & temp ratings" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600" value="${esc(prev.links||'')}"></div></div>
     <div class="ds-row"><div class="ds-lbl">Fuel Shut-Off Type</div><div class="ds-val">
       <div style="display:flex;gap:6px;justify-content:flex-end">
         <button id="rpt-elec" style="padding:6px 10px;border-radius:6px;font-size:11px;font-weight:700;border:1.5px solid var(--b1);background:var(--c2);color:var(--g2)" onclick="toggleRptFuel('elec')">Electric</button>
@@ -9334,10 +9408,9 @@ function startAdditionalReport(jobId){
 
 async function generateSuppReport(jobId,sysId,returnHtml=false){
   const b=returnHtml?null:$('rptSaveBtn2');if(b){b.innerHTML='<span class="spin"></span> Generating...';b.classList.add('loading')}
-  
+
   const j=D.jobs.find(x=>x.id===jobId)||{}
   const l=D.locs.find(x=>x.id===(j.location_id||j.location?.id))||j.location||{}
-  const sys=l.suppression_systems?.find(s=>s.id===sysId)||l.suppression_systems?.[0]||{}
   const a=[l.address,l.city,l.state,l.zip].filter(Boolean).join(', ')
 
   const checks=[
@@ -9445,7 +9518,6 @@ async function generateSuppReport(jobId,sysId,returnHtml=false){
 async function openCleanAgentReport(jobId,sysId){
   const j=D.jobs.find(x=>x.id===jobId)||{}
   const l=D.locs.find(x=>x.id===(j.location_id||j.location?.id))||j.location||{}
-  const sys=l.suppression_systems?.find(s=>s.id===sysId)||l.suppression_systems?.[0]||{}
   const a=[l.address,l.city,l.state,l.zip].filter(Boolean).join(', ')
 
   // fetch last saved report for pre-population
@@ -9521,7 +9593,7 @@ async function openCleanAgentReport(jobId,sysId){
 
   <!-- SYSTEM INFO -->
   <div class="ds"><div class="ds-t">System Information</div>
-    <div class="ds-row"><div class="ds-lbl">Agent Type</div><div class="ds-val"><input id="ca-agent-type" placeholder="FM-200, Novec 1230, CO2..." style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600" value="${esc(prev.agentType||sys.system_type||'')}"></div></div>
+    <div class="ds-row"><div class="ds-lbl">Agent Type</div><div class="ds-val"><input id="ca-agent-type" placeholder="FM-200, Novec 1230, CO2..." style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600" value="${esc(prev.agentType||'')}"></div></div>
     <div class="ds-row"><div class="ds-lbl">Manufacturer</div><div class="ds-val"><input id="ca-mfg" placeholder="Kidde, Fike, Ansul..." style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600" value="${esc(prev.mfg||'')}"></div></div>
     <div class="ds-row"><div class="ds-lbl">System Model</div><div class="ds-val"><input id="ca-model" placeholder="Model #" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600" value="${esc(prev.model||'')}"></div></div>
     <div class="ds-row"><div class="ds-lbl">Serial Number</div><div class="ds-val"><input id="ca-serial" placeholder="Serial #" style="text-align:right;border:none;background:transparent;color:var(--w);font-size:13px;font-weight:600" value="${esc(prev.serial||'')}"></div></div>

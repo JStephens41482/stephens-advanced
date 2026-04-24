@@ -137,10 +137,7 @@ Schedule & Routing:
   build_route — Google-Maps-optimized stop order for a day or custom job list
 
 Equipment:
-  get_equipment — list extinguishers, suppression systems, emergency lights at a location
-  add_equipment — add a new piece of equipment
-  update_equipment — edit service dates, serial, notes on equipment
-  delete_equipment — remove equipment from a location
+  get_equipment — DERIVED summary (no manual equipment table). Reads inspection reports and invoice line items to return the systems, extinguisher count, and emergency-light count for a location. If anyone asks "what do they have on file", this is the only answer — we do NOT maintain a separate equipment roster.
 
 Technicians:
   list_techs — roster of active technicians

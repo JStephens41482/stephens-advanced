@@ -41,12 +41,17 @@ module.exports = async function handler(req, res) {
   const debugOverride = req.query?.override === 'debug'
 
   try {
-    // ─── 1. Snapshot pending queue ───
-    let q = supabase.from('mazon_queue').select('*').eq('status', 'pending').order('created_at', { ascending: true })
+    // ─── 1. Snapshot pending queue (join billing for customer phone) ───
+    let q = supabase
+      .from('mazon_queue')
+      .select('*, billing:billing_accounts(phone)')
+      .eq('status', 'pending')
+      .order('created_at', { ascending: true })
     if (selectedIds?.length) q = q.in('id', selectedIds)
-    const { data: pending, error: pErr } = await q
+    const { data: pendingRaw, error: pErr } = await q
     if (pErr) return res.status(500).json({ error: 'Queue read failed: ' + pErr.message })
-    if (!pending?.length) return res.status(400).json({ error: 'No pending queue rows to submit' })
+    if (!pendingRaw?.length) return res.status(400).json({ error: 'No pending queue rows to submit' })
+    const pending = pendingRaw.map(r => ({ ...r, phone: r.billing?.phone || '' }))
 
     const total = pending.reduce((s, r) => s + Number(r.amount), 0)
     const totalCents = Math.round(total * 100)
@@ -106,18 +111,26 @@ module.exports = async function handler(req, res) {
     const ws = wb.worksheets[0]
     if (!ws) return res.status(500).json({ error: 'Template has no worksheet' })
 
-    // Per spec section 8.1 step 4:
-    //   Row 5, Col H  = today's date MM/DD/YYYY
-    //   Row 8, Col D  = client number 1410
-    //   Row 8, Col H  = schedule number
-    //   Row 46, Col B = PIN
-    //   Row 18+, Col C–H per invoice
+    // Official Mazon template cell layout (decoded from the
+    // "Mazon Schedule of Accounts Form - Latest Version" xlsx):
+    //   Row 5:  H = "Date:" label          → write date in the cell
+    //   Row 8:  B = "Client No:" label     D = client # value
+    //           E = "Company:" label       F = company name value
+    //           H = "Schedule No:" label   I = schedule # value
+    //   Row 16: column headers (No./Date/Terms/Invoice No./Customer/City/Amt/Phone/R)
+    //   Rows 18-37: invoice data — B=line#, C=date, D=terms, E=inv#,
+    //               F=customer, G=city/state, H=amount, I=phone
+    //   Row 39/40/41: page totals (G=label, H=value, formulas in template)
+    //   Row 46: B = "Company PIN:" label   D = PIN value
+    //           E = "Date:" label          F = signature date (merged F:G)
     const today = new Date()
     const todayStr = fmtDate(today)
     ws.getCell('H5').value = todayStr
     ws.getCell('D8').value = MAZON.CLIENT_NUMBER
-    ws.getCell('H8').value = nextScheduleNumber
-    ws.getCell('B46').value = pin
+    ws.getCell('F8').value = 'Stephens Advanced LLC'
+    ws.getCell('I8').value = nextScheduleNumber
+    ws.getCell('D46').value = pin
+    ws.getCell('F46').value = todayStr
 
     let row = 18
     for (const item of pending) {
@@ -127,6 +140,9 @@ module.exports = async function handler(req, res) {
       ws.getCell(`F${row}`).value = item.customer_name
       ws.getCell(`G${row}`).value = cityStateFromAddress(item.location_address)
       ws.getCell(`H${row}`).value = Number(item.amount)
+      // Mazon wants customer phone the first time they're factored (or when changed).
+      // Safe to include on every row; phone is optional per Mazon's GUIDE.
+      if (item.phone) ws.getCell(`I${row}`).value = item.phone
       row++
     }
 
