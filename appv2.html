@@ -699,8 +699,8 @@ async function load(){
 
   const[j,l,i,b,r,ci,td2,mz,bq,tk,sr,pt,ce,ct,cl2,rch,pr,nf,cn]=await Promise.all([
     jobsQuery,
-    SB.from('locations').select('*,extinguishers(id,type,size,serial_number,location_in_building,manufacture_date,last_internal,last_hydro,deleted_at),suppression_systems(id,system_type,category,tank_count,nozzle_count,fusible_link_count),emergency_lights(id,fixture_count),billing_account:billing_accounts(*)').is('deleted_at',null).order('name'),
-    SB.from('invoices').select('*').is('deleted_at',null).order('date',{ascending:false}).limit(100),
+    SB.from('locations').select('*,billing_account:billing_accounts(*)').is('deleted_at',null).order('name'),
+    SB.from('invoices').select('*,invoice_lines(*)').is('deleted_at',null).order('date',{ascending:false}).limit(100),
     SB.from('billing_accounts').select('*').order('name'),
     SB.from('rate_card').select('key,price'),
     SB.from('custom_items').select('description,unit_price').order('description'),
@@ -738,11 +738,58 @@ async function load(){
   if(nf.error)console.error('notifications error:',nf.error)
   if(cn.error)console.error('contracts error:',cn.error)
   console.log('loaded:',j.data?.length,'jobs,',l.data?.length,'locs,',i.data?.length,'invs,',td2.data?.length,'todos')
-  // Strip soft-deleted children from embedded selects (nested rows don't respect parent filters)
+  // Derive equipment from billing history. No manually-maintained equipment
+  // table — quantities come from the most recent invoice that billed each
+  // scope. est() / trkLoad() / showItemsNeeded() / buildJobLines() all read
+  // l.extinguishers / l.suppression_systems / l.emergency_lights, so we
+  // shadow those arrays from invoice_lines once, here.
+  const invsRaw=i.data||[]
+  // Strip soft-deleted embedded lines (PostgREST embeds ignore parent filters)
+  invsRaw.forEach(inv=>{
+    if(Array.isArray(inv.invoice_lines))inv.invoice_lines=inv.invoice_lines.filter(ln=>!ln.deleted_at)
+  })
   ;(l.data||[]).forEach(loc=>{
-    if(Array.isArray(loc.extinguishers))loc.extinguishers=loc.extinguishers.filter(x=>!x.deleted_at)
-    if(Array.isArray(loc.suppression_systems))loc.suppression_systems=loc.suppression_systems.filter(x=>!x.deleted_at)
-    if(Array.isArray(loc.emergency_lights))loc.emergency_lights=loc.emergency_lights.filter(x=>!x.deleted_at)
+    const locInvs=invsRaw.filter(inv=>inv.location_id===loc.id)
+      .sort((a,b)=>(b.date||'').localeCompare(a.date||''))
+
+    // Extinguishers — qty from most-recent "Extinguisher Inspection" line
+    const extLn=locInvs.flatMap(inv=>inv.invoice_lines||[])
+      .find(ln=>/extinguisher inspection/i.test(ln.description||''))
+    const extQty=extLn?Math.max(0,Math.round(+extLn.quantity||0)):0
+    loc.extinguishers=Array.from({length:extQty},()=>({type:'ABC'}))
+
+    // Suppression systems — one per distinct "<name> Semi-Annual" line.
+    // Most-recent invoice wins for tank/link/cap counts.
+    const seenSys=new Set()
+    const sysList=[]
+    locInvs.forEach(inv=>{
+      const lines=inv.invoice_lines||[]
+      lines.filter(ln=>/semi-annual/i.test(ln.description||'')).forEach(ln=>{
+        const nm=(ln.description||'').replace(/\s*semi-annual\s*/i,'').trim()||'Suppression System'
+        const k=nm.toLowerCase()
+        if(seenSys.has(k))return
+        seenSys.add(k)
+        const tankLn=lines.find(x=>/additional tank/i.test(x.description||''))
+        const linkLn=lines.find(x=>/fusible link/i.test(x.description||''))
+        const capLn=lines.find(x=>/blow.?off cap|nozzle cap/i.test(x.description||''))
+        const lc=/captiveaire.*tank/i.test(nm)?'captiveaire_tank'
+               :/captiveaire.*core/i.test(nm)?'captiveaire_core':'standard'
+        sysList.push({
+          system_type:nm,
+          category:lc,
+          tank_count:1+(tankLn?+tankLn.quantity||0:0),
+          fusible_link_count:linkLn?+linkLn.quantity||0:0,
+          nozzle_count:capLn?+capLn.quantity||0:0
+        })
+      })
+    })
+    loc.suppression_systems=sysList
+
+    // Emergency lights — qty from most-recent "E-Light Annual" line
+    const elLn=locInvs.flatMap(inv=>inv.invoice_lines||[])
+      .find(ln=>/e.?light annual|emergency.?light/i.test(ln.description||''))
+    const elQty=elLn?Math.max(0,Math.round(+elLn.quantity||0)):0
+    loc.emergency_lights=elQty?[{fixture_count:elQty}]:[]
   })
   D.jobs=j.data||[];D.locs=l.data||[];D.invs=i.data||[];D.bas=b.data||[]
   const rc={};(r.data||[]).forEach(x=>rc[x.key]=+x.price);D.rc=rc
@@ -793,33 +840,13 @@ function statusColor(status,context){
   return map[s]||'gray'
 }
 
-// ═══ ON-DEMAND LOCATION DETAIL (Phase 1 lazy-load) ═══
-// The main load() uses a slim locations projection (no child table arrays).
-// Screens that need the full picture — extinguishers, suppression systems,
-// emergency lights — call this to hydrate a specific location on demand and
-// merge it back into D.locs so subsequent D.locs.find() calls see the detail.
+// ═══ ON-DEMAND LOCATION DETAIL ═══
+// Equipment arrays (extinguishers / suppression_systems / emergency_lights)
+// are already shadow-derived from invoice_lines during load(). No lazy
+// fetch needed — return the cached row.
 async function ensureLocationDetail(locId){
   if(!locId)return null
-  const idx=D.locs.findIndex(l=>l.id===locId)
-  const cached=idx>=0?D.locs[idx]:null
-  // Detailed if extinguishers/suppression_systems are real arrays of row objects
-  // (slim projection uses ext_count/sys_count/el_info aliases instead)
-  if(cached&&Array.isArray(cached.extinguishers)&&Array.isArray(cached.suppression_systems))return cached
-  try{
-    const{data,error}=await SB.from('locations')
-      .select('*,extinguishers(id,type,size,serial_number,location_in_building,manufacture_date,last_internal,last_hydro,deleted_at),suppression_systems(id,system_type,category,tank_count,nozzle_count,fusible_link_count),emergency_lights(id,fixture_count),billing_account:billing_accounts(*)')
-      .eq('id',locId).single()
-    if(error||!data)return cached
-    // Preserve slim count aliases so client list cards keep rendering
-    if(cached){
-      data.ext_count=cached.ext_count||[{count:(data.extinguishers||[]).length}]
-      data.sys_count=cached.sys_count||[{count:(data.suppression_systems||[]).length}]
-      data.el_info=cached.el_info||data.emergency_lights||[]
-    }
-    if(idx>=0)D.locs[idx]=data
-    else D.locs.push(data)
-    return data
-  }catch(e){console.error('ensureLocationDetail:',e);return cached}
+  return D.locs.find(l=>l.id===locId)||null
 }
 
 // ═══ ON-DEMAND LOCATION SEARCH (used by scheduling / customer pickers) ═══
