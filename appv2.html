@@ -6853,9 +6853,10 @@ function buildInvoiceEmailHtml({invNum,custName,addr,date,dueDate,lines,total,po
         <a href="${payUrl}" style="display:inline-block;padding:16px 40px;background:#f05a28;color:#fff;text-decoration:none;border-radius:8px;font-size:16px;font-weight:900;letter-spacing:.3px">💳 Pay Now — $${total.toFixed(2)}</a>
         <div style="font-size:11px;color:#aaa;margin-top:8px">Secure payment via Square · Credit card, Apple Pay, or Google Pay</div>
       </div>`:''}
-      <div style="margin-top:20px;padding:16px;background:#fff8f5;border-left:4px solid #f05a28;border-radius:0 8px 8px 0;font-size:13px;color:#555;line-height:1.5">
-        To pay by check, make payable to <strong>Stephens Advanced LLC</strong> and give to the technician at the time of service.<br>
-        Questions? Reply to this email or call <strong>(214) 994-4799</strong>.
+      <div style="margin-top:20px;padding:16px;background:#fff8f5;border-left:4px solid #f05a28;border-radius:0 8px 8px 0;font-size:13px;color:#555;line-height:1.6">
+        To pay by check, make payable to <strong>Stephens Advanced LLC</strong> and mail to:<br>
+        <strong style="color:#333">P.O. Box 166858, Irving, TX 75016-6858</strong><br>
+        <span style="font-size:12px;color:#888">Questions? Reply to this email or call <strong>(214) 994-4799</strong>.</span>
       </div>
       ${(docs&&docs.length)||(rpts&&rpts.length)?`<div style="margin-top:24px;padding:16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px">
         <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:#64748b;margin-bottom:10px">📎 Attached to this Email</div>
@@ -6882,65 +6883,100 @@ function buildInvoiceEmailHtml({invNum,custName,addr,date,dueDate,lines,total,po
 }
 
 function buildInvoicePdfHtml({invNum,custName,addr,date,dueDate,lines,total,poNumber}){
+  const REMIT='P.O. Box 166858, Irving, TX 75016-6858'
   const lineRows=(lines||[]).map(l=>{
     const isTrv=(l.description||'').startsWith('Travel —')
-    return`<tr>
-      <td style="padding:10px 14px;border-bottom:1px solid #f0f0f0;font-size:13px;color:${isTrv?'#d97706':'#222'}">${isTrv?'&#128663; ':''}${l.description||''}${l.quantity>1?' &times;'+l.quantity:''}</td>
-      <td style="padding:10px 14px;border-bottom:1px solid #f0f0f0;font-size:13px;color:${isTrv?'#d97706':'#222'};text-align:right;white-space:nowrap;font-weight:600">$${(+l.total).toFixed(2)}</td>
+    const qty=+l.quantity||1
+    const unitPrice=qty>1?(+l.total/qty).toFixed(2):''
+    return`<tr style="page-break-inside:avoid">
+      <td style="padding:9px 12px;border-bottom:1px solid #eee;font-size:12.5px;color:${isTrv?'#b45309':'#222'};line-height:1.4">${l.description||''}</td>
+      <td style="padding:9px 12px;border-bottom:1px solid #eee;font-size:12px;color:#666;text-align:center;white-space:nowrap">${qty>1?qty:''}</td>
+      <td style="padding:9px 12px;border-bottom:1px solid #eee;font-size:12px;color:#666;text-align:right;white-space:nowrap">${unitPrice?'$'+unitPrice:''}</td>
+      <td style="padding:9px 12px;border-bottom:1px solid #eee;font-size:12.5px;color:${isTrv?'#b45309':'#222'};text-align:right;white-space:nowrap;font-weight:600">$${(+l.total).toFixed(2)}</td>
     </tr>`}).join('')
   return`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
     *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;background:#fff;color:#222;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    body{font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;background:#fff;color:#222;font-size:13px;line-height:1.5;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    @page{margin:0}
   </style></head><body>
-  <div style="width:560px;margin:0 auto;padding:0">
-    <!-- Header -->
-    <div style="background:#f05a28;padding:28px 32px;border-radius:10px 10px 0 0">
-      <div style="font-size:11px;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,.7);margin-bottom:4px">Stephens Advanced LLC</div>
-      <div style="font-size:20px;font-weight:900;color:#fff;letter-spacing:-.3px">Fire Suppression &amp; Safety</div>
-      <div style="font-size:12px;color:rgba(255,255,255,.75);margin-top:3px">(214) 994-4799 &nbsp;&bull;&nbsp; jonathan@stephensadvanced.com &nbsp;&bull;&nbsp; DFW Texas</div>
+  <div style="width:660px;min-height:950px;margin:0 auto;padding:48px 52px;display:flex;flex-direction:column;background:#fff">
+
+    <!-- Letterhead -->
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:28px;border-bottom:3px solid #f05a28;margin-bottom:32px">
+      <div>
+        <div style="font-size:22px;font-weight:900;color:#111;letter-spacing:-.4px">Stephens Advanced LLC</div>
+        <div style="font-size:12px;color:#666;margin-top:4px;line-height:1.6">
+          Fire Suppression &amp; Safety<br>
+          DFW Texas &nbsp;&bull;&nbsp; Licensed &amp; Insured<br>
+          (214) 994-4799 &nbsp;&bull;&nbsp; jonathan@stephensadvanced.com
+        </div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:36px;font-weight:900;color:#f05a28;letter-spacing:-1px;line-height:1">INVOICE</div>
+        <div style="font-size:15px;font-weight:700;color:#444;margin-top:4px">${invNum}</div>
+      </div>
     </div>
-    <!-- Invoice meta -->
-    <div style="padding:28px 32px;border-left:1px solid #eee;border-right:1px solid #eee;background:#fff">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px">
+
+    <!-- Invoice meta + Bill To -->
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:32px">
+      <div style="flex:1;margin-right:40px">
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#999;margin-bottom:6px">Bill To</div>
+        <div style="font-size:14px;font-weight:800;color:#111">${custName}</div>
+        ${addr?`<div style="font-size:12px;color:#666;margin-top:3px;line-height:1.5">${addr}</div>`:''}
+      </div>
+      <div style="min-width:180px;background:#fafafa;border:1px solid #eee;border-radius:8px;padding:14px 18px">
+        ${date?`<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px"><span style="color:#999;font-weight:600">Date</span><span style="color:#222;font-weight:700">${date}</span></div>`:''}
+        ${dueDate?`<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px"><span style="color:#999;font-weight:600">Due</span><span style="color:#c00;font-weight:700">${dueDate}</span></div>`:''}
+        ${poNumber?`<div style="display:flex;justify-content:space-between;font-size:12px"><span style="color:#999;font-weight:600">PO / Ref</span><span style="color:#222;font-weight:700">${poNumber}</span></div>`:''}
+      </div>
+    </div>
+
+    <!-- Line items -->
+    <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:0">
+      <thead>
+        <tr style="background:#f8f8f8">
+          <th style="text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:#999;padding:10px 12px;border-top:1px solid #e0e0e0;border-bottom:1px solid #e0e0e0">Description</th>
+          <th style="text-align:center;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:#999;padding:10px 12px;border-top:1px solid #e0e0e0;border-bottom:1px solid #e0e0e0;width:50px">Qty</th>
+          <th style="text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:#999;padding:10px 12px;border-top:1px solid #e0e0e0;border-bottom:1px solid #e0e0e0;width:90px">Unit Price</th>
+          <th style="text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:#999;padding:10px 12px;border-top:1px solid #e0e0e0;border-bottom:1px solid #e0e0e0;width:90px">Amount</th>
+        </tr>
+      </thead>
+      <tbody>${lineRows}</tbody>
+    </table>
+
+    <!-- Total -->
+    <div style="display:flex;justify-content:flex-end;margin-top:0;padding-top:0">
+      <div style="min-width:260px">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 12px 14px 20px;background:#f05a28;border-radius:0 0 8px 8px">
+          <span style="font-size:15px;font-weight:800;color:#fff;letter-spacing:.3px">TOTAL DUE</span>
+          <span style="font-size:22px;font-weight:900;color:#fff">$${total.toFixed(2)}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Spacer pushes remittance to bottom -->
+    <div style="flex:1;min-height:32px"></div>
+
+    <!-- Remittance box -->
+    <div style="border:1.5px solid #e0e0e0;border-radius:8px;padding:18px 22px;margin-top:32px">
+      <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#999;margin-bottom:10px">Payment Information</div>
+      <div style="display:flex;gap:40px;flex-wrap:wrap">
         <div>
-          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#999;margin-bottom:4px">Invoice</div>
-          <div style="font-size:30px;font-weight:900;color:#111;letter-spacing:-.5px">${invNum}</div>
-          ${poNumber?`<div style="font-size:12px;color:#888;margin-top:3px">PO / Ref: ${poNumber}</div>`:''}
+          <div style="font-size:11px;color:#888;margin-bottom:2px">Preferred — pay online:</div>
+          <div style="font-size:12px;font-weight:700;color:#f05a28">stephensadvanced.com &nbsp;(card, Apple Pay, Google Pay)</div>
         </div>
-        <div style="text-align:right">
-          ${date?`<div style="font-size:12px;color:#888">Date: <strong style="color:#222">${date}</strong></div>`:''}
-          ${dueDate?`<div style="font-size:12px;color:#888;margin-top:2px">Due: <strong style="color:#222">${dueDate}</strong></div>`:''}
+        <div>
+          <div style="font-size:11px;color:#888;margin-bottom:2px">Mail check payable to <strong style="color:#333">Stephens Advanced LLC</strong>:</div>
+          <div style="font-size:12px;font-weight:700;color:#333">${REMIT}</div>
         </div>
-      </div>
-      <!-- Bill to -->
-      <div style="background:#fafafa;border:1px solid #eee;border-radius:8px;padding:14px 18px;margin-bottom:24px">
-        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:#999;margin-bottom:6px">Bill To</div>
-        <div style="font-size:14px;font-weight:700;color:#111">${custName}</div>
-        ${addr?`<div style="font-size:12px;color:#888;margin-top:3px">${addr}</div>`:''}
-      </div>
-      <!-- Line items -->
-      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
-        <thead><tr>
-          <th style="text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:#999;padding:0 14px 10px 14px;border-bottom:2px solid #222">Description</th>
-          <th style="text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:#999;padding:0 14px 10px 14px;border-bottom:2px solid #222">Amount</th>
-        </tr></thead>
-        <tbody>${lineRows}</tbody>
-        <tfoot><tr>
-          <td style="padding:14px 14px 0;font-size:16px;font-weight:900;color:#111;border-top:2px solid #222">Total Due</td>
-          <td style="padding:14px 14px 0;font-size:20px;font-weight:900;color:#f05a28;text-align:right;border-top:2px solid #222">$${total.toFixed(2)}</td>
-        </tr></tfoot>
-      </table>
-      <!-- Payment note -->
-      <div style="margin-top:28px;padding:14px 18px;background:#fff8f5;border-left:4px solid #f05a28;border-radius:0 8px 8px 0;font-size:12px;color:#555;line-height:1.6">
-        Make checks payable to <strong>Stephens Advanced LLC</strong>.<br>
-        Questions? Call <strong>(214) 994-4799</strong> or email <strong>jonathan@stephensadvanced.com</strong>.
       </div>
     </div>
+
     <!-- Footer -->
-    <div style="background:#fafafa;border:1px solid #eee;border-top:none;border-radius:0 0 10px 10px;padding:16px 32px;text-align:center;font-size:10px;color:#aaa;line-height:1.7">
-      Stephens Advanced LLC &nbsp;&bull;&nbsp; Fire Suppression &amp; Safety &nbsp;&bull;&nbsp; DFW Texas<br>
-      Licensed &amp; Insured &nbsp;&bull;&nbsp; (214) 994-4799 &nbsp;&bull;&nbsp; jonathan@stephensadvanced.com
+    <div style="margin-top:20px;text-align:center;font-size:10px;color:#bbb;line-height:1.7">
+      Thank you for your business &nbsp;&bull;&nbsp; Stephens Advanced LLC &nbsp;&bull;&nbsp; (214) 994-4799
     </div>
+
   </div>
   </body></html>`
 }
