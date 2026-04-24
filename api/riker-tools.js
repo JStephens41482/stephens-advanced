@@ -2444,7 +2444,7 @@ const get_jon_location = {
 const read_inbox = {
   schema: {
     name: 'read_inbox',
-    description: "Read recent unread email threads from Jon's inbox. Returns each thread's latest inbound message with the from address, subject, preview, and the conversation_id needed to reply. Use this when Jon asks 'what's in my inbox', 'any new emails', 'did customer X email', or before deciding if a draft is needed. Unread = no outbound reply recorded after the latest inbound in that thread.",
+    description: "Read recent emails from Jon's inbox directly from Gmail. Returns threads from the past N hours regardless of read/unread status — Jon reads email on his phone which marks them as read in Gmail, so is:unread is never used. Use this when Jon asks 'what's in my inbox', 'any new emails', 'did customer X email'. For flexible searches use search_email instead.",
     input_schema: {
       type: 'object',
       properties: {
@@ -2464,7 +2464,9 @@ const read_inbox = {
     catch (e) { return { error: e.message } }
 
     const afterEpoch = Math.floor((Date.now() - hours * 3600000) / 1000)
-    let q = `in:inbox is:unread after:${afterEpoch} -category:promotions -category:social`
+    // Do NOT use is:unread — Jon reads emails on his phone which marks them read in Gmail.
+    // Use after: timestamp so Riker sees all recent emails regardless of read status.
+    let q = `in:inbox after:${afterEpoch} -category:promotions -category:social -category:updates`
     if (input.from) q += ` from:${input.from}`
 
     let list
@@ -4024,7 +4026,7 @@ const send_on_my_way = {
 const search_email = {
   schema: {
     name: 'search_email',
-    description: "Search Jon's Gmail with any Gmail query string. Returns matching threads with from, subject, snippet, date, and whether the sender is a known client in the database. Use this for: reading the inbox ('in:inbox is:unread'), finding all emails from a client ('from:dragonpalace'), researching a client's history before a win-back email ('dragon palace fire inspection'), or finding threads about a topic ('subject:invoice overdue'). ALWAYS use this when Jon asks about emails.",
+    description: "Search Jon's Gmail with any Gmail query string. Returns matching threads with from, subject, snippet, date, and whether the sender is a known client in the database. IMPORTANT: never use is:unread — Jon reads on his phone so all emails appear read in Gmail. Use after: or newer_than: instead. Examples: 'in:inbox newer_than:3d -category:promotions', 'from:bob@acme.com', 'dragon palace inspection', 'subject:invoice'. ALWAYS use this when Jon asks about emails.",
     input_schema: {
       type: 'object',
       properties: {

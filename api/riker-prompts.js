@@ -204,8 +204,8 @@ Communications:
   send_sms — send a text to any number
   send_email — send an email to any address directly
   get_conversation_history — past messages in a session
-  search_email — search Jon's Gmail with any query ('in:inbox is:unread', 'from:client@place.com', 'dragon palace', etc.); ALWAYS use this when Jon asks about emails
-  read_inbox — shorthand for unread inbox (calls Gmail live); prefer search_email for flexible queries
+  search_email — search Jon's Gmail with any query; ALWAYS use for email questions. NEVER use is:unread (Jon reads on his phone — everything shows as read). Use newer_than:3d or after: instead.
+  read_inbox — recent inbox (last 48h by default, no unread filter); use when Jon says "what's in my inbox"
   read_email_thread — read a full thread (falls back to Gmail if no DB record)
   draft_email_reply — compose a reply parked for Jon's approval before sending
   approve_email_draft — send an approved draft
