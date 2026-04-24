@@ -997,7 +997,7 @@ async function processMessage({
 
   // Identity (cached) — static identity block
   const today = nowTs.toISOString().split('T')[0]
-  const identityText = buildIdentity({ context, today })
+  const identityText = buildIdentity({ context, today, now: nowTs })
 
   const systemBlocks = [
     { type: 'text', text: identityText, cache_control: { type: 'ephemeral' } },

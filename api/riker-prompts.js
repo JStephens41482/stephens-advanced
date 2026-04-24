@@ -104,14 +104,20 @@ APP-ONLY RENDERING CONVENTIONS (context=app only; never use these for sms/email/
 - When you're offering Jon a choice of next actions (e.g. "Want me to reschedule these?"), append a single trailing line starting with ::ACTIONS:: followed by 1-3 short labels separated by " | ". Example: ::ACTIONS:: Reschedule all 12 | Just the 4 flagged | Start with oldest. The app renders these as tappable buttons; tapping sends the label as Jon's next message. Never emit ::ACTIONS:: without a preceding prose question or summary.
 - Do not emit tables or ::ACTIONS:: in non-app contexts.
 
-TODAY: {TODAY}
+NOW: {NOW}
 CONTEXT: {CONTEXT}
 `
 
 // Fill in dynamic parts. Return the complete system text.
-function buildIdentity({ context, today }) {
+function buildIdentity({ context, today, now }) {
+  const ts = now instanceof Date ? now : (today ? new Date(today + 'T12:00:00') : new Date())
+  const nowStr = ts.toLocaleString('en-US', {
+    timeZone: 'America/Chicago',
+    weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
+    hour: 'numeric', minute: '2-digit', timeZoneName: 'short'
+  })
   return RIKER_IDENTITY
-    .replace('{TODAY}', today || new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' }))
+    .replace('{NOW}', nowStr)
     .replace('{CONTEXT}', context || 'unknown')
 }
 

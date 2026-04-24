@@ -664,6 +664,7 @@ const schedule_job = {
       notes: input.notes || null
     }).select().single()
     if (error) return { error: error.message }
+    if (!job) return { error: 'Job insert returned no data — not saved' }
 
     const startDt = new Date(input.date + 'T' + input.time + ':00')
     const endDt = new Date(startDt.getTime() + (input.duration_hours || 1.5) * 3600000)
@@ -1010,13 +1011,14 @@ const mark_invoice_paid = {
       invoiceId = data?.id
     }
     if (!invoiceId) return { error: 'invoice_id or invoice_number required and must match a row' }
-    const { error } = await ctx.supabase.from('invoices').update({
+    const { data: paidInv, error } = await ctx.supabase.from('invoices').update({
       status: 'paid',
       paid_at: new Date().toISOString(),
       payment_method: input.payment_method || 'manual',
       notes: input.note || null
-    }).eq('id', invoiceId)
+    }).eq('id', invoiceId).select('id').maybeSingle()
     if (error) return { error: error.message }
+    if (!paidInv) return { error: 'Invoice not found — no rows updated' }
     return { ok: true, invoice_id: invoiceId }
   }
 }
@@ -1295,8 +1297,9 @@ const update_invoice = {
     if (input.notes !== undefined) patch.notes = input.notes
     if (input.new_invoice_number !== undefined) patch.invoice_number = input.new_invoice_number
     if (Object.keys(patch).length === 0) return { error: 'Nothing to update — pass at least one field.' }
-    const { error } = await ctx.supabase.from('invoices').update(patch).eq('id', invoiceId)
+    const { data: updatedInv, error } = await ctx.supabase.from('invoices').update(patch).eq('id', invoiceId).select('id').maybeSingle()
     if (error) return { error: error.message }
+    if (!updatedInv) return { error: 'Invoice not found — no rows updated' }
     return { ok: true, invoice_id: invoiceId, updated: Object.keys(patch) }
   }
 }
@@ -1729,8 +1732,9 @@ const update_job = {
     if (input.scheduled_time !== undefined) patch.scheduled_time = input.scheduled_time
     if (input.assigned_to !== undefined) patch.assigned_to = input.assigned_to || null
     if (Object.keys(patch).length === 0) return { error: 'Nothing to update — pass at least one field.' }
-    const { error } = await ctx.supabase.from('jobs').update(patch).eq('id', input.job_id)
+    const { data: updated, error } = await ctx.supabase.from('jobs').update(patch).eq('id', input.job_id).select('id').maybeSingle()
     if (error) return { error: error.message }
+    if (!updated) return { error: 'Job not found — no rows updated (check job_id)' }
     const fields = Object.keys(patch).join(', ')
     await ctx.supabase.from('audit_log').insert({
       action: 'updated', entity_type: 'job', entity_id: input.job_id,
@@ -2218,6 +2222,56 @@ const get_jon_location = {
 // draft a reply for Jon's approval, then send when Jon says go.
 // ═══════════════════════════════════════════════════════════════
 
+// Gmail direct fallback — used when the email_inbox mirror table is empty.
+// Reuses the same OAuth creds as email-inbound.js.
+async function _gmailInboxDirect(hours, fromFilter, limit) {
+  const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID || '780674517325-ar9lod4h4phk6sdbtcljoqv7e1m41g2p.apps.googleusercontent.com'
+  const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET
+  const refreshToken = process.env.GOOGLE_CALENDAR_REFRESH_TOKEN
+  if (!clientSecret || !refreshToken) return null
+
+  const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, refresh_token: refreshToken, grant_type: 'refresh_token' }).toString()
+  })
+  const tokenData = await tokenRes.json()
+  if (!tokenRes.ok || !tokenData.access_token) return null
+  const at = tokenData.access_token
+
+  const sinceEpoch = Math.floor((Date.now() - hours * 3600000) / 1000)
+  let q = `in:inbox after:${sinceEpoch} -from:me`
+  if (fromFilter) q += ` from:${fromFilter}`
+
+  const listRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(q)}&maxResults=${limit}`, {
+    headers: { Authorization: `Bearer ${at}` }
+  })
+  const listData = await listRes.json()
+  const msgs = listData.messages || []
+
+  const threads = []
+  for (const m of msgs.slice(0, limit)) {
+    try {
+      const msgRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${m.id}?format=metadata&metadataHeaders=From,Subject,Date`, {
+        headers: { Authorization: `Bearer ${at}` }
+      })
+      const msgData = await msgRes.json()
+      const hdrs = {}
+      for (const h of (msgData.payload?.headers || [])) hdrs[h.name] = h.value
+      threads.push({
+        gmail_message_id: m.id,
+        thread_id: msgData.threadId,
+        from_email: hdrs.From || '',
+        subject: hdrs.Subject || '(no subject)',
+        preview: (msgData.snippet || '').slice(0, 240),
+        received_at: hdrs.Date || null,
+        source: 'gmail_direct'
+      })
+    } catch { /* skip bad message */ }
+  }
+  return threads.length ? threads : null
+}
+
 const read_inbox = {
   schema: {
     name: 'read_inbox',
@@ -2246,7 +2300,14 @@ const read_inbox = {
     if (input.from) convQ = convQ.eq('email', String(input.from).toLowerCase())
     const { data: convs, error: cErr } = await convQ
     if (cErr) return { error: cErr.message }
-    if (!convs || !convs.length) return { count: 0, unread_threads: [] }
+    if (!convs || !convs.length) {
+      // Mirror table empty — fall back to direct Gmail API query
+      try {
+        const gmailThreads = await _gmailInboxDirect(hours, input.from || null, limit)
+        if (gmailThreads) return { count: gmailThreads.length, since: sinceIso, unread_threads: gmailThreads, source: 'gmail_direct' }
+      } catch (e) { console.warn('[read_inbox] gmail fallback failed:', e.message) }
+      return { count: 0, unread_threads: [] }
+    }
 
     // For each conv, find the newest inbound and whether any outbound follows it.
     const unread = []
