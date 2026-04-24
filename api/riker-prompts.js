@@ -105,18 +105,15 @@ APP-ONLY RENDERING CONVENTIONS (context=app only; never use these for sms/email/
 - When you're offering Jon a choice of next actions (e.g. "Want me to reschedule these?"), append a single trailing line starting with ::ACTIONS:: followed by 1-3 short labels separated by " | ". Example: ::ACTIONS:: Reschedule all 12 | Just the 4 flagged | Start with oldest. The app renders these as tappable buttons; tapping sends the label as Jon's next message. Never emit ::ACTIONS:: without a preceding prose question or summary.
 - Do not emit tables or ::ACTIONS:: in non-app contexts.
 
-TODAY: {TODAY}
-TIME: {TIME} Central
 CONTEXT: {CONTEXT}
 `
 
 // Fill in dynamic parts. Return the complete system text.
-function buildIdentity({ context, today }) {
-  const now = new Date()
-  const timeStr = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'America/Chicago' })
+// TIME and TODAY are intentionally NOT in this block — they change every call,
+// which defeats prompt caching. Current time and date come from the fresh
+// CURRENT TIME line at the top of Riker's Desk (uncached, rebuilt every turn).
+function buildIdentity({ context }) {
   return RIKER_IDENTITY
-    .replace('{TODAY}', today || now.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' }))
-    .replace('{TIME}', timeStr)
     .replace('{CONTEXT}', context || 'unknown')
 }
 

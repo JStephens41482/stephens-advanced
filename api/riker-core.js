@@ -997,9 +997,8 @@ async function processMessage({
   // from `history` without losing their gist.
   const sessionSummary = typeof adapter.getSummary === 'function' ? adapter.getSummary(session) : ''
 
-  // Identity (cached) — static identity block
-  const today = nowTs.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' })
-  const identityText = buildIdentity({ context, today })
+  // Identity (cached) — static identity block; no time/date here (see desk block)
+  const identityText = buildIdentity({ context })
 
   const systemBlocks = [
     { type: 'text', text: identityText, cache_control: { type: 'ephemeral' } },
