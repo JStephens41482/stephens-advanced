@@ -1685,7 +1685,7 @@ const add_job_note = {
       entity_type: 'job',
       entity_id: jobId,
       actor,
-      summary: text
+      details: { note: text }
     })
     if (error) return { error: error.message }
     return { ok: true, job_id: jobId }
