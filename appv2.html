@@ -4917,38 +4917,45 @@ const MAZON_CONST={
 }
 
 // Entry point — invoked from invoice detail "Mazon" button.
+// Customer can be either a billing_account (multi-location parent) OR the
+// location itself (single-shot customer entered straight on the location).
+// Both paths converge on the same assignment screen.
 async function openMazonFlow(invId,custName,total){
-  // Preflight: look up billing_account via invoice → location → billing_account
   const inv=D.invs.find(x=>x.id===invId)||{}
-  let baId=inv.billing_account_id
-  if(!baId){
-    const loc=D.locs.find(x=>x.id===inv.location_id)
-    baId=loc?.billing_account_id
-  }
-  if(!baId){
-    pushMazonBlock('This invoice has no billing account linked. Attach a billing account to the location first, then try Mazon again.',null)
-    return
-  }
-  const ba=(D.bas||[]).find(b=>b.id===baId)||await fetchBa(baId)
-  if(!ba){
-    pushMazonBlock('Could not load billing account.',null)
+  const loc=D.locs.find(x=>x.id===inv.location_id)||null
+  let baId=inv.billing_account_id||loc?.billing_account_id||null
+  const ba=baId?((D.bas||[]).find(b=>b.id===baId)||await fetchBa(baId)):null
+
+  // Normalise into a `party` object the rest of the flow uses.
+  //   scope:   'billing_account' or 'location'
+  //   id:      ba.id or loc.id
+  //   name / phone / mazon_approved: same-shape fields
+  let party
+  if(ba){
+    party={scope:'billing_account',id:ba.id,name:ba.name||'',phone:ba.phone||'',mazon_approved:!!ba.mazon_approved}
+  }else if(loc){
+    party={scope:'location',id:loc.id,name:loc.name||loc.contact_name||custName||'',phone:loc.contact_phone||'',mazon_approved:!!loc.mazon_approved}
+  }else{
+    pushMazonBlock('Could not load customer info for this invoice.',null)
     return
   }
 
   // Rule 1: phone required
-  if(!ba.phone||!ba.phone.trim()){
-    pushMazonBlock('Mazon requires a customer phone number. Add one to the billing account before queueing this invoice.',{type:'edit_ba',baId:ba.id})
+  if(!party.phone||!party.phone.trim()){
+    const action=party.scope==='billing_account'?{type:'edit_ba',baId:party.id}:{type:'edit_loc',locId:party.id}
+    const where=party.scope==='billing_account'?'billing account':'location contact'
+    pushMazonBlock(`Mazon requires a customer phone number. Add one to the ${where} before queueing this invoice.`,action)
     return
   }
 
   // Rule 2: mazon_approved required
-  if(!ba.mazon_approved){
-    pushMazonBlock('This customer is not yet approved by Mazon. New customers take 1–2 business days for Mazon to credit-check. Mark them Approved only after Mazon confirms.',{type:'approve_ba',baId:ba.id,invId,custName,total})
+  if(!party.mazon_approved){
+    pushMazonBlock('This customer is not yet approved by Mazon. New customers take 1–2 business days for Mazon to credit-check. Mark them Approved only after Mazon confirms.',{type:'approve',scope:party.scope,id:party.id,invId,custName,total})
     return
   }
 
   // All checks passed — show assignment screen
-  renderMazonAssignment(invId,custName,total,ba)
+  renderMazonAssignment(invId,custName,total,party)
 }
 
 async function fetchBa(id){
@@ -4960,8 +4967,10 @@ function pushMazonBlock(msg,action){
   let ctas=''
   if(action?.type==='edit_ba'){
     ctas=`<button class="btn-p" style="margin-top:12px" onclick="pop();openBa('${action.baId}')">Open billing account →</button>`
-  }else if(action?.type==='approve_ba'){
-    ctas=`<button class="btn-p" style="margin-top:12px;background:var(--info)" onclick="confirmMazonApproval('${action.baId}','${esc(action.invId)}','${esc(action.custName)}',${action.total})">I have Mazon's approval</button>
+  }else if(action?.type==='edit_loc'){
+    ctas=`<button class="btn-p" style="margin-top:12px" onclick="pop();openLoc('${action.locId}')">Open location →</button>`
+  }else if(action?.type==='approve'){
+    ctas=`<button class="btn-p" style="margin-top:12px;background:var(--info)" onclick="confirmMazonApproval('${action.scope}','${action.id}','${esc(action.invId)}','${esc(action.custName)}',${action.total})">I have Mazon's approval</button>
          <button class="btn-s" style="margin-top:8px" onclick="pop()">Cancel</button>`
   }else{
     ctas=`<button class="btn-s" style="margin-top:12px" onclick="pop()">Close</button>`
@@ -4977,13 +4986,14 @@ function pushMazonBlock(msg,action){
   push(h)
 }
 
-async function confirmMazonApproval(baId,invId,custName,total){
+async function confirmMazonApproval(scope,id,invId,custName,total){
   if(!confirm('Confirm: Mazon has approved this customer for factoring?'))return
-  const{error}=await SB.from('billing_accounts').update({
+  const tbl=scope==='location'?'locations':'billing_accounts'
+  const{error}=await SB.from(tbl).update({
     mazon_approved:true,mazon_approved_at:new Date().toISOString()
-  }).eq('id',baId)
+  }).eq('id',id)
   if(error){toast('Failed to save approval',false);return}
-  audit('mazon_approved','billing_account',baId,'jon',null,'Jon confirmed Mazon approval')
+  audit('mazon_approved',scope==='location'?'location':'billing_account',id,'jon',null,'Jon confirmed Mazon approval')
   await load()
   pop()
   // Continue into assignment flow
