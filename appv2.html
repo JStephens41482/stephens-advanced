@@ -1217,7 +1217,7 @@ async function saveCustomItem(desc,price){
   // disabled — custom items no longer saved to prevent dropdown bloat
   // standard items are in the quick-add dropdown, one-offs don't need reuse
 }
-const fmtD=n=>isNaN(+n)?'$0.00':('$'+(+n).toFixed(2))
+// fmtD was the old currency alias — removed; use fmt() for currency, fmtD() for dates
 const esc=s=>(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')
 const unesc=s=>(s||'').replace(/&#39;/g,"'").replace(/&quot;/g,'"').replace(/&amp;/g,'&')
 
@@ -3543,7 +3543,7 @@ function jlDel(i){
 
 function updateWoTotal(){
   const total=jobLines.reduce((s,l2)=>s+(+(l2.qty||1))*(+(l2.price||0)),0)
-  const el=$('wo-total');if(el)el.textContent=fmtD(total)
+  const el=$('wo-total');if(el)el.textContent=fmt(total)
   const invEl=$('compInvTotal');if(invEl)invEl.textContent=total?fmt(total):'—'
   const amtEl=$('compBtnAmt');if(amtEl)amtEl.textContent=total?' \u2014 '+fmt(total):''
 }
@@ -4469,7 +4469,7 @@ async function openInvDetail(id){
 
   <div style="background:var(--c1);border:1px solid var(--b1);border-radius:var(--r);padding:14px;margin-bottom:16px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-      <div style="font-size:24px;font-weight:800;font-variant-numeric:tabular-nums" id="inv-det-total">${fmtD(total)}</div>
+      <div style="font-size:24px;font-weight:800;font-variant-numeric:tabular-nums" id="inv-det-total">${fmt(total)}</div>
       <span class="badge ${bc}">${inv.status}</span>
     </div>
     <div style="font-size:11px;color:var(--g1)">${inv.date?'Issued '+new Date(inv.date).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):''} ${inv.due_date?' · Due '+new Date(inv.due_date).toLocaleDateString('en-US',{month:'short',day:'numeric'}):''}</div>
@@ -4487,7 +4487,7 @@ async function openInvDetail(id){
   // LINE ITEMS — always editable (locked only if paid)
   h+=`<div class="ds"><div class="ds-t" style="display:flex;justify-content:space-between;align-items:center">
     <span>Line Items</span>
-    <span id="inv-det-total-sm" style="font-size:13px;font-weight:800;color:var(--ok)">${fmtD(total)}</span>
+    <span id="inv-det-total-sm" style="font-size:13px;font-weight:800;color:var(--ok)">${fmt(total)}</span>
   </div>`
   if(!isPaid){
     h+=`<div style="margin-bottom:10px">
@@ -4556,7 +4556,7 @@ async function openInvDetail(id){
       ${locBa?.card_on_file?`<div style="background:rgba(16,185,129,.15);border:1.5px solid var(--ok);border-radius:var(--rs);padding:10px 14px;display:flex;align-items:center;gap:10px">
         <span style="font-size:20px">💳</span>
         <div style="flex:1"><div style="font-size:13px;font-weight:800;color:var(--ok)">${esc(locBa.card_brand||'Card')} ending in ${esc(locBa.card_last4||'****')}</div><div style="font-size:11px;color:var(--g1)">Card on file via service agreement</div></div>
-        <button style="background:var(--ok);color:#fff;border:none;border-radius:var(--rs);padding:8px 16px;font-size:12px;font-weight:800;cursor:pointer" onclick="chargeCardOnFile('${id}')">Charge ${fmtD(total)}</button>
+        <button style="background:var(--ok);color:#fff;border:none;border-radius:var(--rs);padding:8px 16px;font-size:12px;font-weight:800;cursor:pointer" onclick="chargeCardOnFile('${id}')">Charge ${fmt(total)}</button>
       </div>`:''}
       <div style="display:flex;gap:6px;flex-wrap:wrap">
         <button class="qa-btn ok2" style="flex:1;font-size:11px;min-width:60px" onclick="collectPayment('${id}','check')">✓ Check</button>
@@ -4620,7 +4620,7 @@ function renderInvLines(locked){
         <div style="width:36px;font-size:12px;color:var(--w2);text-align:center">${l2.qty}</div>
         <div style="flex:2;font-size:12px;color:${isTravel?'var(--warn)':'var(--w2)'}">${isTravel?'🚗 ':''}${esc(l2.desc)}</div>
         <div style="width:60px;font-size:11px;color:var(--g1);font-variant-numeric:tabular-nums">$${(+(l2.price||0)).toFixed(2)}</div>
-        <div style="width:65px;text-align:right;font-size:12px;font-weight:700;color:var(--ok);font-variant-numeric:tabular-nums">${fmtD(l2.qty*l2.price)}</div>
+        <div style="width:65px;text-align:right;font-size:12px;font-weight:700;color:var(--ok);font-variant-numeric:tabular-nums">${fmt(l2.qty*l2.price)}</div>
       </div>`
     }).join('')
   }else{
@@ -4645,7 +4645,7 @@ function renderInvLines(locked){
     }).join('')
   }
   const t=invLines.reduce((s,l2)=>s+(+(l2.qty||1))*(+(l2.price||0)),0)
-  h+=`<div style="display:flex;justify-content:space-between;padding-top:10px;border-top:2px solid var(--fire)"><div style="font-size:15px;font-weight:900;color:var(--w)">TOTAL</div><div style="font-size:18px;font-weight:900;color:var(--fire);font-variant-numeric:tabular-nums" id="inv-lines-total">${fmtD(t)}</div></div>`
+  h+=`<div style="display:flex;justify-content:space-between;padding-top:10px;border-top:2px solid var(--fire)"><div style="font-size:15px;font-weight:900;color:var(--w)">TOTAL</div><div style="font-size:18px;font-weight:900;color:var(--fire);font-variant-numeric:tabular-nums" id="inv-lines-total">${fmt(t)}</div></div>`
   wrap.innerHTML=h
 }
 
@@ -4658,9 +4658,9 @@ function ilEdit(i,field,val){
   const lt=$('il-total-'+i);if(lt)lt.textContent='$'+((+(invLines[i].qty||1))*(+(invLines[i].price||0))).toFixed(2)
   // update totals
   const t=invLines.reduce((s,l2)=>s+(+(l2.qty||1))*(+(l2.price||0)),0)
-  const el=$('inv-lines-total');if(el)el.textContent=fmtD(t)
-  const el2=$('inv-det-total-sm');if(el2)el2.textContent=fmtD(t)
-  const el3=$('inv-det-total');if(el3)el3.textContent=fmtD(t)
+  const el=$('inv-lines-total');if(el)el.textContent=fmt(t)
+  const el2=$('inv-det-total-sm');if(el2)el2.textContent=fmt(t)
+  const el3=$('inv-det-total');if(el3)el3.textContent=fmt(t)
 }
 
 function ilDel(i){
@@ -4706,7 +4706,7 @@ async function saveInvLines(invId){
     for(const l2 of lines)await saveCustomItem(l2.desc.trim(),+(l2.price)||0)
     await load()
     toast('Invoice updated ✓')
-    const el=$('inv-det-total');if(el)el.textContent=fmtD(newTotal)
+    const el=$('inv-det-total');if(el)el.textContent=fmt(newTotal)
   }catch(e){toast('Save failed',false);console.error(e)}
   if(btn){btn.textContent='💾 Save Changes';btn.disabled=false}
 }
@@ -6257,7 +6257,7 @@ function updateAiTotal(){
     const tp=$('alp'+i);if(tp)tp.value=lt.toFixed(2)
     total+=lt
   }
-  const el=$('ai-running-total');if(el)el.textContent=fmtD(total)
+  const el=$('ai-running-total');if(el)el.textContent=fmt(total)
 }
 function updateAiTotalFromLine(idx){
   const q=parseFloat($('alq'+idx)?.value)||1
@@ -6265,7 +6265,7 @@ function updateAiTotalFromLine(idx){
   const up=$('alup'+idx);if(up&&q>0)up.value=(lt/q).toFixed(2)
   let total=0
   for(let i=0;i<_aiN;i++){total+=parseFloat($('alp'+i)?.value)||0}
-  const el=$('ai-running-total');if(el)el.textContent=fmtD(total)
+  const el=$('ai-running-total');if(el)el.textContent=fmt(total)
 }
 
 function updateRecTotal(){
@@ -6277,7 +6277,7 @@ function updateRecTotal(){
     const tp=$('alp'+i);if(tp)tp.value=lt.toFixed(2)
     total+=lt
   }
-  const el=$('rec-running-total');if(el)el.textContent=fmtD(total)
+  const el=$('rec-running-total');if(el)el.textContent=fmt(total)
 }
 
 function updateRecTotalFromLine(idx){
@@ -6288,7 +6288,7 @@ function updateRecTotalFromLine(idx){
   // recalc running total
   let total=0
   for(let i=0;i<_aiN;i++){total+=parseFloat($('alp'+i)?.value)||0}
-  const el=$('rec-running-total');if(el)el.textContent=fmtD(total)
+  const el=$('rec-running-total');if(el)el.textContent=fmt(total)
 }
 
 let _aiPayMethod='old_system'
@@ -6441,8 +6441,8 @@ function showInv(d){
     <div class="co">Stephens Advanced LLC · Fire Suppression &amp; Safety · (214) 994-4799</div>
     <div class="dt">${new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</div>
     <div class="to"><strong>${esc(d.nm)}</strong>${d.addr?'<br>'+esc(d.addr):''}</div>`
-  d.lines.forEach(l2=>{const isTrv=(l2.description||l2.d||'').startsWith('Travel —');h+=`<div class="inv-ln"><div class="d">${isTrv?'<span style="color:#f59e0b">TRAVEL</span> ':''}${esc(l2.description||l2.d||'')}</div><div class="a">${fmtD(+l2.total)}</div></div>`})
-  h+=`<div class="inv-tot"><div>Total</div><div>${fmtD(d.total)}</div></div>`
+  d.lines.forEach(l2=>{const isTrv=(l2.description||l2.d||'').startsWith('Travel —');h+=`<div class="inv-ln"><div class="d">${isTrv?'<span style="color:#f59e0b">TRAVEL</span> ':''}${esc(l2.description||l2.d||'')}</div><div class="a">${fmt(+l2.total)}</div></div>`})
+  h+=`<div class="inv-tot"><div>Total</div><div>${fmt(d.total)}</div></div>`
   if(d.ro)h+=`<div style="background:#f0f4f8;border-radius:8px;padding:10px 14px;margin-top:14px;font-size:12px;color:#777;text-align:center">Recorded — not sent to customer</div>`
 
   // report banner removed — reports handled via checklist flags on job card
@@ -6714,6 +6714,30 @@ async function _confirmSendEmail(){
     }catch(e){console.error('PDF gen error:',e)}
   }
 
+  // generate invoice PDF and prepend as first attachment
+  if(st){st.textContent='Generating invoice PDF...';st.style.color='var(--g1)'}
+  try{
+    const invIframe=document.createElement('iframe')
+    invIframe.style.cssText='position:absolute;left:-9999px;top:0;width:580px;height:1056px;border:none;background:#fff'
+    document.body.appendChild(invIframe)
+    const invDoc=invIframe.contentDocument||invIframe.contentWindow.document
+    const cleanInvHtml=html.replace(/<script[\s\S]*?<\/script>/gi,'')
+    invDoc.open();invDoc.write(cleanInvHtml);invDoc.close()
+    await new Promise(r=>setTimeout(r,400))
+    const invPdfBlob=await html2pdf().set({
+      margin:[0.5,0.5,0.5,0.5],
+      filename:`Stephens-Advanced-Invoice-${d.invNum}.pdf`,
+      image:{type:'jpeg',quality:0.98},
+      html2canvas:{scale:2,useCORS:true,windowWidth:580,backgroundColor:'#ffffff'},
+      jsPDF:{unit:'in',format:'letter',orientation:'portrait'}
+    }).from(invDoc.body).outputPdf('blob')
+    document.body.removeChild(invIframe)
+    try{await uploadDocument(invPdfBlob,`Stephens-Advanced-Invoice-${d.invNum}.pdf`,'invoice_pdf','invoice',d.invId,{invoice_number:d.invNum})}catch(e){console.error('inv pdf upload:',e)}
+    const invBuf=await invPdfBlob.arrayBuffer()
+    const invB64=btoa(new Uint8Array(invBuf).reduce((s,b)=>s+String.fromCharCode(b),''))
+    attachments.unshift({filename:`Stephens-Advanced-Invoice-${d.invNum}.pdf`,content:invB64})
+  }catch(e){console.error('Invoice PDF gen error:',e)}
+
   // attach customer-uploaded documents (vendor POs, work orders, photos)
   if(docsMeta.length&&st){st.textContent='Attaching '+docsMeta.length+' document'+(docsMeta.length>1?'s':'')+'...';st.style.color='var(--g1)'}
   for(const a of docsMeta){
@@ -6726,12 +6750,6 @@ async function _confirmSendEmail(){
       const safeName=(a.file_name||'attachment').replace(/[^\w.\-]+/g,'_')
       attachments.push({filename:safeName,content:b64})
     }catch(e){console.error('doc attach:',e)}
-  }
-
-  // HARD CONFIRM — show exactly who gets this email
-  if(!confirm('SEND EMAIL TO:\n\n'+d.to+'\n\nInvoice '+d.invNum+' for '+d.custName+'\n\nAre you sure?')){
-    if(st)st.textContent='Cancelled';if(btn){btn.innerHTML='✉️ Send Email';btn.style.pointerEvents=''}
-    return
   }
 
   if(st){st.textContent='Sending to '+d.to+'...';st.style.color='var(--g1)'}
