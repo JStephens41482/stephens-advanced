@@ -607,6 +607,30 @@ const schedule_job = {
     }
   },
   async handler(input, ctx) {
+    // ── William hard guard ───────────────────────────────────────
+    // Non-negotiable: reject any time that falls outside Jon's custody
+    // work window for that day. This runs before ANY context branch so
+    // it cannot be bypassed regardless of who is asking.
+    if (input.date) {
+      const dayAvail = william.getJonAvailability(new Date(input.date + 'T12:00:00'))
+      if (!dayAvail.available) {
+        return { error: `WILLIAM BLOCK: ${input.date} is unavailable — ${dayAvail.reason}. Do not schedule on this day. Call get_schedule_slots to find an open day.` }
+      }
+      if (input.time) {
+        const tMin = timeToMin(input.time)
+        const startMin = timeToMin(dayAvail.workStart)
+        const durMin = Math.round((input.duration_hours || 1.5) * 60)
+        const endMin = timeToMin(dayAvail.workEnd)
+        if (tMin < startMin) {
+          return { error: `WILLIAM BLOCK: ${input.time} is before Jon's work start (${dayAvail.workStart}) on ${input.date}. ${dayAvail.reason}. Earliest start: ${dayAvail.workStart}.` }
+        }
+        if (tMin + durMin > endMin) {
+          const latest = minToTime(endMin - durMin)
+          return { error: `WILLIAM BLOCK: A ${durMin}-min job starting at ${input.time} on ${input.date} runs past Jon's hard cutoff (${dayAvail.workEnd}). ${dayAvail.reason}. Latest start for this duration: ${latest}.` }
+        }
+      }
+    }
+
     const AUTO_CONFIRM = process.env.RIKER_AUTO_CONFIRM === 'true'
     // SMS/email customer channels route through Jon's approval gate.
     // Website gets direct job creation (availability already verified via get_schedule_slots).
@@ -2994,6 +3018,21 @@ const reschedule_job = {
     if (!input.job_id) return { error: 'job_id required' }
     if (!input.new_date) return { error: 'new_date required' }
 
+    // William hard guard — same as schedule_job
+    const dayAvail = william.getJonAvailability(new Date(input.new_date + 'T12:00:00'))
+    if (!dayAvail.available) {
+      return { error: `WILLIAM BLOCK: ${input.new_date} is unavailable — ${dayAvail.reason}. Pick a different day.` }
+    }
+    if (input.new_time) {
+      const tMin = timeToMin(input.new_time)
+      if (tMin < timeToMin(dayAvail.workStart)) {
+        return { error: `WILLIAM BLOCK: ${input.new_time} is before work start (${dayAvail.workStart}) on ${input.new_date}. ${dayAvail.reason}.` }
+      }
+      if (tMin >= timeToMin(dayAvail.workEnd)) {
+        return { error: `WILLIAM BLOCK: ${input.new_time} is at or after Jon's cutoff (${dayAvail.workEnd}) on ${input.new_date}. ${dayAvail.reason}.` }
+      }
+    }
+
     const { data: job } = await ctx.supabase.from('jobs')
       .select('id, scheduled_date, scheduled_time, status, location:locations(name, contact_phone, contact_email)')
       .eq('id', input.job_id).is('deleted_at', null).maybeSingle()
@@ -3978,6 +4017,72 @@ const send_on_my_way = {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// TOOL: search_email
+// ═══════════════════════════════════════════════════════════════
+// Searches Gmail directly with an arbitrary query. Used for reading
+// Jon's inbox, finding client email history, and win-back campaigns.
+const search_email = {
+  schema: {
+    name: 'search_email',
+    description: "Search Jon's Gmail with any Gmail query string. Returns matching threads with from, subject, snippet, date, and whether the sender is a known client in the database. Use this for: reading the inbox ('in:inbox is:unread'), finding all emails from a client ('from:dragonpalace'), researching a client's history before a win-back email ('dragon palace fire inspection'), or finding threads about a topic ('subject:invoice overdue'). ALWAYS use this when Jon asks about emails.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: "Gmail search query. Examples: 'in:inbox is:unread -category:promotions', 'from:bob@acme.com', 'subject:invoice', 'dragon palace older_than:6m', 'in:sent to:customer@place.com'" },
+        max_results: { type: 'integer', description: 'Max threads returned (default 15, cap 30).' }
+      },
+      required: ['query']
+    }
+  },
+  async handler(input, ctx) {
+    let token
+    try { token = await getGmailToken() }
+    catch (e) { return { error: e.message } }
+
+    const limit = Math.min(30, Math.max(1, Number(input.max_results) || 15))
+
+    let list
+    try {
+      list = await gmailFetch(token, `users/me/messages?q=${encodeURIComponent(input.query)}&maxResults=${limit}`)
+    } catch (e) { return { error: 'Gmail search failed: ' + e.message } }
+
+    const msgIds = (list.messages || []).map(m => m.id)
+    if (!msgIds.length) return { count: 0, query: input.query, results: [] }
+
+    const results = []
+    for (const gmailId of msgIds) {
+      try {
+        const msg = await gmailFetch(token,
+          `users/me/messages/${gmailId}?format=metadata` +
+          `&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Subject&metadataHeaders=Date`)
+        const hdrs = {}
+        for (const h of (msg.payload?.headers || [])) hdrs[h.name.toLowerCase()] = h.value
+        const { email: fromEmail, name: fromName } = gmailParseFrom(hdrs['from'] || '')
+
+        // Cross-ref: is this a known client?
+        const { data: loc } = await ctx.supabase.from('locations')
+          .select('id, name, city').eq('contact_email', fromEmail).maybeSingle()
+
+        results.push({
+          gmail_message_id: gmailId,
+          thread_id: msg.threadId,
+          from_email: fromEmail,
+          from_name: fromName,
+          to: hdrs['to'] || null,
+          subject: hdrs['subject'] || '(no subject)',
+          snippet: (msg.snippet || '').replace(/&#(\d+);/g, (_, n) => String.fromCharCode(n)).slice(0, 280),
+          date: hdrs['date'] || null,
+          known_client: loc ? { location_id: loc.id, name: loc.name, city: loc.city } : null
+        })
+      } catch (e) {
+        results.push({ gmail_message_id: gmailId, error: e.message })
+      }
+    }
+    return { count: results.length, query: input.query, results }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // REGISTRY + CONTEXT FILTERING
 // ═══════════════════════════════════════════════════════════════
 
@@ -3999,7 +4104,7 @@ const ALL_TOOLS = {
   escalate_to_jon,
   request_owner_otp, verify_owner_otp,
   // Phase 3 — email inbox copilot
-  read_inbox, read_email_thread, draft_email_reply, approve_email_draft,
+  search_email, read_inbox, read_email_thread, draft_email_reply, approve_email_draft,
   // Phase 4 — web lookup
   web_search_brave, web_fetch, get_weather,
   // Phase 5 — extended ops tools
