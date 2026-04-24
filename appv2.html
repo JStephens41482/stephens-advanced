@@ -6858,8 +6858,9 @@ function buildInvoiceEmailHtml({invNum,custName,addr,date,dueDate,lines,total,po
         <strong style="color:#333">P.O. Box 166858, Irving, TX 75016-6858</strong><br>
         <span style="font-size:12px;color:#888">Questions? Reply to this email or call <strong>(214) 994-4799</strong>.</span>
       </div>
-      ${(docs&&docs.length)||(rpts&&rpts.length)?`<div style="margin-top:24px;padding:16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px">
+      <div style="margin-top:24px;padding:16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px">
         <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:#64748b;margin-bottom:10px">📎 Attached to this Email</div>
+        <div style="display:flex;align-items:center;gap:10px;padding:6px 0;font-size:13px;color:#334155"><span style="font-size:16px">🧾</span><span>Invoice ${invNum} (PDF)</span></div>
         ${rpts&&rpts.length?rpts.map(r=>{
           const name=r.report_type==='extinguisher'?'Extinguisher Report':r.report_type==='dry_chemical'?'Dry Chemical / Paint Booth Report':r.report_type==='clean_agent'?'Clean Agent Report':'Kitchen Hood Inspection Report'
           const sysLoc=r.report_data?.sysLocation||''
@@ -6870,7 +6871,7 @@ function buildInvoiceEmailHtml({invNum,custName,addr,date,dueDate,lines,total,po
           const icon=(a.file_type||'').startsWith('image/')?'🖼️':'📄'
           return`<div style="display:flex;align-items:center;gap:10px;padding:6px 0;font-size:13px;color:#334155"><span style="font-size:16px">${icon}</span><span>${labelName}: ${(a.file_name||'Attachment').replace(/[<>]/g,'')}</span></div>`
         }).join(''):''}
-      </div>`:''}
+      </div>
       ${portalUrl?`<div style="margin-top:16px;text-align:center">
         <a href="${portalUrl}" style="display:inline-block;padding:12px 28px;background:#1a1a2e;color:#fff;text-decoration:none;border-radius:8px;font-size:13px;font-weight:700;letter-spacing:.3px">View Customer Portal</a>
         <div style="font-size:11px;color:#aaa;margin-top:6px">Equipment, service history, invoices & attached documents</div>
