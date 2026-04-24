@@ -1445,7 +1445,7 @@ const build_route = {
   },
   async handler(input, ctx) {
     const key = process.env.GOOGLE_MAPS_API_KEY
-    const today = new Date().toISOString().split('T')[0]
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' })
 
     // Determine origin — use Jon's live GPS if fresh (< 15 min), else home base
     let routeOrigin = BASE_ADDR

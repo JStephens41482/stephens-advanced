@@ -40,12 +40,13 @@ const DESK_NOTES_WINDOW_HRS = 48     // short_term_desk auto-expires at 48h anyw
 async function buildRikersDesk(supabase, { context = 'app', identity = {}, now = new Date() } = {}) {
   const parts = []
 
-  // CURRENT TIME (America/Chicago — the business clock)
+  // CURRENT TIME (America/Chicago — handles CST/CDT automatically)
   const nowCST = now.toLocaleString('en-US', {
     timeZone: 'America/Chicago',
     weekday: 'short', month: 'short', day: 'numeric',
-    hour: 'numeric', minute: '2-digit', hour12: true
-  }) + ' CST'
+    hour: 'numeric', minute: '2-digit', hour12: true,
+    timeZoneName: 'short'
+  })
   parts.push(`CURRENT TIME: ${nowCST}`)
 
   // Run every section in parallel — any failure is tolerated as empty.
@@ -74,8 +75,28 @@ async function buildRikersDesk(supabase, { context = 'app', identity = {}, now =
 // BUSINESS PULSE — same shape as the old riker-core.buildBusinessPulse
 // ═══════════════════════════════════════════════════════════════
 
+async function _reverseGeocode(lat, lng) {
+  const key = process.env.GOOGLE_MAPS_API_KEY
+  if (!key) return null
+  try {
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${key}`
+    const r = await fetch(url)
+    if (!r.ok) return null
+    const d = await r.json()
+    if (d.status !== 'OK' || !d.results?.[0]) return null
+    const comps = d.results[0].address_components
+    const city = comps.find(c => c.types.includes('locality'))?.long_name
+      || comps.find(c => c.types.includes('administrative_area_level_3'))?.long_name
+    const state = comps.find(c => c.types.includes('administrative_area_level_1'))?.short_name
+    if (city && state) return `${city}, ${state}`
+    const county = comps.find(c => c.types.includes('administrative_area_level_2'))?.long_name
+    if (county && state) return `${county}, ${state}`
+    return state || null
+  } catch { return null }
+}
+
 async function _buildBusinessPulse(supabase) {
-  const today = new Date().toISOString().split('T')[0]
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' })
   const weekEnd = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0]
 
   const safe = p => p.then(r => r.data || []).catch(() => [])
@@ -195,8 +216,17 @@ async function _buildBusinessPulse(supabase) {
     const ageMins = jonLoc.updated_at
       ? Math.round((Date.now() - new Date(jonLoc.updated_at).getTime()) / 60000)
       : null
-    const ageStr = ageMins != null ? ` (${ageMins} min ago, via ${jonLoc.source || '?'})` : ''
-    lines.push(`JON'S LOCATION: ${jonLoc.lat.toFixed(4)}, ${jonLoc.lng.toFixed(4)}${ageStr}`)
+    const region = await _reverseGeocode(jonLoc.lat, jonLoc.lng).catch(() => null)
+    const regionStr = region ? `${region} ` : ''
+    const coords = `(${jonLoc.lat.toFixed(4)}, ${jonLoc.lng.toFixed(4)})`
+    if (ageMins != null && ageMins > 30) {
+      lines.push(`JON'S LOCATION: ${regionStr}${coords} — STALE: last fix ${ageMins} min ago via ${jonLoc.source || '?'}. Do NOT assume Jon is here.`)
+    } else {
+      const ageStr = ageMins != null ? `, ${ageMins} min ago via ${jonLoc.source || '?'}` : ''
+      lines.push(`JON'S LOCATION: ${regionStr}${coords}${ageStr}`)
+    }
+  } else {
+    lines.push('JON\'S LOCATION: unknown — no GPS fix on record. Do not guess based on schedule.')
   }
 
   if (mazonPending.length > 0) {

@@ -998,7 +998,7 @@ async function processMessage({
   const sessionSummary = typeof adapter.getSummary === 'function' ? adapter.getSummary(session) : ''
 
   // Identity (cached) — static identity block
-  const today = nowTs.toISOString().split('T')[0]
+  const today = nowTs.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' })
   const identityText = buildIdentity({ context, today })
 
   const systemBlocks = [
