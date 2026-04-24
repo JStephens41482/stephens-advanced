@@ -466,7 +466,7 @@ const get_schedule_slots = {
 const get_equipment = {
   schema: {
     name: 'get_equipment',
-    description: "Get all equipment at a location: extinguishers, suppression systems, emergency lights. Include next-service dates so you can flag what's due.",
+    description: "Summarize the equipment at a location based on what's actually been inspected and billed. DERIVED ONLY — there is no manually-maintained equipment table. Sources: reports.report_data (extinguisher / kitchen_suppression / dry_chemical / clean_agent / emergency_light) and invoice_lines on the location's invoices.",
     input_schema: {
       type: 'object',
       properties: { location_id: { type: 'string' } },
@@ -475,15 +475,85 @@ const get_equipment = {
   },
   async handler(input, ctx) {
     if (!input.location_id) return { error: 'location_id required' }
-    const [ext, sup, emg] = await Promise.all([
-      ctx.supabase.from('extinguishers').select('id, type, size, serial_number, location_in_building, next_inspection, next_hydro, status').eq('location_id', input.location_id).is('deleted_at', null),
-      ctx.supabase.from('suppression_systems').select('id, system_type, category, tank_count, nozzle_count, fusible_link_count, location_in_building, next_inspection, next_hydro').eq('location_id', input.location_id).is('deleted_at', null),
-      ctx.supabase.from('emergency_lights').select('id, fixture_count, next_annual_test').eq('location_id', input.location_id)
-    ])
+    const sb = ctx.supabase
+
+    const { data: jobs } = await sb.from('jobs').select('id').eq('location_id', input.location_id)
+    const jobIds = (jobs || []).map(j => j.id)
+
+    const { data: reports } = jobIds.length
+      ? await sb.from('reports').select('job_id, report_type, report_data, created_at').in('job_id', jobIds).order('created_at', { ascending: false })
+      : { data: [] }
+
+    const { data: invs } = await sb.from('invoices').select('id, date').eq('location_id', input.location_id)
+    const invIds = (invs || []).map(i => i.id)
+    const { data: lines } = invIds.length
+      ? await sb.from('invoice_lines').select('invoice_id, description, quantity').in('invoice_id', invIds)
+      : { data: [] }
+
+    // Suppression systems — from reports first, then invoice line fallback.
+    const systems = []
+    const seen = new Set()
+    ;(reports || [])
+      .filter(r => ['kitchen_suppression', 'dry_chemical', 'clean_agent'].includes(r.report_type))
+      .forEach(r => {
+        const d = r.report_data || {}
+        const name = [d.mfg || d.sysType || '', d.model || ''].filter(Boolean).join(' ').trim()
+          || (r.report_type === 'clean_agent' ? 'Clean Agent System'
+            : r.report_type === 'dry_chemical' ? 'Dry Chemical System'
+              : 'Kitchen Suppression')
+        const key = name.toLowerCase()
+        if (seen.has(key)) return
+        seen.add(key)
+        systems.push({
+          name,
+          type: r.report_type,
+          last_inspected: r.created_at,
+          detail: d.links ? `${d.links}` : (d.tanks ? `${d.tanks} tanks` : ''),
+          source: 'inspection_report'
+        })
+      })
+    ;(lines || []).forEach(ln => {
+      const desc = (ln.description || '').toLowerCase()
+      if (/semi.?annual|suppression|kitchen|ansul|pyro|buckeye|kidde|captive|clean.?agent|fm.?200|paint.?booth|dry.?chem/.test(desc)) {
+        const key = desc
+        if (seen.has(key)) return
+        seen.add(key)
+        systems.push({ name: ln.description, source: 'billing' })
+      }
+    })
+
+    // Extinguishers — count from latest inspection or billed quantity
+    let extCount = 0, extSource = 'unknown'
+    const extRpt = (reports || []).find(r => r.report_type === 'extinguisher')
+    if (extRpt?.report_data?.units?.length) {
+      extCount = extRpt.report_data.units.length
+      extSource = 'last inspection ' + (extRpt.created_at || '').slice(0, 10)
+    } else {
+      const billed = (lines || [])
+        .filter(ln => /extinguisher/i.test(ln.description || ''))
+        .reduce((s, ln) => s + (+ln.quantity || 0), 0)
+      if (billed) { extCount = billed; extSource = 'billing history' }
+    }
+
+    // Emergency lights — latest fixture_count from report, else billed
+    let lightCount = 0, lightSource = 'unknown'
+    const elRpt = (reports || []).find(r => r.report_type === 'emergency_light')
+    if (elRpt?.report_data?.fixture_count) {
+      lightCount = elRpt.report_data.fixture_count
+      lightSource = 'last inspection ' + (elRpt.created_at || '').slice(0, 10)
+    } else {
+      const billed = (lines || [])
+        .filter(ln => /e.?light|emergency.?light/i.test(ln.description || ''))
+        .reduce((s, ln) => s + (+ln.quantity || 0), 0)
+      if (billed) { lightCount = billed; lightSource = 'billing history' }
+    }
+
     return {
-      extinguishers: ext.data || [],
-      suppression_systems: sup.data || [],
-      emergency_lights: emg.data || []
+      note: 'Derived from inspection reports and invoice line items. No manual equipment table exists.',
+      systems,
+      extinguishers: { count: extCount, source: extSource },
+      emergency_lights: { count: lightCount, source: lightSource },
+      report_count: (reports || []).length
     }
   }
 }
@@ -2807,195 +2877,10 @@ const get_weather = {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════
-// TOOL: add_equipment — add equipment to a location
-// ═══════════════════════════════════════════════════════════════
-const add_equipment = {
-  schema: {
-    name: 'add_equipment',
-    description: "Add a piece of equipment to a location. type must be 'suppression', 'extinguisher', or 'emergency_light'. Fields vary by type.",
-    input_schema: {
-      type: 'object',
-      properties: {
-        location_id: { type: 'string', description: 'Location UUID. Required.' },
-        type: { type: 'string', enum: ['suppression', 'extinguisher', 'emergency_light'], description: 'Equipment category. Required.' },
-        // suppression fields
-        brand: { type: 'string' },
-        model: { type: 'string', description: 'Maps to system_type for suppression.' },
-        system_type: { type: 'string', description: 'e.g. Ansul R-102, Pyro-Chem Kitchen Knight II' },
-        agent_type: { type: 'string' },
-        tank_count: { type: 'integer' },
-        serial_number: { type: 'string' },
-        install_date: { type: 'string', description: 'YYYY-MM-DD' },
-        // extinguisher fields
-        quantity: { type: 'integer', description: 'Number of extinguishers (inserts multiple rows).' },
-        ext_type: { type: 'string', description: 'ABC, BC, CO2, Class K, etc. Maps to type column.' },
-        manufacture_date: { type: 'string', description: 'YYYY-MM-DD' },
-        last_internal: { type: 'string', description: 'YYYY-MM-DD date of last 6-year internal inspection.' },
-        last_hydro: { type: 'string', description: 'YYYY-MM-DD date of last hydrostatic test.' },
-        // emergency_light fields
-        fixture_count: { type: 'integer' },
-        last_test: { type: 'string', description: 'YYYY-MM-DD last annual test date.' }
-      },
-      required: ['location_id', 'type']
-    }
-  },
-  async handler(input, ctx) {
-    if (!input.location_id) return { error: 'location_id required' }
-    const t = input.type
-    if (t === 'suppression') {
-      const row = {
-        location_id: input.location_id,
-        system_type: input.system_type || input.model || 'Unknown',
-        category: 'standard',
-        tank_count: input.tank_count || 1,
-        agent_type: input.agent_type || null,
-        serial_number: input.serial_number || null,
-        manufacture_date: input.install_date || null
-      }
-      const { data, error } = await ctx.supabase.from('suppression_systems').insert(row).select('id').single()
-      if (error) return { error: error.message }
-      return { ok: true, id: data.id, type: 'suppression' }
-    } else if (t === 'extinguisher') {
-      const qty = Math.max(1, Number(input.quantity) || 1)
-      const rows = Array.from({ length: qty }, () => ({
-        location_id: input.location_id,
-        type: input.ext_type || 'ABC',
-        serial_number: input.serial_number || null,
-        manufacture_date: input.manufacture_date || null,
-        last_6year: input.last_internal || null,
-        last_hydro: input.last_hydro || null
-      }))
-      const { data, error } = await ctx.supabase.from('extinguishers').insert(rows).select('id')
-      if (error) return { error: error.message }
-      return { ok: true, ids: (data || []).map(r => r.id), count: data?.length || qty, type: 'extinguisher' }
-    } else if (t === 'emergency_light') {
-      const row = {
-        location_id: input.location_id,
-        fixture_count: input.fixture_count || 0,
-        last_annual_test: input.last_test || null
-      }
-      const { data, error } = await ctx.supabase.from('emergency_lights').insert(row).select('id').single()
-      if (error) return { error: error.message }
-      return { ok: true, id: data.id, type: 'emergency_light' }
-    }
-    return { error: 'type must be suppression, extinguisher, or emergency_light' }
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════
-// TOOL: update_equipment
-// ═══════════════════════════════════════════════════════════════
-const update_equipment = {
-  schema: {
-    name: 'update_equipment',
-    description: "Update fields on a piece of equipment. Pass equipment_id and type to identify the row, then any fields to change.",
-    input_schema: {
-      type: 'object',
-      properties: {
-        equipment_id: { type: 'string', description: 'UUID of the equipment row. Required.' },
-        type: { type: 'string', enum: ['suppression', 'extinguisher', 'emergency_light'], description: 'Required to know which table.' },
-        system_type: { type: 'string' },
-        agent_type: { type: 'string' },
-        tank_count: { type: 'integer' },
-        serial_number: { type: 'string' },
-        ext_type: { type: 'string', description: 'Maps to type column on extinguishers.' },
-        manufacture_date: { type: 'string', description: 'YYYY-MM-DD' },
-        last_internal: { type: 'string', description: 'YYYY-MM-DD. Maps to last_6year on extinguishers.' },
-        last_hydro: { type: 'string', description: 'YYYY-MM-DD' },
-        fixture_count: { type: 'integer' },
-        last_test: { type: 'string', description: 'YYYY-MM-DD. Maps to last_annual_test on emergency_lights.' },
-        notes: { type: 'string' },
-        status: { type: 'string', description: 'e.g. active, condemned, removed (extinguishers only)' }
-      },
-      required: ['equipment_id', 'type']
-    }
-  },
-  async handler(input, ctx) {
-    if (!input.equipment_id) return { error: 'equipment_id required' }
-    const t = input.type
-    let table, patch = {}
-    if (t === 'suppression') {
-      table = 'suppression_systems'
-      if (input.system_type !== undefined) patch.system_type = input.system_type
-      if (input.agent_type !== undefined) patch.agent_type = input.agent_type
-      if (input.tank_count !== undefined) patch.tank_count = input.tank_count
-      if (input.serial_number !== undefined) patch.serial_number = input.serial_number
-      if (input.notes !== undefined) patch.notes = input.notes
-    } else if (t === 'extinguisher') {
-      table = 'extinguishers'
-      if (input.ext_type !== undefined) patch.type = input.ext_type
-      if (input.manufacture_date !== undefined) patch.manufacture_date = input.manufacture_date
-      if (input.last_internal !== undefined) patch.last_6year = input.last_internal
-      if (input.last_hydro !== undefined) patch.last_hydro = input.last_hydro
-      if (input.serial_number !== undefined) patch.serial_number = input.serial_number
-      if (input.notes !== undefined) patch.notes = input.notes
-      if (input.status !== undefined) patch.status = input.status
-    } else if (t === 'emergency_light') {
-      table = 'emergency_lights'
-      if (input.fixture_count !== undefined) patch.fixture_count = input.fixture_count
-      if (input.last_test !== undefined) patch.last_annual_test = input.last_test
-      if (input.notes !== undefined) patch.notes = input.notes
-    } else {
-      return { error: 'type must be suppression, extinguisher, or emergency_light' }
-    }
-    if (Object.keys(patch).length === 0) return { error: 'Nothing to update — pass at least one field.' }
-    const { error } = await ctx.supabase.from(table).update(patch).eq('id', input.equipment_id)
-    if (error) return { error: error.message }
-    return { ok: true, equipment_id: input.equipment_id, updated: Object.keys(patch) }
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════
-// TOOL: delete_equipment
-// ═══════════════════════════════════════════════════════════════
-const delete_equipment = {
-  schema: {
-    name: 'delete_equipment',
-    description: "Delete (soft if possible, else hard) a piece of equipment. Pass equipment_id and type.",
-    input_schema: {
-      type: 'object',
-      properties: {
-        equipment_id: { type: 'string', description: 'UUID of the equipment row. Required.' },
-        type: { type: 'string', enum: ['suppression', 'extinguisher', 'emergency_light'], description: 'Required to know which table.' },
-        reason: { type: 'string', description: 'Short reason for audit trail.' }
-      },
-      required: ['equipment_id', 'type']
-    }
-  },
-  async handler(input, ctx) {
-    if (!input.equipment_id) return { error: 'equipment_id required' }
-    const t = input.type
-    let table
-    if (t === 'suppression') table = 'suppression_systems'
-    else if (t === 'extinguisher') table = 'extinguishers'
-    else if (t === 'emergency_light') table = 'emergency_lights'
-    else return { error: 'type must be suppression, extinguisher, or emergency_light' }
-
-    // Try soft-delete first (deleted_at column — extinguishers has it from schema)
-    // extinguishers has deleted_at; suppression_systems and emergency_lights do not per schema
-    const softDeleteTables = new Set(['extinguishers'])
-    if (softDeleteTables.has(table)) {
-      const { data: row } = await ctx.supabase.from(table).select('*').eq('id', input.equipment_id).maybeSingle()
-      if (row) {
-        await trashRecord(ctx.supabase, {
-          tableName: table, recordId: input.equipment_id, recordData: row,
-          deletedBy: 'ai_chat', reason: input.reason || null, context: ctx.context
-        })
-      }
-      const { error } = await ctx.supabase.from(table).update({ deleted_at: new Date().toISOString() }).eq('id', input.equipment_id)
-      if (error) {
-        // deleted_at doesn't exist — fall through to hard delete
-        const { error: delErr } = await ctx.supabase.from(table).delete().eq('id', input.equipment_id)
-        if (delErr) return { error: delErr.message }
-      }
-    } else {
-      const { error } = await ctx.supabase.from(table).delete().eq('id', input.equipment_id)
-      if (error) return { error: error.message }
-    }
-    return { ok: true, equipment_id: input.equipment_id, type: t }
-  }
-}
+// Manual equipment CRUD (add_equipment / update_equipment / delete_equipment) has
+// been removed. Equipment is no longer a manually-maintained table — it's derived
+// from inspection reports and invoice history by get_equipment. Techs record what
+// they find on each visit; billing records what was serviced. That's the record.
 
 // ═══════════════════════════════════════════════════════════════
 // TOOL: reschedule_job
@@ -4110,7 +3995,6 @@ const ALL_TOOLS = {
   // Phase 4 — web lookup
   web_search_brave, web_fetch, get_weather,
   // Phase 5 — extended ops tools
-  add_equipment, update_equipment, delete_equipment,
   reschedule_job,
   get_invoice_lines, add_invoice_line, update_invoice_line, delete_invoice_line,
   generate_portal_link,

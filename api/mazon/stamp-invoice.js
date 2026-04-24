@@ -199,10 +199,16 @@ async function buildInvoicePdf(inv) {
   page.drawText(STEPHENS.tagline, { x: L, y: T - 18, size: 10, font: fontReg, color: grey })
   page.drawText(STEPHENS.phone + '  ·  ' + STEPHENS.email, { x: L, y: T - 32, size: 9, font: fontReg, color: grey })
 
-  // Remit-to block — right side of header, prominent
+  // Remit-to block — right side of header, prominent (replaces Stephens address)
   const remitX = 350
   let remitY = T + 4
-  page.drawText(MAZON.STAMP_REMIT_TITLE, { x: remitX, y: remitY, size: 10, font: fontBold, color: red })
+  // Bordered box to match Mazon's "REMIT Address Stamp"
+  page.drawRectangle({
+    x: remitX - 6, y: remitY - 52,
+    width: 215, height: 60,
+    borderColor: rgb(0.55, 0.55, 0.58), borderWidth: 1
+  })
+  page.drawText(MAZON.STAMP_REMIT_TITLE, { x: remitX, y: remitY, size: 10, font: fontBold, color: black })
   remitY -= 14
   for (const line of MAZON.STAMP_REMIT_BODY) {
     page.drawText(line, { x: remitX, y: remitY, size: 10, font: fontBold, color: black })
@@ -294,40 +300,55 @@ async function buildInvoicePdf(inv) {
   }
   totalRow('TOTAL', fmtMoney(inv.total), true)
 
-  // ─── NOTICE OF ASSIGNMENT — bordered box near total ───
-  y -= 40
+  // ─── PAYMENT INFO STAMP — bordered box near total ───
+  //   Layout matches Mazon's "Verbiage Stamp 2": PLEASE NOTE header,
+  //   paragraph of assignment language, then two columns:
+  //   left = regular mail, right = electronic transfer.
+  y -= 20
   const boxTop = y + 10
-  const boxH = 96
+  const boxH = 150
   const boxBottom = boxTop - boxH
 
   // Border
   page.drawRectangle({
     x: L - 4, y: boxBottom,
     width: R - L + 8, height: boxH,
-    borderColor: red, borderWidth: 1.5
-  })
-  // Title bar
-  page.drawRectangle({
-    x: L - 4, y: boxTop - 20,
-    width: R - L + 8, height: 20,
-    color: red
-  })
-  page.drawText(MAZON.STAMP_NOTICE_TITLE, {
-    x: L + 4, y: boxTop - 14, size: 11, font: fontBold, color: rgb(1, 1, 1)
+    borderColor: rgb(0.45, 0.45, 0.48), borderWidth: 1
   })
 
-  let noticeY = boxTop - 34
-  for (const line of MAZON.STAMP_NOTICE_BODY) {
-    const isName = line === MAZON.LEGAL_NAME
-    const isAddr = line === MAZON.REMIT_ADDRESS_FULL
-    page.drawText(line, {
-      x: L, y: noticeY,
-      size: (isName || isAddr) ? 10 : 9,
-      font: (isName || isAddr) ? fontBold : fontReg,
-      color: black
-    })
-    noticeY -= 12
+  // PLEASE NOTE centered header
+  page.drawText(MAZON.STAMP_NOTICE_TITLE, {
+    x: (L + R) / 2 - 36, y: boxTop - 16, size: 11, font: fontBold, color: black
+  })
+
+  // Assignment paragraph (wrapped)
+  const noticeWrap = wrapText(MAZON.STAMP_NOTICE_BODY, 100)
+  let noticeY = boxTop - 32
+  for (const line of noticeWrap) {
+    page.drawText(line, { x: L, y: noticeY, size: 9, font: fontReg, color: black })
+    noticeY -= 11
   }
+
+  // Two-column footer: mail (left) + wire (right)
+  const colY = boxBottom + 60
+  const colMailX = L
+  const colWireX = (L + R) / 2 + 10
+
+  page.drawText(MAZON.STAMP_MAIL_TITLE, { x: colMailX, y: colY, size: 9, font: fontBold, color: black })
+  let mY = colY - 12
+  for (const line of MAZON.STAMP_MAIL_BODY) {
+    page.drawText(line, { x: colMailX, y: mY, size: 9, font: fontReg, color: black })
+    mY -= 11
+  }
+
+  page.drawText(MAZON.STAMP_WIRE_TITLE, { x: colWireX, y: colY, size: 9, font: fontBold, color: black })
+  let wY = colY - 12
+  for (const line of MAZON.STAMP_WIRE_BODY) {
+    page.drawText(line, { x: colWireX, y: wY, size: 9, font: fontReg, color: black })
+    wY -= 11
+  }
+
+  y = boxBottom
 
   // ─── Footer ───
   page.drawText('Thank you for your business. · Stephens Advanced LLC', {

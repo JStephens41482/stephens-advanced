@@ -162,11 +162,11 @@ async function initPortal(){
   // get locations for this token
   let locs=[]
   if(baId){
-    const{data}=await SB.from('locations').select('*,extinguishers(id,type,size,location_in_building),suppression_systems(id,system_type,tank_count,nozzle_count,fusible_link_count),emergency_lights(id,fixture_count)').eq('billing_account_id',baId)
+    const{data}=await SB.from('locations').select('*').eq('billing_account_id',baId)
     locs=data||[]
   }
   if(locId&&!locs.length){
-    const{data}=await SB.from('locations').select('*,extinguishers(id,type,size,location_in_building),suppression_systems(id,system_type,tank_count,nozzle_count,fusible_link_count),emergency_lights(id,fixture_count)').eq('id',locId)
+    const{data}=await SB.from('locations').select('*').eq('id',locId)
     locs=data||[]
   }
   if(!locs.length){showError('No locations found for this account.');return}
@@ -199,6 +199,65 @@ async function initPortal(){
 
   document.getElementById('portalCustName').textContent=locs[0]?.name||(locs.length+' locations')
   renderPortal()
+}
+
+// Derive equipment for a location purely from reports (latest inspection) and billed invoice lines.
+// No manual on-file lookups. Returns {systems:[{name,detail}], extCount, extSource, lightCount, lightSource, reportCount}
+function deriveEquipForLoc(locId){
+  const{jobs,reports,invs,allLines}=_portalData
+  const locJobs=jobs.filter(j=>j.location_id===locId)
+  const jobIds=new Set(locJobs.map(j=>j.id))
+  const locReports=(reports||[]).filter(r=>jobIds.has(r.job_id))
+  const locInvIds=(invs||[]).filter(i=>i.location_id===locId).map(i=>i.id)
+  const locLines=(allLines||[]).filter(ln=>locInvIds.includes(ln.invoice_id))
+
+  // Systems — prefer suppression-type reports; fallback to matching invoice line descriptions
+  const systems=[]
+  const seenSys=new Set()
+  const suppRpts=locReports.filter(r=>['kitchen_suppression','dry_chemical','clean_agent'].includes(r.report_type)).sort((a,b)=>(b.created_at||'').localeCompare(a.created_at||''))
+  suppRpts.forEach(r=>{
+    const d=r.report_data||{}
+    const name=[d.mfg||d.sysType||'',d.model||''].filter(Boolean).join(' ').trim()||(r.report_type==='clean_agent'?'Clean Agent System':r.report_type==='dry_chemical'?'Dry Chemical System':'Suppression System')
+    const key=name.toLowerCase()
+    if(seenSys.has(key))return
+    seenSys.add(key)
+    const detailBits=[]
+    if(d.cyl||d.cylCount)detailBits.push((d.cyl||d.cylCount)+(d.cyl?'':' cyl'))
+    if(d.links)detailBits.push(d.links)
+    if(r.created_at)detailBits.push('last inspected '+new Date(r.created_at).toLocaleDateString('en-US',{month:'short',year:'numeric'}))
+    systems.push({name,detail:detailBits.join(' · ')})
+  })
+  // Add any suppression-ish invoice lines not already named
+  locLines.forEach(ln=>{
+    const d=(ln.description||'').toLowerCase()
+    if(d.match(/suppression|kitchen.?hood|ansul|pyro|buckeye|kidde|captive|clean.?agent|fm.?200|paint.?booth|dry.?chem/)){
+      const key=(ln.description||'').toLowerCase()
+      if(!seenSys.has(key)){
+        seenSys.add(key)
+        systems.push({name:ln.description,detail:'from billing'})
+      }
+    }
+  })
+
+  // Extinguishers — prefer latest extinguisher report unit count; fallback to billed quantity
+  let extCount=0,extSource=''
+  const extRpt=locReports.find(r=>r.report_type==='extinguisher')
+  if(extRpt?.report_data?.units?.length){extCount=extRpt.report_data.units.length;extSource='from last inspection'}
+  else{
+    const billed=locLines.filter(ln=>/extinguisher/i.test(ln.description||'')).reduce((s,ln)=>s+(+ln.quantity||0),0)
+    if(billed){extCount=billed;extSource='from billing'}
+  }
+
+  // Emergency lights — same pattern
+  let lightCount=0,lightSource=''
+  const elRpt=locReports.find(r=>r.report_type==='emergency_light')
+  if(elRpt?.report_data?.fixture_count){lightCount=elRpt.report_data.fixture_count;lightSource='from last inspection'}
+  else{
+    const billed=locLines.filter(ln=>/e.?light|emergency.?light/i.test(ln.description||'')).reduce((s,ln)=>s+(+ln.quantity||0),0)
+    if(billed){lightCount=billed;lightSource='from billing'}
+  }
+
+  return{systems,extCount,extSource,lightCount,lightSource,reportCount:locReports.length}
 }
 
 function renderPortal(){
@@ -248,8 +307,8 @@ function renderTab(){
     const now=new Date(),today=now.toISOString().split('T')[0]
     const overdueEquip=[]
     locs.forEach(l=>{
-      // check suppression systems — semi-annual (6 months)
-      if(l.suppression_systems?.length){
+      const eq=deriveEquipForLoc(l.id)
+      if(eq.systems.length){
         const lastSuppJob=jobs.filter(j=>j.location_id===l.id&&j.status==='completed'&&j.scope?.includes('suppression')).sort((a,b)=>(b.completed_at||'').localeCompare(a.completed_at||''))[0]
         if(lastSuppJob?.completed_at){
           const lastDt=new Date(lastSuppJob.completed_at)
@@ -258,8 +317,7 @@ function renderTab(){
           else{const daysTil=Math.round((dueDate-now)/(1000*60*60*24));if(daysTil<=30)overdueEquip.push({loc:l.name,item:'Kitchen Hood / Suppression',due:dueDate.toLocaleDateString('en-US',{month:'short',year:'numeric'}),urgent:false})}
         }
       }
-      // check extinguishers — annual
-      if(l.extinguishers?.length){
+      if(eq.extCount){
         const lastExtJob=jobs.filter(j=>j.location_id===l.id&&j.status==='completed'&&j.scope?.includes('extinguishers')).sort((a,b)=>(b.completed_at||'').localeCompare(a.completed_at||''))[0]
         if(lastExtJob?.completed_at){
           const lastDt=new Date(lastExtJob.completed_at)
@@ -325,9 +383,7 @@ function renderTab(){
     // locations — tappable cards
     h+=`<div class="card"><div class="card-t">Your Locations</div>`
     locs.forEach(l=>{
-      const extCount=l.extinguishers?.length||0
-      const sysCount=l.suppression_systems?.length||0
-      const lightCount=l.emergency_lights?.[0]?.fixture_count||0
+      const eq=deriveEquipForLoc(l.id)
       const locInvs=invs.filter(i=>i.location_id===l.id)
       const locUnpaid=locInvs.filter(i=>!['paid','void','record'].includes(i.status)).reduce((s,i)=>s+(+i.total||0),0)
       h+=`<div class="loc" style="cursor:pointer;padding:14px;margin:0 -20px;border-radius:8px;transition:background .15s" onclick="openLocation('${l.id}')" onmouseenter="this.style.background='#f5f6f8'" onmouseleave="this.style.background=''">
@@ -337,9 +393,9 @@ function renderTab(){
         </div>
         <div class="loc-addr">${esc([l.address,l.city,l.state,l.zip].filter(Boolean).join(', '))}</div>
         <div class="loc-eq">
-          ${extCount?`<span class="eq-tag">${extCount} Ext</span>`:''}
-          ${sysCount?`<span class="eq-tag">${sysCount} System${sysCount!==1?'s':''}</span>`:''}
-          ${lightCount?`<span class="eq-tag">${lightCount} Lights</span>`:''}
+          ${eq.extCount?`<span class="eq-tag">${eq.extCount} Ext</span>`:''}
+          ${eq.systems.length?`<span class="eq-tag">${eq.systems.length} System${eq.systems.length!==1?'s':''}</span>`:''}
+          ${eq.lightCount?`<span class="eq-tag">${eq.lightCount} Lights</span>`:''}
           ${locInvs.length?`<span class="eq-tag">${locInvs.length} Invoice${locInvs.length!==1?'s':''}</span>`:''}
           ${locUnpaid>0?`<span class="eq-tag" style="background:#fee2e2;color:#dc2626">${fmt(locUnpaid)} owed</span>`:''}
         </div>
@@ -349,75 +405,36 @@ function renderTab(){
   }
 
   if(_activeTab==='equipment'){
-    const al=_portalData.allLines||[]
-    // derive equipment from invoice line items per location
+    // Derived equipment ONLY — from inspection reports and invoice line items.
+    // There is no "equipment on file" table the customer can edit.
     let totalSys=0,totalExt=0,totalLights=0
 
     locs.forEach(l=>{
-      // get line items for this location's invoices
-      const locInvIds=invs.filter(i=>i.location_id===l.id).map(i=>i.id)
-      const locLines=al.filter(ln=>locInvIds.includes(ln.invoice_id))
-
-      // count systems from line items
-      let sysList=[],extCount=0,lightCount=0
-      locLines.forEach(ln=>{
-        const d=(ln.description||'').toLowerCase()
-        if(d.match(/semi.?annual|suppression|kitchen|ansul|pyro|buckeye|kidde|captive|clean.?agent|fm.?200|paint.?booth|dry.?chem/)){
-          sysList.push(ln.description)
-        }
-        if(d.match(/extinguisher/)){
-          extCount+=+(ln.quantity||0)
-        }
-        if(d.match(/e.?light|emergency.?light/)){
-          lightCount+=+(ln.quantity||0)
-        }
-      })
-      // also include equipment from DB tables
-      if(l.suppression_systems?.length){
-        l.suppression_systems.forEach(s=>{
-          if(!sysList.some(x=>x.toLowerCase().includes((s.system_type||'').toLowerCase().split(' ')[0]))){
-            sysList.push(s.system_type)
-          }
-        })
-      }
-      if(l.extinguishers?.length&&!extCount)extCount=l.extinguishers.length
-      if(l.emergency_lights?.[0]?.fixture_count&&!lightCount)lightCount=l.emergency_lights[0].fixture_count
-
-      // deduplicate systems
-      const uniqueSys=[...new Set(sysList)]
-      totalSys+=uniqueSys.length
-      totalExt+=extCount
-      totalLights+=lightCount
+      const eq=deriveEquipForLoc(l.id)
+      totalSys+=eq.systems.length
+      totalExt+=eq.extCount
+      totalLights+=eq.lightCount
 
       h+=`<div class="card" style="cursor:pointer" onclick="openLocation('${l.id}')"><div class="card-t" style="display:flex;justify-content:space-between;align-items:center">${esc(l.name)}<span style="color:#ccc;font-size:14px">›</span></div>
         <div class="loc-addr" style="margin-bottom:12px">${esc([l.address,l.city].filter(Boolean).join(', '))}</div>`
-      if(l.suppression_systems?.length){
-        h+=`<div style="font-size:10px;font-weight:800;color:#999;text-transform:uppercase;letter-spacing:1px;margin:4px 0 6px">Suppression Systems · ${l.suppression_systems.length}</div>`
-        l.suppression_systems.forEach(s=>{
-          h+=`<div class="eq-item"><div><div class="eq-name">🔥 ${esc(s.system_type)}</div><div class="eq-detail">${s.tank_count} tank${s.tank_count!==1?'s':''} · ${s.nozzle_count} nozzle${s.nozzle_count!==1?'s':''} · ${s.fusible_link_count} link${s.fusible_link_count!==1?'s':''}</div></div></div>`
-        })
-      }else if(uniqueSys.length){
-        h+=`<div style="font-size:10px;font-weight:800;color:#999;text-transform:uppercase;letter-spacing:1px;margin:4px 0 6px">Suppression Systems · ${uniqueSys.length}</div>`
-        uniqueSys.forEach(s=>{
-          h+=`<div class="eq-item"><div class="eq-name">🔥 ${esc(s)}</div></div>`
+      if(eq.systems.length){
+        h+=`<div style="font-size:10px;font-weight:800;color:#999;text-transform:uppercase;letter-spacing:1px;margin:4px 0 6px">Suppression Systems · ${eq.systems.length}</div>`
+        eq.systems.forEach(s=>{
+          h+=`<div class="eq-item"><div><div class="eq-name">🔥 ${esc(s.name)}</div>${s.detail?`<div class="eq-detail">${esc(s.detail)}</div>`:''}</div></div>`
         })
       }
-      if(l.extinguishers?.length){
-        h+=`<div style="font-size:10px;font-weight:800;color:#999;text-transform:uppercase;letter-spacing:1px;margin:12px 0 6px">Fire Extinguishers · ${l.extinguishers.length}</div>`
-        l.extinguishers.forEach(e=>{
-          h+=`<div class="eq-item"><div><div class="eq-name">🧯 ${esc(e.type||'Extinguisher')} ${esc(e.size||'')}</div><div class="eq-detail">${esc(e.location_in_building||'Location not specified')}</div></div></div>`
-        })
-      }else if(extCount){
+      if(eq.extCount){
         h+=`<div style="font-size:10px;font-weight:800;color:#999;text-transform:uppercase;letter-spacing:1px;margin:12px 0 6px">Fire Extinguishers</div>
-          <div class="eq-item"><div class="eq-name">🧯 ${extCount} unit${extCount!==1?'s':''} on file</div></div>`
+          <div class="eq-item"><div><div class="eq-name">🧯 ${eq.extCount} unit${eq.extCount!==1?'s':''}</div><div class="eq-detail">${esc(eq.extSource)}</div></div></div>`
       }
-      if(lightCount){
+      if(eq.lightCount){
         h+=`<div style="font-size:10px;font-weight:800;color:#999;text-transform:uppercase;letter-spacing:1px;margin:12px 0 6px">Emergency Lighting</div>
-          <div class="eq-item"><div class="eq-name">💡 ${lightCount} fixture${lightCount!==1?'s':''}</div></div>`
+          <div class="eq-item"><div><div class="eq-name">💡 ${eq.lightCount} fixture${eq.lightCount!==1?'s':''}</div><div class="eq-detail">${esc(eq.lightSource)}</div></div></div>`
       }
-      if(!uniqueSys.length&&!extCount&&!lightCount){
-        h+=`<div class="empty">No equipment on file</div>`
+      if(!eq.systems.length&&!eq.extCount&&!eq.lightCount){
+        h+=`<div class="empty">No inspections or invoices on file yet</div>`
       }
+      h+=`<div style="margin-top:10px;font-size:10px;color:#aaa;font-style:italic">Summarized from ${eq.reportCount} inspection report${eq.reportCount!==1?'s':''} & billing history</div>`
       h+=`</div>`
     })
 
@@ -552,23 +569,23 @@ function openLocation(locId){
     ${l.contact_name?`<div style="font-size:12px;color:#888;margin-top:8px">${esc(l.contact_name)}${l.contact_phone?' · <a href="tel:'+l.contact_phone+'" style="color:var(--fire);text-decoration:none">'+l.contact_phone+'</a>':''}</div>`:''}
   </div>`
 
-  // Equipment
-  h+=`<div class="card"><div class="card-t">Equipment on File</div>`
-  if(l.suppression_systems?.length){
-    l.suppression_systems.forEach(s=>{
-      h+=`<div class="eq-item"><div><div class="eq-name">🔥 ${esc(s.system_type)}</div><div class="eq-detail">${s.tank_count} tank${s.tank_count!==1?'s':''} · ${s.nozzle_count} nozzles · ${s.fusible_link_count} links</div></div></div>`
+  // Equipment — derived from reports + invoices, never a manual list
+  const eq=deriveEquipForLoc(locId)
+  h+=`<div class="card"><div class="card-t">Equipment Summary</div>
+    <div style="font-size:11px;color:#888;margin:-4px 0 10px">Based on ${eq.reportCount} inspection report${eq.reportCount!==1?'s':''} and billing history</div>`
+  if(eq.systems.length){
+    eq.systems.forEach(s=>{
+      h+=`<div class="eq-item"><div><div class="eq-name">🔥 ${esc(s.name)}</div>${s.detail?`<div class="eq-detail">${esc(s.detail)}</div>`:''}</div></div>`
     })
   }
-  if(l.extinguishers?.length){
-    l.extinguishers.forEach(e=>{
-      h+=`<div class="eq-item"><div><div class="eq-name">🧯 ${esc(e.type)} ${esc(e.size||'')}</div><div class="eq-detail">${esc(e.location_in_building||'')}</div></div></div>`
-    })
+  if(eq.extCount){
+    h+=`<div class="eq-item"><div><div class="eq-name">🧯 ${eq.extCount} Fire Extinguisher${eq.extCount!==1?'s':''}</div><div class="eq-detail">${esc(eq.extSource)}</div></div></div>`
   }
-  if(l.emergency_lights?.[0]?.fixture_count){
-    h+=`<div class="eq-item"><div class="eq-name">💡 ${l.emergency_lights[0].fixture_count} Emergency Light Fixtures</div></div>`
+  if(eq.lightCount){
+    h+=`<div class="eq-item"><div><div class="eq-name">💡 ${eq.lightCount} Emergency Light Fixture${eq.lightCount!==1?'s':''}</div><div class="eq-detail">${esc(eq.lightSource)}</div></div></div>`
   }
-  if(!l.suppression_systems?.length&&!l.extinguishers?.length){
-    h+=`<div class="empty">No equipment on file yet</div>`
+  if(!eq.systems.length&&!eq.extCount&&!eq.lightCount){
+    h+=`<div class="empty">No inspections or invoices on file yet</div>`
   }
   h+=`</div>`
 
