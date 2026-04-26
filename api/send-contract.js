@@ -73,14 +73,16 @@ module.exports = async function handler(req, res) {
     const html = buildContractEmail({ customerName, locationName, signUrl })
 
     // ── 4. Send via Resend ──────────────────────────────────────────
-    // Explicit plaintext so Gmail's auto-converter doesn't mangle `?token=`
-    // into `?token�` for plaintext-only email clients.
+    // Explicit plaintext + 7-bit ASCII enforcement. Without these two
+    // together, the URL '=' gets corrupted: any high-bit char in the body
+    // forces SMTP quoted-printable encoding, which then re-decodes the
+    // URL's '=' as part of a hex escape on the receiver side.
     const text = [
-      'STEPHENS ADVANCED LLC — FIRE SUPPRESSION SERVICES',
+      'STEPHENS ADVANCED LLC -- FIRE SUPPRESSION SERVICES',
       '',
       'SERVICE AGREEMENT',
       '',
-      `Dear ${customerName},`,
+      `Dear ${customerName||''},`,
       '',
       `Your service agreement${locationName ? ' for ' + locationName : ''} is ready to review and sign.`,
       '',
@@ -97,10 +99,10 @@ module.exports = async function handler(req, res) {
       '',
       '---',
       'Stephens Advanced LLC',
-      'Fire Suppression Systems · Inspections · Installations · Service',
-      '(214) 994-4799 · jonathan@stephensadvanced.com',
+      'Fire Suppression Systems - Inspections - Installations - Service',
+      '(214) 994-4799 - jonathan@stephensadvanced.com',
       'www.stephensadvanced.com'
-    ].join('\n')
+    ].join('\n').replace(/[^\x20-\x7E\n\r\t]/g,'')
 
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',
