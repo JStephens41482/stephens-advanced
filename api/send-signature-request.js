@@ -10,10 +10,9 @@ module.exports = async function handler(req, res) {
   const { job_id, channels } = req.body || {}
   if (!job_id) return res.status(400).json({ error: 'job_id required' })
 
-  const supabaseUrl = process.env.SUPABASE_URL
-  const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_KEY
-  if (!supabaseUrl || !supabaseKey) return res.status(500).json({ error: 'Supabase env not configured' })
-  const supabase = createClient(supabaseUrl, supabaseKey)
+  const supabaseKey = process.env.SUPABASE_SERVICE_KEY
+  if (!supabaseKey) return res.status(500).json({ error: 'SUPABASE_SERVICE_KEY not configured' })
+  const supabase = createClient('https://motjasdokoxwiodwzyps.supabase.co', supabaseKey)
 
   try {
     // Pull job + location + most recent invoice
