@@ -904,12 +904,57 @@ function statusColor(status,context){
 }
 
 // ═══ ON-DEMAND LOCATION DETAIL ═══
-// Equipment arrays (extinguishers / suppression_systems / emergency_lights)
-// are already shadow-derived from invoice_lines during load(). No lazy
-// fetch needed — return the cached row.
+// The dashboard load() pulls only recent/active jobs and the 100 most-recent
+// invoices to keep startup fast — so a customer's older completed history is
+// missing from D.jobs / D.invs. When the user opens a customer detail, we
+// fetch the full per-customer history here and merge it into the caches so
+// existing filter-by-location_id render code shows everything.
+// Equipment arrays are still derived from invoice_lines (PR #9) — once the
+// invoices are merged in, equipment surfaces correctly too.
 async function ensureLocationDetail(locId){
   if(!locId)return null
-  return D.locs.find(l=>l.id===locId)||null
+  const loc=D.locs.find(l=>l.id===locId)
+  if(!loc)return null
+  try{
+    const[jq,iq]=await Promise.all([
+      SB.from('jobs').select('id,job_number,location_id,billing_account_id,contract_id,type,scope,status,scheduled_date,scheduled_time,route_order,started_at,completed_at,technician,assigned_to,customer_notified_at,customer_arrived_at,travel_distance,travel_charge,estimated_value,notes,work_order_lines,gcal_event_id,sm8_job_number,sm8_amount,sm8_description,estimated_duration_hours,departure_alert_sent_at,created_at,updated_at,deleted_at,location:locations(id,name,city,address)').eq('location_id',locId).is('deleted_at',null).order('completed_at',{ascending:false,nullsFirst:false}),
+      SB.from('invoices').select('*,invoice_lines(*)').eq('location_id',locId).is('deleted_at',null).order('date',{ascending:false})
+    ])
+    const jobs=jq.data||[]
+    const invs=iq.data||[]
+    invs.forEach(inv=>{ if(Array.isArray(inv.invoice_lines))inv.invoice_lines=inv.invoice_lines.filter(ln=>!ln.deleted_at) })
+    // Merge into D.jobs / D.invs, replacing any existing entries by id
+    const jobIds=new Set(jobs.map(j=>j.id))
+    D.jobs=(D.jobs||[]).filter(j=>!jobIds.has(j.id)).concat(jobs)
+    const invIds=new Set(invs.map(i=>i.id))
+    D.invs=(D.invs||[]).filter(i=>!invIds.has(i.id)).concat(invs)
+    // Re-derive equipment for this loc from its now-complete invoice line history
+    // (mirrors the shadow logic at the end of load()).
+    const locInvs=D.invs.filter(inv=>inv.location_id===locId).sort((a,b)=>(b.date||'').localeCompare(a.date||''))
+    const extLn=locInvs.flatMap(inv=>inv.invoice_lines||[]).find(ln=>/extinguisher inspection/i.test(ln.description||''))
+    const extQty=extLn?Math.max(0,Math.round(+extLn.quantity||0)):0
+    loc.extinguishers=Array.from({length:extQty},()=>({type:'ABC'}))
+    const seenSys=new Set(),sysList=[]
+    locInvs.forEach(inv=>{
+      const lns=inv.invoice_lines||[]
+      lns.filter(ln=>/semi-annual/i.test(ln.description||'')).forEach(ln=>{
+        const nm=(ln.description||'').replace(/\s*semi-annual\s*/i,'').trim()||'Suppression System'
+        const k=nm.toLowerCase()
+        if(seenSys.has(k))return
+        seenSys.add(k)
+        const tankLn=lns.find(x=>/additional tank/i.test(x.description||''))
+        const linkLn=lns.find(x=>/fusible link/i.test(x.description||''))
+        const capLn=lns.find(x=>/blow.?off cap|nozzle cap/i.test(x.description||''))
+        const lc=/captiveaire.*tank/i.test(nm)?'captiveaire_tank':/captiveaire.*core/i.test(nm)?'captiveaire_core':'standard'
+        sysList.push({system_type:nm,category:lc,tank_count:1+(tankLn?+tankLn.quantity||0:0),fusible_link_count:linkLn?+linkLn.quantity||0:0,nozzle_count:capLn?+capLn.quantity||0:0})
+      })
+    })
+    loc.suppression_systems=sysList
+    const elLn=locInvs.flatMap(inv=>inv.invoice_lines||[]).find(ln=>/e.?light annual|emergency.?light/i.test(ln.description||''))
+    const elQty=elLn?Math.max(0,Math.round(+elLn.quantity||0)):0
+    loc.emergency_lights=elQty?[{fixture_count:elQty}]:[]
+  }catch(e){console.error('ensureLocationDetail:',e)}
+  return loc
 }
 
 // ═══ ON-DEMAND LOCATION SEARCH (used by scheduling / customer pickers) ═══
