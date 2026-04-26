@@ -1278,8 +1278,16 @@ async function generateNotifications(){
 }
 
 // ═══ AUDIT LOG ═══
+// Schema columns: id, action, entity_type, entity_id, actor, details (jsonb), created_at.
+// Earlier code wrote `changes` and `summary` as top-level columns — they don't
+// exist, so every audit() call was silently failing. Now packed into `details`.
 async function audit(action,entityType,entityId,actor,changes,summary){
-  try{await SB.from('audit_log').insert({action,entity_type:entityType,entity_id:entityId,actor,changes,summary})}catch(e){console.error('audit:',e)}
+  try{
+    await SB.from('audit_log').insert({
+      action,entity_type:entityType,entity_id:entityId,actor,
+      details:{changes:changes||null,summary:summary||null}
+    })
+  }catch(e){console.error('audit:',e)}
 }
 
 // ═══ TRASH / SOFT-DELETE ═══
@@ -6976,8 +6984,11 @@ async function _confirmSendEmail(){
   let html=buildInvoiceEmailHtml({
     invNum:d.invNum,custName:d.custName,
     addr:[d.loc.address,d.loc.city,d.loc.state,d.loc.zip].filter(Boolean).join(', '),
-    date:d.inv.date?new Date(d.inv.date).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):'',
-    dueDate:d.inv.due_date?new Date(d.inv.due_date).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):'',
+    // Format dates in UTC so a YYYY-MM-DD invoice date doesn't shift to the
+    // previous day when rendered in CDT (UTC-5). Without timeZone:'UTC' a row
+    // dated '2026-04-26 00:00:00+00' formats to "April 25, 2026" locally.
+    date:d.inv.date?new Date(d.inv.date).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric',timeZone:'UTC'}):'',
+    dueDate:d.inv.due_date?new Date(d.inv.due_date).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric',timeZone:'UTC'}):'',
     lines:d.ls,total:d.total,portalUrl,payUrl,
     poNumber:d.inv.po_number||'',
     docs:docsMeta,rpts:d.rpts
@@ -7090,7 +7101,7 @@ async function _confirmSendEmail(){
     })
     const data=await res.json()
     if(data.success){
-      await SB.from('invoices').update({status:'sent'}).eq('id',d.invId)
+      await SB.from('invoices').update({status:'sent',sent_at:new Date().toISOString()}).eq('id',d.invId)
       audit('sent','invoice',d.invId,'jon',{to:d.to},'Invoice '+d.invNum+' sent to '+d.to)
       await load()
       // Bug #6 fix: refresh the status badge on any invoice detail overlay
