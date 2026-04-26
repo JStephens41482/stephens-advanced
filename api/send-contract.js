@@ -73,6 +73,35 @@ module.exports = async function handler(req, res) {
     const html = buildContractEmail({ customerName, locationName, signUrl })
 
     // ── 4. Send via Resend ──────────────────────────────────────────
+    // Explicit plaintext so Gmail's auto-converter doesn't mangle `?token=`
+    // into `?token�` for plaintext-only email clients.
+    const text = [
+      'STEPHENS ADVANCED LLC — FIRE SUPPRESSION SERVICES',
+      '',
+      'SERVICE AGREEMENT',
+      '',
+      `Dear ${customerName},`,
+      '',
+      `Your service agreement${locationName ? ' for ' + locationName : ''} is ready to review and sign.`,
+      '',
+      'Benefits of your agreement:',
+      '  - Priority scheduling',
+      '  - Price-lock guarantee',
+      '  - Prompt-pay discount',
+      '  - Customer portal access',
+      '',
+      'Review and sign here:',
+      signUrl,
+      '',
+      'The link is unique to your account. Sign on any device.',
+      '',
+      '---',
+      'Stephens Advanced LLC',
+      'Fire Suppression Systems · Inspections · Installations · Service',
+      '(214) 994-4799 · jonathan@stephensadvanced.com',
+      'www.stephensadvanced.com'
+    ].join('\n')
+
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
@@ -84,7 +113,8 @@ module.exports = async function handler(req, res) {
         to: [customerEmail],
         bcc: ['jonathan@stephensadvanced.com'],
         subject: `Your Service Agreement is Ready — Stephens Advanced${locationName ? ' | ' + locationName : ''}`,
-        html
+        html,
+        text
       })
     })
 
