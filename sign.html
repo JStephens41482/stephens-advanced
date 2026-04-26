@@ -32,12 +32,22 @@ h1{font-size:24px;font-weight:800;color:#fff;letter-spacing:-.5px;margin-bottom:
 .line-q{font-size:11px;color:var(--td);margin-top:2px}
 .line-t{font-size:13px;font-weight:700;color:var(--t);white-space:nowrap}
 .total{display:flex;justify-content:space-between;padding-top:14px;margin-top:10px;border-top:1.5px solid var(--fire);font-size:16px;font-weight:800;color:#fff}
-input[type="text"]{width:100%;padding:12px 14px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:var(--rs);color:#fff;font-size:14px;font-family:inherit}
-input[type="text"]:focus{outline:none;border-color:var(--fire)}
+input[type="text"]{width:100%;padding:14px 16px;background:#fff;border:2px solid var(--fire);border-radius:var(--rs);color:#0d0f14;font-size:17px;font-weight:600;font-family:inherit;box-shadow:0 0 0 4px rgba(240,90,40,.18)}
+input[type="text"]:focus{outline:none;border-color:#ff7d4a;box-shadow:0 0 0 4px rgba(240,90,40,.35)}
+input[type="text"]::placeholder{color:#999;font-weight:400}
 .label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--td);margin-bottom:6px;display:block}
 canvas{width:100%;height:200px;background:#fff;border-radius:var(--rs);touch-action:none;display:block}
-.canvas-wrap{position:relative;background:#fff;border-radius:var(--rs);padding:2px}
+.canvas-wrap{position:relative;background:#fff;border-radius:var(--rs);padding:2px;border:2px solid var(--fire);box-shadow:0 0 0 4px rgba(240,90,40,.18)}
 .canvas-ph{position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:12px;color:#aaa;pointer-events:none}
+.step{display:flex;gap:12px;align-items:flex-start;margin-bottom:18px}
+.step-num{flex-shrink:0;width:30px;height:30px;border-radius:50%;background:var(--fire);color:#fff;font-size:14px;font-weight:900;display:flex;align-items:center;justify-content:center;margin-top:2px;transition:background .2s}
+.step.done .step-num{background:#22c55e}
+.step.done .step-num::before{content:'✓';font-size:16px}
+.step.done .step-num span{display:none}
+.step-body{flex:1;min-width:0}
+.step-title{font-size:14px;font-weight:800;color:#fff;margin-bottom:8px}
+.btn-status{font-size:12px;color:var(--td);text-align:center;margin-top:10px;font-weight:600}
+.btn-status.ready{color:#22c55e}
 .btn{display:inline-block;padding:14px 28px;border-radius:var(--rs);font-size:15px;font-weight:800;text-decoration:none;cursor:pointer;border:none;width:100%;text-align:center;font-family:inherit}
 .btn-primary{background:linear-gradient(135deg,#f05a28,#ff7d4a);color:#fff}
 .btn-primary:disabled{opacity:.5;cursor:not-allowed}
@@ -148,18 +158,31 @@ function render({sigReq, job, loc, inv, lines}){
 
   // Signature
   h += `<div class="card"><div class="card-t">Signature</div>
-    <div style="font-size:12px;color:var(--td);margin-bottom:14px">By signing below, I acknowledge the service described above was performed${inv?` and authorize charges of <strong style="color:#fff">${fmt(inv.total)}</strong>`:''}.</div>
-    <label class="label">Your name</label>
-    <input type="text" id="signerName" placeholder="Type your full name" autocomplete="name">
-    <label class="label" style="margin-top:14px">Sign below</label>
-    <div class="canvas-wrap">
-      <canvas id="sigCanvas" width="600" height="200"></canvas>
-      <div class="canvas-ph" id="sigPh">Sign with your finger or mouse</div>
+    <div style="font-size:12px;color:var(--td);margin-bottom:18px">By signing below, I acknowledge the service described above was performed${inv?` and authorize charges of <strong style="color:#fff">${fmt(inv.total)}</strong>`:''}.</div>
+
+    <div class="step" id="step1">
+      <div class="step-num"><span>1</span></div>
+      <div class="step-body">
+        <div class="step-title">Type your full name</div>
+        <input type="text" id="signerName" placeholder="e.g. John Smith" autocomplete="name">
+      </div>
     </div>
-    <button class="btn btn-ghost" style="margin-top:8px;padding:8px 14px;font-size:12px;width:auto" onclick="clearSig()">Clear signature</button>
+
+    <div class="step" id="step2">
+      <div class="step-num"><span>2</span></div>
+      <div class="step-body">
+        <div class="step-title">Draw your signature</div>
+        <div class="canvas-wrap">
+          <canvas id="sigCanvas" width="600" height="200"></canvas>
+          <div class="canvas-ph" id="sigPh">Sign with your finger or mouse</div>
+        </div>
+        <button class="btn btn-ghost" style="margin-top:8px;padding:8px 14px;font-size:12px;width:auto" onclick="clearSig()">Clear signature</button>
+      </div>
+    </div>
   </div>
 
   <button class="btn btn-primary" id="submitBtn" onclick="submitSignature()" disabled>✍️ Sign and submit</button>
+  <div class="btn-status" id="btnStatus">Complete steps 1 and 2 above to enable</div>
   <div class="muted">Your typed name and drawn signature, along with this invoice, will be emailed back to you and to Stephens Advanced as a record of authorization.</div>
   <div class="foot">Stephens Advanced LLC · Fire Suppression &amp; Safety<br>jonathan@stephensadvanced.com · <a class="foot-ph" href="tel:+12149944799">(214) 994-4799</a></div>`
 
@@ -184,8 +207,18 @@ function render({sigReq, job, loc, inv, lines}){
 
 function updateSubmit(){
   const name = $('signerName')?.value?.trim() || ''
-  const ok = state.drawn && name.length >= 2
+  const nameOk = name.length >= 2
+  const ok = state.drawn && nameOk
   $('submitBtn').disabled = !ok
+  if($('step1')) $('step1').classList.toggle('done', nameOk)
+  if($('step2')) $('step2').classList.toggle('done', state.drawn)
+  const s = $('btnStatus')
+  if(s){
+    if(ok){ s.textContent = '✓ Ready to submit'; s.classList.add('ready') }
+    else if(!nameOk && !state.drawn){ s.textContent = 'Complete steps 1 and 2 above to enable'; s.classList.remove('ready') }
+    else if(!nameOk){ s.textContent = 'Type your full name above (step 1) to enable'; s.classList.remove('ready') }
+    else { s.textContent = 'Draw your signature above (step 2) to enable'; s.classList.remove('ready') }
+  }
 }
 
 function clearSig(){
