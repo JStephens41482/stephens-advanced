@@ -1547,8 +1547,8 @@ function initSwipe(el,onDelete){
 
 function setLoad(id,on,orig){
   const b=$(id);if(!b)return
-  if(on){b.dataset.orig=b.innerHTML;b.innerHTML='<span class="spin"></span> Saving...';b.classList.add('loading')}
-  else{b.innerHTML=b.dataset.orig||orig||'Save';b.classList.remove('loading')}
+  if(on){b.dataset.orig=b.innerHTML;b.innerHTML='<span class="spin"></span> Saving...';b.classList.add('loading');b.disabled=true}
+  else{b.innerHTML=b.dataset.orig||orig||'Save';b.classList.remove('loading');b.disabled=false}
 }
 
 // ═══ ROUTING ENGINE ═══
@@ -4542,18 +4542,19 @@ function editCust(id){
 }
 
 async function saveCustEdit(id){
-  const b=$('saveCBtn');if(b){b.textContent='Saving...';b.style.opacity='.5';b.style.pointerEvents='none'}
+  const b=$('saveCBtn');if(b){b.textContent='Saving...';b.style.opacity='.5';b.style.pointerEvents='none';b.disabled=true}
   const bry=$('ec-bry').value==='true'
   const tex=$('ec-tex')?.value==='true'
+  const city=$('ec-city')?.value?.trim()||''
   const{error}=await SB.from('locations').update({
     name:$('ec-name')?.value?.trim(),contact_name:$('ec-contact')?.value?.trim()||null,
     contact_phone:$('ec-phone')?.value?.trim()||null,contact_email:$('ec-email')?.value?.trim()||null,
-    address:$('ec-addr')?.value?.trim()||null,city:$('ec-city')?.value?.trim()||null,
+    address:$('ec-addr')?.value?.trim()||null,city:city||null,
     zip:$('ec-zip')?.value?.trim()||null,notes:$('ec-notes')?.value?.trim()||null,
-    is_brycer_jurisdiction:bry,brycer_ahj_name:bry?(city||'').trim()+' Fire Department':null,
+    is_brycer_jurisdiction:bry,brycer_ahj_name:bry?city.trim()+' Fire Department':null,
     travel_charge_exempt:tex
   }).eq('id',id)
-  if(error){if($('ec-err'))$('ec-err').textContent='Error: '+error.message;if(b){b.textContent='Save';b.style.opacity='';b.style.pointerEvents=''}return}
+  if(error){if($('ec-err'))$('ec-err').textContent='Error: '+error.message;if(b){b.textContent='Save';b.style.opacity='';b.style.pointerEvents='';b.disabled=false}return}
   await load();toast('Client updated')
   pop();pop();openCust(id)
 }
@@ -4807,8 +4808,8 @@ function renderInvLines(locked){
 function ilEdit(i,field,val){
   if(!invLines[i])return
   if(field==='desc')invLines[i].desc=val
-  else if(field==='qty')invLines[i].qty=parseFloat(val)||1
-  else if(field==='price')invLines[i].price=parseFloat(val)||0
+  else if(field==='qty'){const q=parseFloat(val);invLines[i].qty=Number.isFinite(q)?q:1}
+  else if(field==='price'){const p=parseFloat(val);invLines[i].price=Number.isFinite(p)?p:0}
   // update line total
   const lt=$('il-total-'+i);if(lt)lt.textContent='$'+((+(invLines[i].qty||1))*(+(invLines[i].price||0))).toFixed(2)
   // update totals
@@ -4844,7 +4845,11 @@ function addInvLine(sel,invId){
 async function saveInvLines(invId){
   const btn=$('inv-save-lines-btn');if(btn){btn.textContent='Saving...';btn.disabled=true}
   const lines=invLines.filter(l2=>(l2.desc||'').trim())
-  const newTotal=lines.reduce((s,l2)=>s+(+(l2.qty||1))*(+(l2.price||0)),0)
+  // Match compJ semantics: subtotal = sum of non-discount lines (positive total),
+  // total = sum of all lines (after discounts). Overwriting both with the same
+  // raw qty*price collapses the split that drives Mazon factoring math.
+  const subtotal=lines.reduce((s,l2)=>{const t=(+(l2.qty)||1)*(+(l2.price)||0);return s+(t>0?t:0)},0)
+  const total=lines.reduce((s,l2)=>s+(+(l2.qty)||1)*(+(l2.price)||0),0)
   try{
     // trash existing lines (snapshot to deleted_records + flip deleted_at) then reinsert fresh
     await trash('invoice_lines',{invoice_id:invId},'Invoice lines replaced via edit','jon','app')
@@ -4856,12 +4861,12 @@ async function saveInvLines(invId){
       total:(+(l2.qty)||1)*(+(l2.price)||0),
       sort_order:i
     })))
-    await SB.from('invoices').update({total:newTotal,subtotal:newTotal}).eq('id',invId)
+    await SB.from('invoices').update({subtotal,total}).eq('id',invId)
     // save any custom items for future reuse
     for(const l2 of lines)await saveCustomItem(l2.desc.trim(),+(l2.price)||0)
     await load()
     toast('Invoice updated ✓')
-    const el=$('inv-det-total');if(el)el.textContent=fmtD(newTotal)
+    const el=$('inv-det-total');if(el)el.textContent=fmtD(total)
   }catch(e){toast('Save failed',false);console.error(e)}
   if(btn){btn.textContent='💾 Save Changes';btn.disabled=false}
 }
@@ -5497,7 +5502,7 @@ function cHtml(ls){
     </div>`
   }).join('')
 }
-function fC(q){$('cL').innerHTML=cHtml(D.locs.filter(l=>l.name.toLowerCase().includes(q.toLowerCase())||(l.city||'').toLowerCase().includes(q.toLowerCase())||(l.address||'').toLowerCase().includes(q.toLowerCase())))}
+function fC(q){$('cL').innerHTML=cHtml(D.locs.filter(l=>(l.name||'').toLowerCase().includes(q.toLowerCase())||(l.city||'').toLowerCase().includes(q.toLowerCase())||(l.address||'').toLowerCase().includes(q.toLowerCase())))}
 
 function addNewCust(){
   push(`<div class="ov-hdr">
@@ -5525,16 +5530,17 @@ function addNewCust(){
 async function saveNewCust(){
   const name=$('nc-name')?.value?.trim()
   if(!name){if($('nc-err'))$('nc-err').textContent='Business name required.';return}
-  const b=$('saveNCBtn');if(b){b.textContent='Saving...';b.style.opacity='.5';b.style.pointerEvents='none'}
+  const b=$('saveNCBtn');if(b){b.textContent='Saving...';b.style.opacity='.5';b.style.pointerEvents='none';b.disabled=true}
   const bry=$('nc-bry').value==='true'
+  const city=$('nc-city')?.value?.trim()||''
   const{data,error}=await SB.from('locations').insert({
     name,state:'TX',contact_name:$('nc-contact')?.value?.trim()||null,contact_phone:$('nc-phone')?.value?.trim()||null,
     contact_email:$('nc-email')?.value?.trim()||null,address:$('nc-addr')?.value?.trim()||null,
-    city:$('nc-city')?.value?.trim()||null,zip:$('nc-zip')?.value?.trim()||null,
+    city:city||null,zip:$('nc-zip')?.value?.trim()||null,
     notes:$('nc-notes')?.value?.trim()||null,is_brycer_jurisdiction:bry,
-    brycer_ahj_name:bry?(city||'').trim()+' Fire Department':null
+    brycer_ahj_name:bry?city.trim()+' Fire Department':null
   }).select().single()
-  if(error){if($('nc-err'))$('nc-err').textContent='Error: '+error.message;if(b){b.textContent='Save';b.style.opacity='';b.style.pointerEvents=''}return}
+  if(error){if($('nc-err'))$('nc-err').textContent='Error: '+error.message;if(b){b.textContent='Save';b.style.opacity='';b.style.pointerEvents='';b.disabled=false}return}
   if(data)audit('created','location',data.id,'jon',{name},'Client added: '+name)
   await load();toast('Client added')
   pop();rCust();openCust(data.id)
@@ -5582,9 +5588,9 @@ function initSwipes(){
       const id=el.dataset.swipeInv
       const inv=D.invs.find(i=>i.id===id)
       if(!confirm('Delete invoice '+(inv?.invoice_number||'')+' ($'+(+(inv?.total||0)).toFixed(2)+')?'))return
-      await trash('invoice_lines',{invoice_id:id},'Invoice deleted (swipe)','jon','app')
-      await trash('invoices',{id},'Invoice deleted (swipe)','jon','app')
-      await load();toast('Invoice deleted');rMoney()
+      // Delegate to delInvoice so attachments cascade, storage is cleaned, and
+      // the audit log gets written (was missing on the swipe path).
+      await delInvoice(id)
     })
   })
   document.querySelectorAll('.swipe-wrap[data-swipe-job]').forEach(el=>{
@@ -5609,8 +5615,10 @@ function initSwipes(){
     initSwipe(el,async()=>{
       const cid=el.dataset.swipeContact
       const locId=el.dataset.contactLoc
-      // location_contacts.id holds the contact row directly
-      await trash('location_contacts',{id:cid},'Contact removed from location','jon','app')
+      // Schema is `contacts` + `contact_links`. Soft-delete the link, not the
+      // contact itself (contact may be linked to other entities).
+      const{error}=await SB.from('contact_links').update({deleted_at:new Date().toISOString()}).eq('contact_id',cid).eq('entity_id',locId)
+      if(error){toast('Error removing: '+error.message,false);return}
       await load();toast('Contact removed');openCust(locId)
     })
   })
@@ -5717,8 +5725,8 @@ function recCustSearch(q){
   const dd=$('rec-loc-dd');if(!dd)return
   if(q.length<1){dd.classList.remove('vis');return}
   const ql=q.toLowerCase()
-  const matches=D.locs.filter(l=>l.name.toLowerCase().includes(ql)||(l.city||'').toLowerCase().includes(ql)||(l.address||'').toLowerCase().includes(ql))
-  const canMk=q.length>=2&&!matches.some(l=>l.name.toLowerCase()===ql)
+  const matches=D.locs.filter(l=>(l.name||'').toLowerCase().includes(ql)||(l.city||'').toLowerCase().includes(ql)||(l.address||'').toLowerCase().includes(ql))
+  const canMk=q.length>=2&&!matches.some(l=>(l.name||'').toLowerCase()===ql)
   let h=''
   matches.forEach(l=>{
     h+=`<div class="ac-it" onclick="selectRecLoc('${l.id}','${esc(l.name)}')"><div class="ac-n">${esc(l.name)}</div><div class="ac-d">${esc([l.address,l.city].filter(Boolean).join(', '))}</div></div>`
@@ -6048,8 +6056,8 @@ function aiCustSearch(q){
   const dd=$('ai-loc-dd');if(!dd)return
   if(q.length<1){dd.classList.remove('vis');return}
   const ql=q.toLowerCase()
-  const matches=D.locs.filter(l=>l.name.toLowerCase().includes(ql)||(l.city||'').toLowerCase().includes(ql)||(l.address||'').toLowerCase().includes(ql))
-  const canMk=q.length>=2&&!matches.some(l=>l.name.toLowerCase()===ql)
+  const matches=D.locs.filter(l=>(l.name||'').toLowerCase().includes(ql)||(l.city||'').toLowerCase().includes(ql)||(l.address||'').toLowerCase().includes(ql))
+  const canMk=q.length>=2&&!matches.some(l=>(l.name||'').toLowerCase()===ql)
   let h=''
   matches.forEach(l=>{
     h+=`<div class="ac-it" onclick="selectAiLoc('${l.id}','${esc(l.name)}')"><div class="ac-n">${esc(l.name)}</div><div class="ac-d">${esc([l.address,l.city].filter(Boolean).join(', '))}</div></div>`
@@ -6078,7 +6086,7 @@ function detectFranchise(name){
   for(let len=words.length-1;len>=1;len--){
     const prefix=words.slice(0,len).join(' ').toLowerCase()
     if(prefix.length<3)continue
-    const found=D.locs.filter(l=>l.name.toLowerCase().startsWith(prefix))
+    const found=D.locs.filter(l=>(l.name||'').toLowerCase().startsWith(prefix))
     if(found.length){
       return found.map(l=>({id:l.id,name:l.name,city:l.city||'',prefix:words.slice(0,len).join(' ')}))
     }
@@ -6142,7 +6150,7 @@ function parentBillSearch(q,ctx){
   const ql=q.toLowerCase()
   // search billing accounts first, then locations
   const baMatches=D.bas.filter(b=>b.name.toLowerCase().includes(ql))
-  const locMatches=D.locs.filter(l=>l.name.toLowerCase().includes(ql))
+  const locMatches=D.locs.filter(l=>(l.name||'').toLowerCase().includes(ql))
   const canMk=q.length>=2
   let h=''
   baMatches.forEach(b=>{
@@ -7724,8 +7732,8 @@ function rNewJob(){
 function nSrch(q){
   const dd=$('nDd');if(!dd)return;if(q.length<1){dd.classList.remove('vis');return}
   const ql=q.toLowerCase()
-  const f=D.locs.filter(l=>l.name.toLowerCase().includes(ql)||(l.city||'').toLowerCase().includes(ql)||(l.address||'').toLowerCase().includes(ql)||(l.contact_name||'').toLowerCase().includes(ql))
-  const canMk=q.length>=2&&!f.some(l=>l.name.toLowerCase()===q.toLowerCase())
+  const f=D.locs.filter(l=>(l.name||'').toLowerCase().includes(ql)||(l.city||'').toLowerCase().includes(ql)||(l.address||'').toLowerCase().includes(ql)||(l.contact_name||'').toLowerCase().includes(ql))
+  const canMk=q.length>=2&&!f.some(l=>(l.name||'').toLowerCase()===q.toLowerCase())
   let h=''
   f.forEach(l=>{
     window._nSrchLocs=window._nSrchLocs||{}
@@ -10342,7 +10350,7 @@ async function execChatAction(act){
       _chatMsgs.push({role:'assistant',content:`✓ Invoice marked as paid (${act.method||'cash'})`})
     }
     else if(t==='lookup_client'){
-      const match=D.locs.find(l=>l.name.toLowerCase().includes((act.name||'').toLowerCase()))
+      const match=D.locs.find(l=>(l.name||'').toLowerCase().includes((act.name||'').toLowerCase()))
       if(match){
         const jobs2=D.jobs.filter(j=>j.location_id===match.id)
         const invs2=D.invs.filter(i=>i.location_id===match.id)
