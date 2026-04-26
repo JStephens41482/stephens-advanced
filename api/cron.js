@@ -93,7 +93,107 @@ module.exports = async function handler(req, res) {
       return res.status(500).json({ error: e.message })
     }
   }
+  if (job === 'signature-reminders') {
+    try {
+      const result = await runSignatureReminders(SB)
+      return res.status(200).json({ ok: true, job: 'signature-reminders', ...result })
+    } catch (e) {
+      console.error('[cron] signature-reminders error:', e)
+      return res.status(500).json({ error: e.message })
+    }
+  }
   return res.status(400).json({ error: 'Unknown job' })
+}
+
+// Re-send signature_request emails/SMS that have been pending 7+ days
+// (or 14+ for second reminder). Runs daily at 13 UTC. Updates
+// reminder_count and reminder_sent_at on each row touched.
+async function runSignatureReminders(SB) {
+  const now = new Date()
+  const sevenAgo = new Date(now.getTime() - 7 * 86400000).toISOString()
+  const fourteenAgo = new Date(now.getTime() - 14 * 86400000).toISOString()
+  // Pull pending requests where (a) no reminder yet & sent_at <= 7d ago,
+  // or (b) one reminder already sent & first reminder >= 7d ago (i.e. >=14d
+  // since original send). Skip expired.
+  const { data: pending } = await SB
+    .from('signature_requests')
+    .select('id,token,job_id,invoice_id,location_id,sent_to_email,sent_to_phone,reminder_count,reminder_sent_at,sent_at,expires_at')
+    .eq('status', 'sent')
+    .is('signed_at', null)
+    .gt('expires_at', now.toISOString())
+    .limit(50)
+  if (!pending?.length) return { reminded: 0, message: 'no pending requests due' }
+
+  const due = []
+  for (const r of pending) {
+    const reminders = +r.reminder_count || 0
+    const lastTouch = r.reminder_sent_at || r.sent_at
+    if (reminders === 0 && lastTouch <= sevenAgo) due.push(r)
+    else if (reminders === 1 && lastTouch <= sevenAgo && r.sent_at <= fourteenAgo) due.push(r)
+  }
+  if (!due.length) return { reminded: 0, message: 'no pending requests due' }
+
+  let sent = 0
+  for (const r of due) {
+    try {
+      // Pull customer-facing context
+      const { data: loc } = r.location_id ? await SB.from('locations').select('name,contact_name').eq('id', r.location_id).maybeSingle() : { data: null }
+      const { data: inv } = r.invoice_id ? await SB.from('invoices').select('invoice_number,total').eq('id', r.invoice_id).maybeSingle() : { data: null }
+      const locName = loc?.name || 'your location'
+      const invStr = inv ? `Invoice ${inv.invoice_number} ($${(+inv.total).toFixed(2)})` : 'your recent service'
+      const signUrl = `https://www.stephensadvanced.com/sign?token=${r.token}`
+      const reminderNum = (+r.reminder_count || 0) + 1
+
+      // Email reminder
+      if (r.sent_to_email && process.env.RESEND_API_KEY) {
+        const subject = reminderNum === 1
+          ? `Reminder: please sign for ${locName}`
+          : `Final reminder: please sign for ${locName}`
+        const html = `<p style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6">Hi ${loc?.contact_name||''},</p>
+          <p style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6">We sent a request to sign for ${invStr} at <strong>${locName}</strong> a few days ago — just a quick reminder in case it slipped past.</p>
+          <p style="margin:24px 0"><a href="${signUrl}" style="display:inline-block;background:#f05a28;color:#fff;font-weight:700;padding:12px 28px;border-radius:8px;text-decoration:none">✍️ Review &amp; Sign</a></p>
+          <p style="font-family:Arial,sans-serif;font-size:12px;color:#666;line-height:1.55">If the button doesn't work: <a href="${signUrl}" style="color:#f05a28;word-break:break-all">${signUrl}</a></p>
+          <p style="font-family:Arial,sans-serif;font-size:12px;color:#999">Stephens Advanced LLC · (214) 994-4799 · jonathan@stephensadvanced.com</p>`
+        await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            from: 'Stephens Advanced <jonathan@stephensadvanced.com>',
+            to: [r.sent_to_email],
+            bcc: ['jonathan@stephensadvanced.com'],
+            subject, html
+          })
+        })
+      }
+
+      // SMS reminder
+      const sid = process.env.TWILIO_ACCOUNT_SID
+      const tw = process.env.TWILIO_AUTH_TOKEN
+      const fromN = process.env.TWILIO_PHONE_NUMBER
+      if (r.sent_to_phone && sid && tw && fromN) {
+        let to = r.sent_to_phone.replace(/[\s\-\(\)\.]/g, '')
+        if (!to.startsWith('+')) to = '+1' + to.replace(/^1/, '')
+        const auth = Buffer.from(sid + ':' + tw).toString('base64')
+        const body = reminderNum === 1
+          ? `Stephens Advanced reminder: please sign for ${invStr} at ${locName}: ${signUrl}`
+          : `Stephens Advanced final reminder: ${invStr} at ${locName} still needs your signature: ${signUrl}`
+        await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
+          method: 'POST',
+          headers: { 'Authorization': 'Basic ' + auth, 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({ To: to, From: fromN, Body: body }).toString()
+        })
+      }
+
+      await SB.from('signature_requests').update({
+        reminder_count: reminderNum,
+        reminder_sent_at: now.toISOString()
+      }).eq('id', r.id)
+      sent++
+    } catch (e) {
+      console.error('[cron] signature reminder failed for', r.id, e)
+    }
+  }
+  return { reminded: sent, considered: due.length }
 }
 
 async function runProactive(fnName, res, SB) {

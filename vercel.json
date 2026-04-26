@@ -5,6 +5,10 @@
       "schedule": "0 12 * * *"
     },
     {
+      "path": "/api/cron?job=signature-reminders",
+      "schedule": "0 13 * * *"
+    },
+    {
       "path": "/api/cron?job=riker-morning-brief",
       "schedule": "0 11 * * *"
     },
