@@ -3606,6 +3606,12 @@ async function openJob(id){
       h+=`<div class="ds"><div class="ds-t">Customer Signature</div>
         <img src="${j.signature_data}" style="max-width:100%;max-height:120px;background:#fff;border-radius:6px;padding:6px">
       </div>`
+    } else if(j.status==='completed'){
+      // Job is completed but no signature on file — offer remote-sign flow
+      h+=`<div class="ds" style="border:1.5px solid #a855f7;background:rgba(168,85,247,.06)"><div class="ds-t" style="color:#a855f7">✍️ No signature on file</div>
+        <div style="font-size:12px;color:var(--w2);margin:4px 0 12px">Customer wasn't on site? Send them a link to sign on their phone — covers the invoice and any inspection reports for this job.</div>
+        <button onclick="sendSignatureRequest('${j.id}')" style="width:100%;padding:12px;border-radius:var(--rs);background:#a855f7;color:#fff;border:none;font-size:13px;font-weight:800;cursor:pointer">📲 Send for signature</button>
+      </div>`
     }
     if(j.notes)h+=`<div class="ds"><div class="ds-t">Notes</div><div class="ds-info">${esc(j.notes)}</div></div>`
   }
@@ -7807,6 +7813,40 @@ async function createAndSendContract(locId){
     D.contracts=(D.contracts||[]);D.contracts.push(c)
     await sendContractEmail(c.id)
   }catch(e){console.error('createAndSendContract:',e);alert('Error: '+e.message)}
+}
+
+// ═══ SEND FOR SIGNATURE — for jobs completed without an on-site signer ═══
+async function sendSignatureRequest(jobId){
+  const j=D.jobs.find(x=>x.id===jobId);if(!j){toast('Job not found',false);return}
+  const l=D.locs.find(x=>x.id===j.location_id)||{}
+  const ba=l.billing_account_id?D.bas.find(b=>b.id===l.billing_account_id):null
+  const email=l.contact_email||ba?.email||''
+  const phone=l.contact_phone||ba?.phone||''
+  if(!email&&!phone){toast('No customer email or phone on file. Add one to the location first.',false);return}
+  const channels=[]
+  if(email)channels.push('email ('+email+')')
+  if(phone)channels.push('text ('+phone+')')
+  if(!confirm(`Send signing link to ${l.name||'this customer'}?\n\nDelivering via: ${channels.join(' + ')}\n\nThe link is unique to this job and expires in 14 days.`))return
+  const btn=event?.target?.closest('button')
+  if(btn){btn.disabled=true;btn.innerHTML='<span class="spin"></span> Sending...'}
+  try{
+    const res=await fetch('/api/send-signature-request',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({job_id:jobId})
+    })
+    const data=await res.json()
+    if(!res.ok)throw new Error(data.error||'Send failed')
+    audit('signature_request_sent','job',jobId,'jon',{email,phone},'Signing link sent to '+(email||phone))
+    const sentVia=[]
+    if(data.email?.sent)sentVia.push('email')
+    if(data.sms?.sent)sentVia.push('text')
+    toast('Signing link sent via '+sentVia.join(' + ')+' ✓')
+    pop();openJob(jobId)
+  }catch(e){
+    console.error('sendSignatureRequest:',e)
+    toast('Error: '+e.message,false)
+    if(btn){btn.disabled=false;btn.innerHTML='📲 Send for signature'}
+  }
 }
 
 async function sendContractEmail(contractId){
