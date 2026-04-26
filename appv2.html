@@ -701,7 +701,7 @@ async function load(){
   if(unpaidJobIds.length)orParts.push(`id.in.(${unpaidJobIds.join(',')})`)
   jobsQuery=jobsQuery.or(orParts.join(','))
 
-  const[j,l,i,b,r,ci,td2,mz,bq,tk,sr,pt,ce,ct,cl2,rch,pr,nf,cn,jLast,iLast]=await Promise.all([
+  const[j,l,i,b,r,ci,td2,mz,bq,tk,sr,pt,ce,ct,cl2,rch,pr,nf,cn,jLast,iLast,pSig]=await Promise.all([
     jobsQuery,
     // Locations: explicit columns only. PR #9 derives equipment from invoice
     // lines (see post-load shadowing below) so no nested equipment selects.
@@ -728,7 +728,13 @@ async function load(){
     // jobs query above is filtered to recent/active, so the customer list
     // would otherwise show "No service yet" for older completed customers).
     SB.from('jobs').select('location_id,completed_at').eq('status','completed').not('completed_at','is',null).is('deleted_at',null).order('completed_at',{ascending:false}),
-    SB.from('invoices').select('location_id,date').is('deleted_at',null).order('date',{ascending:false})
+    SB.from('invoices').select('location_id,date').is('deleted_at',null).order('date',{ascending:false}),
+    // Pending signatures: completed jobs in the last 14 days with no
+    // signature_data captured. signature_data isn't in the main jobs query
+    // payload (it's a heavy column), so we ask the DB directly.
+    SB.from('jobs').select('id,job_number,location_id,completed_at,scope').eq('status','completed')
+      .gte('completed_at',new Date(Date.now()-14*86400000).toISOString())
+      .is('signature_data',null).is('deleted_at',null).order('completed_at',{ascending:false}).limit(50)
   ])
   if(j.error)console.error('jobs error:',j.error)
   if(l.error)console.error('locations error:',l.error)
@@ -834,6 +840,7 @@ async function load(){
     if(!last[row.location_id]||d>last[row.location_id])last[row.location_id]=d
   }
   D.lastService=last
+  D.pendingSignatures=pSig?.data||[]
 }
 
 // ═══ AUTO-REFRESH AFTER MUTATIONS ═══
@@ -1460,6 +1467,40 @@ async function handleServiceReq(reqId,status){
   await SB.from('service_requests').update({status}).eq('id',reqId)
   await load();toast(status==='approved'?'Approved — schedule the job':'Acknowledged')
   pop();if(D.serviceRequests?.length)openServiceRequests();rJobs()
+}
+
+async function openPendingSignatures(){
+  const items=D.pendingSignatures||[]
+  let h=`<div class="ov-hdr"><button class="ov-back" onclick="pop()">‹</button><div class="ov-title">Pending Signatures</div></div><div class="ov-body">
+    <div style="background:rgba(168,85,247,.08);border:1.5px solid #a855f7;border-radius:var(--r);padding:12px;margin-bottom:16px">
+      <div style="font-size:12px;font-weight:700;color:#a855f7">Completed jobs in the last 14 days with no signature on file</div>
+      <div style="font-size:11px;color:var(--w2);margin-top:4px">Tap a job to open it. Use "Send for signature" to text/email the customer a signing link (coming next).</div>
+    </div>`
+  if(!items.length){
+    h+=`<div class="ey" style="padding:30px"><div class="ey-t">All caught up — no jobs awaiting signature.</div></div>`
+  }else{
+    items.forEach(j=>{
+      const loc=D.locs.find(l=>l.id===j.location_id)||{}
+      const completed=j.completed_at?String(j.completed_at).slice(0,10):'—'
+      const days=j.completed_at?Math.floor((Date.now()-new Date(j.completed_at).getTime())/86400000):0
+      const dColor=days>=7?'var(--bad)':days>=3?'var(--warn)':'var(--g1)'
+      h+=`<div style="background:var(--c1);border:1px solid var(--b1);border-radius:var(--r);padding:14px;margin-bottom:8px;cursor:pointer" onclick="openJob('${j.id}')">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:14px;font-weight:700;color:var(--fire)">${esc(loc.name||'Unknown location')}</div>
+            <div style="font-size:11px;color:var(--g1);margin-top:2px">${esc([loc.address,loc.city].filter(Boolean).join(', ')||'No address')}</div>
+            <div style="font-size:11px;color:var(--w2);margin-top:4px">Job ${esc(j.job_number||'—')} · ${(j.scope||[]).join(' · ')||'inspection'}</div>
+          </div>
+          <div style="text-align:right;flex-shrink:0">
+            <div style="font-size:11px;color:${dColor};font-weight:700">${completed}</div>
+            <div style="font-size:10px;color:${dColor};margin-top:2px">${days}d ago</div>
+          </div>
+        </div>
+      </div>`
+    })
+  }
+  h+=`</div>`
+  push(h)
 }
 
 async function openBrycerQueue(){
@@ -2608,6 +2649,20 @@ function rJobs(){
       </div>
     </div>`
   }
+  // Pending signatures banner
+  const pendingSig=D.pendingSignatures||[]
+  if(pendingSig.length){
+    const oldest=pendingSig[pendingSig.length-1]
+    const daysOldest=oldest?.completed_at?Math.floor((Date.now()-new Date(oldest.completed_at).getTime())/86400000):0
+    h+=`<div style="background:rgba(168,85,247,.08);border:1.5px solid #a855f7;border-radius:var(--r);padding:12px 14px;margin-bottom:16px;cursor:pointer" onclick="openPendingSignatures()">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div><span style="font-size:13px;font-weight:800;color:#a855f7">✍️ Pending Signatures</span>
+          <div style="font-size:11px;color:var(--w2);margin-top:2px">${pendingSig.length} completed job${pendingSig.length>1?'s':''} awaiting signature${daysOldest>0?' · oldest '+daysOldest+'d':''}</div>
+        </div>
+        <span style="background:#a855f7;color:#fff;font-size:13px;font-weight:900;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center">${pendingSig.length}</span>
+      </div>
+    </div>`
+  }
   // service requests from portal
   const svcReqs=D.serviceRequests||[]
   if(svcReqs.length){
@@ -2748,6 +2803,20 @@ function rCal(){
           <div style="font-size:11px;color:var(--w2);margin-top:2px">${brycerPending.length} pending submission${brycerPending.length>1?'s':''}</div>
         </div>
         <span style="background:var(--warn);color:#000;font-size:13px;font-weight:900;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center">${brycerPending.length}</span>
+      </div>
+    </div>`
+  }
+  // Pending signatures banner
+  const pendingSig=D.pendingSignatures||[]
+  if(pendingSig.length){
+    const oldest=pendingSig[pendingSig.length-1]
+    const daysOldest=oldest?.completed_at?Math.floor((Date.now()-new Date(oldest.completed_at).getTime())/86400000):0
+    top+=`<div style="background:rgba(168,85,247,.08);border:1.5px solid #a855f7;border-radius:var(--r);padding:12px 14px;margin-bottom:12px;cursor:pointer" onclick="openPendingSignatures()">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div><span style="font-size:13px;font-weight:800;color:#a855f7">✍️ Pending Signatures</span>
+          <div style="font-size:11px;color:var(--w2);margin-top:2px">${pendingSig.length} completed job${pendingSig.length>1?'s':''} awaiting signature${daysOldest>0?' · oldest '+daysOldest+'d':''}</div>
+        </div>
+        <span style="background:#a855f7;color:#fff;font-size:13px;font-weight:900;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center">${pendingSig.length}</span>
       </div>
     </div>`
   }
@@ -2910,6 +2979,20 @@ function rJobs(){
           <div style="font-size:11px;color:var(--w2);margin-top:2px">${brycerPending.length} pending submission${brycerPending.length>1?'s':''}</div>
         </div>
         <span style="background:var(--warn);color:#000;font-size:13px;font-weight:900;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center">${brycerPending.length}</span>
+      </div>
+    </div>`
+  }
+  // Pending signatures banner
+  const pendingSig=D.pendingSignatures||[]
+  if(pendingSig.length){
+    const oldest=pendingSig[pendingSig.length-1]
+    const daysOldest=oldest?.completed_at?Math.floor((Date.now()-new Date(oldest.completed_at).getTime())/86400000):0
+    top+=`<div style="background:rgba(168,85,247,.08);border:1.5px solid #a855f7;border-radius:var(--r);padding:12px 14px;margin-bottom:12px;cursor:pointer" onclick="openPendingSignatures()">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div><span style="font-size:13px;font-weight:800;color:#a855f7">✍️ Pending Signatures</span>
+          <div style="font-size:11px;color:var(--w2);margin-top:2px">${pendingSig.length} completed job${pendingSig.length>1?'s':''} awaiting signature${daysOldest>0?' · oldest '+daysOldest+'d':''}</div>
+        </div>
+        <span style="background:#a855f7;color:#fff;font-size:13px;font-weight:900;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center">${pendingSig.length}</span>
       </div>
     </div>`
   }
