@@ -202,12 +202,14 @@ function buildSigRequestText({ customerName, locationName, invNum, total, signUr
         return `  ${(qty !== 1 ? qty + ' x ' : '') + ascii((l.description||'').replace(/\s+/g,' '))}  ${fmt(lt)}`
       }).join('\n') + `\n  ${'-'.repeat(40)}\n  TOTAL: ${total || fmt(lines.reduce((s,l)=>s+(+l.total||0),0))}\n`
     : ''
-  return [
+  // Whole body must be 7-bit ASCII so SMTP doesn't apply quoted-printable
+  // encoding (which would re-decode the URL's '=' as part of a hex escape).
+  const body = [
     'STEPHENS ADVANCED LLC',
     '',
     'PLEASE REVIEW AND SIGN',
     '',
-    `Hi ${(customerName||'').replace(/[^\x20-\x7E]/g,'')}, we just completed work at ${(locationName||'').replace(/[^\x20-\x7E]/g,'')}.`,
+    `Hi ${customerName||''}, we just completed work at ${locationName||''}.`,
     invNum
       ? `Please review Invoice ${invNum}${total ? ` (${total})` : ''} and sign to acknowledge service.`
       : 'Please sign to acknowledge service.',
@@ -221,7 +223,8 @@ function buildSigRequestText({ customerName, locationName, invNum, total, signUr
     '',
     '---',
     'Stephens Advanced LLC',
-    'Fire Suppression & Safety - DFW Texas',
-    '(214) 994-4799 · jonathan@stephensadvanced.com'
+    'Fire Suppression and Safety - DFW Texas',
+    '(214) 994-4799 - jonathan@stephensadvanced.com'
   ].join('\n')
+  return body.replace(/[^\x20-\x7E\n\r\t]/g,'')
 }
