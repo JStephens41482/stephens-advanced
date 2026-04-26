@@ -194,11 +194,12 @@ function buildSigRequestEmail({ customerName, locationName, invNum, total, signU
 // unclickable for plaintext-only email clients.
 function buildSigRequestText({ customerName, locationName, invNum, total, signUrl, lines }) {
   const fmt = n => '$' + (+(n||0)).toFixed(2)
+  const ascii = s => String(s||'').replace(/[^\x20-\x7E]/g,'')
   const lineText = (lines && lines.length)
     ? lines.map(l => {
         const qty = +l.quantity || 1, price = +l.unit_price || 0
         const lt = +l.total || (qty * price)
-        return `  ${(qty !== 1 ? qty + ' x ' : '') + (l.description||'').replace(/\s+/g,' ')}  ${fmt(lt)}`
+        return `  ${(qty !== 1 ? qty + ' x ' : '') + ascii((l.description||'').replace(/\s+/g,' '))}  ${fmt(lt)}`
       }).join('\n') + `\n  ${'-'.repeat(40)}\n  TOTAL: ${total || fmt(lines.reduce((s,l)=>s+(+l.total||0),0))}\n`
     : ''
   return [
@@ -206,7 +207,7 @@ function buildSigRequestText({ customerName, locationName, invNum, total, signUr
     '',
     'PLEASE REVIEW AND SIGN',
     '',
-    `Hi ${customerName}, we just completed work at ${locationName}.`,
+    `Hi ${(customerName||'').replace(/[^\x20-\x7E]/g,'')}, we just completed work at ${(locationName||'').replace(/[^\x20-\x7E]/g,'')}.`,
     invNum
       ? `Please review Invoice ${invNum}${total ? ` (${total})` : ''} and sign to acknowledge service.`
       : 'Please sign to acknowledge service.',
@@ -216,11 +217,11 @@ function buildSigRequestText({ customerName, locationName, invNum, total, signUr
     signUrl,
     '',
     'The link is unique to your account and expires in 14 days.',
-    'Sign on any device — no app needed.',
+    'Sign on any device -- no app needed.',
     '',
     '---',
     'Stephens Advanced LLC',
-    'Fire Suppression & Safety · DFW Texas',
+    'Fire Suppression & Safety - DFW Texas',
     '(214) 994-4799 · jonathan@stephensadvanced.com'
   ].join('\n')
 }
