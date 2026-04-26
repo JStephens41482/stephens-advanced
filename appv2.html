@@ -816,6 +816,62 @@ async function load(){
   D.contracts=cn.data||[]
 }
 
+// ═══ AUTO-REFRESH AFTER MUTATIONS ═══
+// Without this, after a delete/edit you'd return to a stale list until you
+// closed and reopened the app. The wrapper marks any successful Supabase
+// insert/update/upsert/delete as "dirty"; pop() then refreshes load() and
+// re-renders the visible tab. load() clears the flag so explicit handler
+// refreshes don't double-load.
+;(function installAutoRefresh(){
+  let dirty=false,refreshing=false
+  // Wrap SB.from() to detect mutations
+  const _origFrom=SB.from.bind(SB)
+  SB.from=function(table){
+    const builder=_origFrom(table)
+    for(const m of ['insert','update','upsert','delete']){
+      const orig=builder[m]
+      if(typeof orig!=='function')continue
+      builder[m]=function(...args){
+        const q=orig.apply(this,args)
+        if(q&&typeof q.then==='function'){
+          const _then=q.then.bind(q)
+          q.then=function(onFulfilled,onRejected){
+            return _then(r=>{ if(r&&!r.error)dirty=true; return onFulfilled?onFulfilled(r):r },onRejected)
+          }
+        }
+        return q
+      }
+    }
+    return builder
+  }
+  // Wrap load() to clear the flag (so explicit handler refreshes aren't doubled)
+  const _origLoad=load
+  window.load=async function(...args){
+    const r=await _origLoad.apply(this,args)
+    dirty=false
+    return r
+  }
+  // Wrap pop() to auto-refresh + re-render visible tab when dirty
+  const _origPop=pop
+  window.pop=function(...args){
+    const r=_origPop.apply(this,args)
+    if(dirty&&!refreshing){
+      refreshing=true
+      ;(async()=>{
+        try{
+          await window.load()
+          const tab=document.querySelector('.nav button.on')?.dataset?.v
+          const RERENDER={vJobs:'rJobs',vCust:'rCust',vMoney:'rMoney',vCal:'rCal',vTechs:'rTechs'}
+          const fn=window[RERENDER[tab]]
+          if(typeof fn==='function')fn()
+        }catch(e){console.error('auto-refresh:',e)}
+        finally{refreshing=false}
+      })()
+    }
+    return r
+  }
+})()
+
 function contactsForEntity(entityType,entityId){
   return (D.contactLinks||[]).filter(cl=>cl.entity_type===entityType&&cl.entity_id===entityId).map(cl=>cl.contact||D.contacts?.find(c=>c.id===cl.contact_id)).filter(Boolean)
 }
