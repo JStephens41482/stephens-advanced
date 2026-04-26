@@ -125,7 +125,7 @@ function render({sigReq, job, loc, inv, lines}){
   if(loc){
     h += `<div class="card"><div class="card-t">Service location</div>
       <div class="row"><span class="l">Site</span><span class="v">${esc(loc.name||'')}</span></div>
-      ${[loc.address,loc.city,loc.state,loc.zip].filter(Boolean).length?`<div class="row"><span class="l">Address</span><span class="v">${esc([loc.address,loc.city,loc.state,loc.zip].filter(Boolean).join(', '))}</span></div>`:''}
+      ${(loc.address||loc.city)?`<div class="row"><span class="l">Address</span><span class="v">${esc([loc.address,loc.city,loc.state,loc.zip].filter(Boolean).join(', '))}</span></div>`:''}
       ${job?.technician?`<div class="row"><span class="l">Technician</span><span class="v">${esc(job.technician)}</span></div>`:''}
       ${job?.scope?.length?`<div class="row"><span class="l">Scope</span><span class="v">${esc(job.scope.join(' · '))}</span></div>`:''}
     </div>`

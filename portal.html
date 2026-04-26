@@ -138,7 +138,7 @@ body{font-family:var(--font-sans);background:var(--bg);color:var(--text);font-si
 const SB=supabase.createClient('https://motjasdokoxwiodwzyps.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1vdGphc2Rva294d2lvZHd6eXBzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzNDI2NTcsImV4cCI6MjA4ODkxODY1N30.IMf0plnDRhVgts9LjJr219Tax4J175iuWN1u6ZKTZ-I',{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}})
 
 const esc=s=>(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')
-const fmt=n=>'$'+Math.round(n||0).toLocaleString()
+const fmt=n=>'$'+(+(n||0)).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})
 function fmtDate(d,opts){if(!d)return'';try{const s=String(d).split('T')[0];return new Date(s+'T12:00:00').toLocaleDateString('en-US',opts||{month:'short',day:'numeric',year:'numeric'})}catch(e){return String(d).split('T')[0]}}
 let _portalData={}
 let _activeTab='overview'
@@ -852,7 +852,7 @@ async function printInvoice(invId){
   const ls=lines||[]
   const total=ls.reduce((s,l)=>s+(+l.total||0),0)||+inv.total||0
   const a=[loc.address,loc.city,loc.state,loc.zip].filter(Boolean).join(', ')
-  const dt=inv.date?new Date(inv.date+'T12:00:00').toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):''
+  const dt=fmtDate(inv.date,{month:'long',day:'numeric',year:'numeric'})
 
   let html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
 <meta name="theme-color" content="#0d0f14"><link rel="apple-touch-icon" sizes="180x180" href="/icon-180.png"><link rel="apple-touch-icon" sizes="167x167" href="/icon-167.png"><link rel="apple-touch-icon" sizes="152x152" href="/icon-152.png"><link rel="apple-touch-icon" sizes="120x120" href="/icon-120.png"><link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png"><link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png"><link rel="manifest" href="/manifest.json"><meta name="apple-mobile-web-app-title" content="Stephens Advanced">
@@ -1044,7 +1044,7 @@ async function portalInvLookup(){
       return
     }
 
-    const dt=inv.date?new Date(inv.date+'T12:00:00').toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):''
+    const dt=fmtDate(inv.date,{month:'long',day:'numeric',year:'numeric'})
     const total=+(inv.total)||0
     result.innerHTML=`
       <div style="border:1px solid #e8eaed;border-radius:var(--r);padding:16px;margin-top:4px">
