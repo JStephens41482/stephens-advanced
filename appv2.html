@@ -691,15 +691,22 @@ async function load(){
     unpaidJobIds=Array.from(new Set((up||[]).map(x=>x.job_id).filter(Boolean)))
   }catch(e){console.error('unpaid job ids:',e)}
 
-  // Step 2: build the main jobs query with the OR filter
-  let jobsQuery=SB.from('jobs').select('*,location:locations(*)').is('deleted_at',null).order('updated_at',{ascending:false})
+  // Step 2: build the main jobs query with the OR filter.
+  // Trim heavy/unused columns from the dashboard load: signature_data (large
+  // base64), photos (array of base64), ext_report_photos (jsonb of photos),
+  // and reduce the embedded location to id/name/city/address — full location
+  // detail is loaded separately and looked up via D.locs.find().
+  let jobsQuery=SB.from('jobs').select('id,job_number,location_id,billing_account_id,contract_id,type,scope,status,scheduled_date,scheduled_time,route_order,started_at,completed_at,technician,assigned_to,customer_notified_at,customer_arrived_at,travel_distance,travel_charge,estimated_value,notes,work_order_lines,gcal_event_id,sm8_job_number,sm8_amount,sm8_description,estimated_duration_hours,departure_alert_sent_at,created_at,updated_at,deleted_at,location:locations(id,name,city,address)').is('deleted_at',null).order('updated_at',{ascending:false})
   const orParts=[`status.neq.completed`,`scheduled_date.gte.${jobCutoff}`]
   if(unpaidJobIds.length)orParts.push(`id.in.(${unpaidJobIds.join(',')})`)
   jobsQuery=jobsQuery.or(orParts.join(','))
 
   const[j,l,i,b,r,ci,td2,mz,bq,tk,sr,pt,ce,ct,cl2,rch,pr,nf,cn]=await Promise.all([
     jobsQuery,
-    SB.from('locations').select('*,billing_account:billing_accounts(*)').is('deleted_at',null).order('name'),
+    // Locations: explicit columns only. PR #9 derives equipment from invoice
+    // lines (see post-load shadowing below) so no nested equipment selects.
+    // Billing account nested: only fields actually read on cards/dialogs.
+    SB.from('locations').select('id,name,address,city,state,zip,contact_name,contact_phone,contact_email,billing_account_id,is_brycer_jurisdiction,brycer_ahj_name,travel_charge_exempt,sms_opt_in,latitude,longitude,distance_from_base,notes,secondary_contact,secondary_phone,deleted_at,billing_account:billing_accounts(id,name,contact_name,email,phone,mazon_approved,address,city,state,zip)').is('deleted_at',null).order('name'),
     SB.from('invoices').select('*,invoice_lines(*)').is('deleted_at',null).order('date',{ascending:false}).limit(100),
     SB.from('billing_accounts').select('*').order('name'),
     SB.from('rate_card').select('key,price'),
@@ -3732,10 +3739,13 @@ async function compJ(id){
   const workOrderTotal=lines.reduce((s,l2)=>s+(+l2.total||0),0)
   if(workOrderTotal<=0){toast('Work order total is $0 — check your line item prices',false);setLoad('compBtn',false,'✓ Complete Job — Generate Invoice');return}
 
-  // auto-add travel charge if over 50 miles
-  const travel=await calcTravelCharge(l)
-  if(travel.charge>0){
-    lines.push({description:travel.desc,quantity:1,unit_price:travel.charge,total:travel.charge})
+  // auto-add travel charge if over 50 miles, unless this customer is exempt
+  // (e.g. piggybacking on a route paid by another nearby customer)
+  if(!l.travel_charge_exempt){
+    const travel=await calcTravelCharge(l)
+    if(travel.charge>0){
+      lines.push({description:travel.desc,quantity:1,unit_price:travel.charge,total:travel.charge})
+    }
   }
 
   // Apply pricing rules
@@ -4458,6 +4468,9 @@ function editCust(id){
     <div class="fg"><label class="fg-l">Brycer / Fort Worth FD</label>
       <select id="ec-bry"><option value="false"${!l.is_brycer_jurisdiction?' selected':''}>No</option><option value="true"${l.is_brycer_jurisdiction?' selected':''}>Yes — Fort Worth FD</option></select>
     </div>
+    <div class="fg"><label class="fg-l">Skip auto-trip charge</label>
+      <select id="ec-tex"><option value="false"${!l.travel_charge_exempt?' selected':''}>No — charge trip if &gt;50 mi</option><option value="true"${l.travel_charge_exempt?' selected':''}>Yes — never auto-add trip charge (covered by another customer on this route)</option></select>
+    </div>
     <div class="err" id="ec-err"></div>
     <div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--b1)">
       <div class="del-confirm" id="del-cust2-${id}" style="margin-bottom:0">
@@ -4475,12 +4488,14 @@ function editCust(id){
 async function saveCustEdit(id){
   const b=$('saveCBtn');if(b){b.textContent='Saving...';b.style.opacity='.5';b.style.pointerEvents='none'}
   const bry=$('ec-bry').value==='true'
+  const tex=$('ec-tex')?.value==='true'
   const{error}=await SB.from('locations').update({
     name:$('ec-name')?.value?.trim(),contact_name:$('ec-contact')?.value?.trim()||null,
     contact_phone:$('ec-phone')?.value?.trim()||null,contact_email:$('ec-email')?.value?.trim()||null,
     address:$('ec-addr')?.value?.trim()||null,city:$('ec-city')?.value?.trim()||null,
     zip:$('ec-zip')?.value?.trim()||null,notes:$('ec-notes')?.value?.trim()||null,
-    is_brycer_jurisdiction:bry,brycer_ahj_name:bry?(city||'').trim()+' Fire Department':null
+    is_brycer_jurisdiction:bry,brycer_ahj_name:bry?(city||'').trim()+' Fire Department':null,
+    travel_charge_exempt:tex
   }).eq('id',id)
   if(error){if($('ec-err'))$('ec-err').textContent='Error: '+error.message;if(b){b.textContent='Save';b.style.opacity='';b.style.pointerEvents=''}return}
   await load();toast('Client updated')
