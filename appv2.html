@@ -3291,6 +3291,18 @@ async function openJob(id){
   await load()
   const j=D.jobs.find(x=>x.id===id);if(!j)return
   extR={}
+  // Lazy-fetch the heavy job columns (signature_data, photos, ext_report_photos)
+  // — they're trimmed from the dashboard load() for performance, so without
+  // this fetch, a previously-signed job appears unsigned every time it's
+  // reopened. Mutate the cached job in-place so renderers see the values.
+  try{
+    const{data:jHeavy}=await SB.from('jobs').select('signature_data,photos,ext_report_photos').eq('id',id).maybeSingle()
+    if(jHeavy){
+      j.signature_data=jHeavy.signature_data||null
+      j.photos=jHeavy.photos||null
+      j.ext_report_photos=jHeavy.ext_report_photos||null
+    }
+  }catch(e){console.error('hydrate job heavy cols:',e)}
   // Hydrate full location (extinguishers, suppression systems, e-lights) on demand
   await ensureLocationDetail(j.location_id||j.location?.id)
   // use full location from D.locs (now includes suppression_systems, extinguishers, etc.)
