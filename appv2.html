@@ -1566,6 +1566,9 @@ async function doneTodo(id){
 
 function go(btn){
   const v=btn.dataset.v
+  // Close any open overlays before switching tabs — otherwise the new tab
+  // loads underneath while the customer/job/invoice detail stays on top.
+  if(typeof popAll==='function')popAll()
   document.querySelectorAll('.vw').forEach(e=>e.classList.remove('on'));$(v).classList.add('on')
   document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('on'));btn.classList.add('on')
   if(v==='vCal')rCal();else if(v==='vJobs')rJobs();else if(v==='vCust'){load().then(rCust)}else if(v==='vTechs')rTechs();else rMoney()
@@ -4156,21 +4159,19 @@ async function openCust(id){
   }
   h+=`</div>`
 
-  // Documents section
+  // Documents — fetch inline (small payload, ≤20 rows) so the loader doesn't
+  // race against the push(h) DOM mount and get stuck at "Loading...".
   const locJobIds=D.jobs.filter(j=>j.location_id===id||j.location?.id===id).map(j=>j.id)
-  h+=`<div class="ds"><div class="ds-t">Documents</div><div id="cust-docs-${id}" style="font-size:12px;color:var(--g2);padding:8px 0">Loading...</div></div>`
-  // async load docs after render
-  setTimeout(async()=>{
-    const el=$('cust-docs-'+id);if(!el)return
-    try{
-      let docs=[]
-      if(locJobIds.length){
-        const{data}=await SB.from('documents').select('*').eq('entity_type','job').in('entity_id',locJobIds).order('created_at',{ascending:false}).limit(20)
-        docs=data||[]
-      }
-      if(!docs.length){el.innerHTML='<div style="color:var(--g2);padding:4px 0">No documents yet</div>';return}
+  let docsHtml='<div style="color:var(--g2);padding:4px 0">No documents yet</div>'
+  try{
+    let docs=[]
+    if(locJobIds.length){
+      const{data}=await SB.from('documents').select('*').eq('entity_type','job').in('entity_id',locJobIds).order('created_at',{ascending:false}).limit(20)
+      docs=data||[]
+    }
+    if(docs.length){
       const icons={report_pdf:'📄',photo:'📸',invoice_pdf:'🧾'}
-      el.innerHTML=docs.map(d=>{
+      docsHtml=docs.map(d=>{
         const dt=new Date(d.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})
         const icon=icons[d.doc_type]||'📎'
         const size=d.file_size_bytes?(Math.round(d.file_size_bytes/1024)+'KB'):''
@@ -4183,8 +4184,9 @@ async function openCust(id){
           <a href="${d.storage_url}" target="_blank" style="font-size:11px;color:var(--fire);font-weight:700;text-decoration:none;white-space:nowrap" onclick="event.stopPropagation()">View ↗</a>
         </div>`
       }).join('')
-    }catch(e){el.innerHTML='<div style="color:var(--g2)">Could not load documents</div>';console.error('docs:',e)}
-  },100)
+    }
+  }catch(e){docsHtml='<div style="color:var(--g2)">Could not load documents</div>';console.error('docs:',e)}
+  h+=`<div class="ds"><div class="ds-t">Documents</div><div style="font-size:12px;padding:4px 0">${docsHtml}</div></div>`
 
   // Parent company & sibling locations
   const ba=l.billing_account_id?D.bas.find(b=>b.id===l.billing_account_id):null
@@ -4593,8 +4595,8 @@ function editCust(id){
       <div class="fg"><label class="fg-l">ZIP</label><input id="ec-zip" value="${esc(l.zip||'')}"></div>
     </div>
     <div class="fg"><label class="fg-l">Notes</label><textarea id="ec-notes">${esc(l.notes||'')}</textarea></div>
-    <div class="fg"><label class="fg-l">Brycer / Fort Worth FD</label>
-      <select id="ec-bry"><option value="false"${!l.is_brycer_jurisdiction?' selected':''}>No</option><option value="true"${l.is_brycer_jurisdiction?' selected':''}>Yes — Fort Worth FD</option></select>
+    <div class="fg"><label class="fg-l">Brycer / fire-marshal jurisdiction</label>
+      <select id="ec-bry"><option value="false"${!l.is_brycer_jurisdiction?' selected':''}>No</option><option value="true"${l.is_brycer_jurisdiction?' selected':''}>Yes — under fire-marshal compliance reporting</option></select>
     </div>
     <div class="fg"><label class="fg-l">Skip auto-trip charge</label>
       <select id="ec-tex"><option value="false"${!l.travel_charge_exempt?' selected':''}>No — charge trip if &gt;50 mi</option><option value="true"${l.travel_charge_exempt?' selected':''}>Yes — never auto-add trip charge (covered by another customer on this route)</option></select>
@@ -5594,8 +5596,11 @@ function addNewCust(){
       <div class="fg"><label class="fg-l">ZIP</label><input id="nc-zip" maxlength="5"></div>
     </div>
     <div class="fg"><label class="fg-l">Notes</label><textarea id="nc-notes" placeholder="Gate codes, parking, etc."></textarea></div>
-    <div class="fg"><label class="fg-l">Brycer / Fort Worth FD</label>
-      <select id="nc-bry"><option value="false">No</option><option value="true">Yes — Fort Worth FD</option></select>
+    <div class="fg"><label class="fg-l">Brycer / fire-marshal jurisdiction</label>
+      <select id="nc-bry"><option value="false">No</option><option value="true">Yes — under fire-marshal compliance reporting</option></select>
+    </div>
+    <div class="fg"><label class="fg-l">Skip auto-trip charge</label>
+      <select id="nc-tex"><option value="false">No — charge trip if &gt;50 mi</option><option value="true">Yes — never auto-add trip charge (covered by another customer on this route)</option></select>
     </div>
     <div class="err" id="nc-err"></div>
   </div>`)
@@ -5606,13 +5611,15 @@ async function saveNewCust(){
   if(!name){if($('nc-err'))$('nc-err').textContent='Business name required.';return}
   const b=$('saveNCBtn');if(b){b.textContent='Saving...';b.style.opacity='.5';b.style.pointerEvents='none';b.disabled=true}
   const bry=$('nc-bry').value==='true'
+  const tex=$('nc-tex')?.value==='true'
   const city=$('nc-city')?.value?.trim()||''
   const{data,error}=await SB.from('locations').insert({
     name,state:'TX',contact_name:$('nc-contact')?.value?.trim()||null,contact_phone:$('nc-phone')?.value?.trim()||null,
     contact_email:$('nc-email')?.value?.trim()||null,address:$('nc-addr')?.value?.trim()||null,
     city:city||null,zip:$('nc-zip')?.value?.trim()||null,
     notes:$('nc-notes')?.value?.trim()||null,is_brycer_jurisdiction:bry,
-    brycer_ahj_name:bry?city.trim()+' Fire Department':null
+    brycer_ahj_name:bry?city.trim()+' Fire Department':null,
+    travel_charge_exempt:tex
   }).select().single()
   if(error){if($('nc-err'))$('nc-err').textContent='Error: '+error.message;if(b){b.textContent='Save';b.style.opacity='';b.style.pointerEvents='';b.disabled=false}return}
   if(data)audit('created','location',data.id,'jon',{name},'Client added: '+name)
