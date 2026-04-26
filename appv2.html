@@ -701,7 +701,7 @@ async function load(){
   if(unpaidJobIds.length)orParts.push(`id.in.(${unpaidJobIds.join(',')})`)
   jobsQuery=jobsQuery.or(orParts.join(','))
 
-  const[j,l,i,b,r,ci,td2,mz,bq,tk,sr,pt,ce,ct,cl2,rch,pr,nf,cn]=await Promise.all([
+  const[j,l,i,b,r,ci,td2,mz,bq,tk,sr,pt,ce,ct,cl2,rch,pr,nf,cn,jLast,iLast]=await Promise.all([
     jobsQuery,
     // Locations: explicit columns only. PR #9 derives equipment from invoice
     // lines (see post-load shadowing below) so no nested equipment selects.
@@ -723,7 +723,12 @@ async function load(){
     SB.from('rate_card_history').select('*').is('expired_date',null).order('key'),
     SB.from('pricing_rules').select('*').eq('active',true),
     SB.from('notifications').select('*').eq('is_read',false).eq('is_dismissed',false).order('created_at',{ascending:false}).limit(50),
-    SB.from('contracts').select('*').order('created_at',{ascending:false})
+    SB.from('contracts').select('*').order('created_at',{ascending:false}),
+    // Aggregate last-service per location across ALL completed jobs (the main
+    // jobs query above is filtered to recent/active, so the customer list
+    // would otherwise show "No service yet" for older completed customers).
+    SB.from('jobs').select('location_id,completed_at').eq('status','completed').not('completed_at','is',null).is('deleted_at',null).order('completed_at',{ascending:false}),
+    SB.from('invoices').select('location_id,date').is('deleted_at',null).order('date',{ascending:false})
   ])
   if(j.error)console.error('jobs error:',j.error)
   if(l.error)console.error('locations error:',l.error)
@@ -814,6 +819,21 @@ async function load(){
   D.pricingRules=pr.data||[]
   D.notifications=nf.data||[]
   D.contracts=cn.data||[]
+  // Build {location_id: 'YYYY-MM-DD'} map of latest service across ALL history
+  // (using the most recent of completed_at on jobs and date on invoices).
+  // The customer list reads this so older customers no longer show "No service yet".
+  const last={}
+  for(const row of (jLast.data||[])){
+    if(!row.location_id||!row.completed_at)continue
+    const d=String(row.completed_at).slice(0,10)
+    if(!last[row.location_id]||d>last[row.location_id])last[row.location_id]=d
+  }
+  for(const row of (iLast.data||[])){
+    if(!row.location_id||!row.date)continue
+    const d=String(row.date).slice(0,10)
+    if(!last[row.location_id]||d>last[row.location_id])last[row.location_id]=d
+  }
+  D.lastService=last
 }
 
 // ═══ AUTO-REFRESH AFTER MUTATIONS ═══
@@ -4209,10 +4229,17 @@ async function openCust(id){
 
   if(locJobs.length){
     h+=`<div class="ds" id="cust-jobs-section"><div class="ds-t">Job History · ${locJobs.length}</div>`
-    locJobs.slice(0,15).forEach(j=>{
+    // Sort newest first by whichever date we have
+    const sortedJobs=[...locJobs].sort((a,b)=>{
+      const da=a.completed_at||a.scheduled_date||a.created_at||''
+      const db=b.completed_at||b.scheduled_date||b.created_at||''
+      return db.localeCompare(da)
+    })
+    sortedJobs.slice(0,15).forEach(j=>{
       const statC={scheduled:'var(--info)',active:'var(--ok)',completed:'var(--g1)'}[j.status]||'var(--g1)'
       const jInv=D.invs.find(i=>i.job_id===j.id)
-      h+=`<div class="ic" onclick="openJob('${j.id}')"><div class="ic-r1"><div class="ic-nm">${j.scheduled_date||'No date'}</div><span style="font-size:10px;font-weight:800;text-transform:uppercase;color:${statC}">${j.status}</span></div><div class="ic-sub">${(j.scope||[]).join(' · ')}${jInv?' · '+fmt(+jInv.total):''}</div>${jInv?`<div style="margin-top:6px" onclick="event.stopPropagation()"><button style="font-size:11px;font-weight:700;padding:6px 14px;border-radius:var(--rs);background:var(--info);color:#fff;border:none;cursor:pointer" onclick="sendInvEmail('${jInv.id}')">✉️ Resend Invoice + Reports</button></div>`:''}</div>`
+      const d=j.completed_at?String(j.completed_at).slice(0,10):(j.scheduled_date||(jInv?.date?String(jInv.date).slice(0,10):'No date'))
+      h+=`<div class="ic" onclick="openJob('${j.id}')"><div class="ic-r1"><div class="ic-nm">${d}</div><span style="font-size:10px;font-weight:800;text-transform:uppercase;color:${statC}">${j.status}</span></div><div class="ic-sub">${(j.scope||[]).join(' · ')}${jInv?' · '+fmt(+jInv.total):''}</div>${jInv?`<div style="margin-top:6px" onclick="event.stopPropagation()"><button style="font-size:11px;font-weight:700;padding:6px 14px;border-radius:var(--rs);background:var(--info);color:#fff;border:none;cursor:pointer" onclick="sendInvEmail('${jInv.id}')">✉️ Resend Invoice + Reports</button></div>`:''}</div>`
     })
     h+=`</div>`
   }
@@ -5527,7 +5554,9 @@ function cHtml(ls){
   return ls.map(l=>{
     const jobs=(D.jobs||[]).filter(j=>(j.location_id||j.location?.id)===l.id)
     const done=jobs.filter(j=>j.status==='completed')
-    const last=done.map(j=>j.completed_at||j.scheduled_date).filter(Boolean).sort().pop()
+    // Prefer the pre-aggregated last-service map (covers full history); fall
+    // back to the in-memory jobs list when missing.
+    const last=(D.lastService&&D.lastService[l.id])||done.map(j=>j.completed_at||j.scheduled_date).filter(Boolean).sort().pop()
     const unpaid=(D.invs||[]).filter(i=>i.location_id===l.id&&!['paid','void','record'].includes(i.status))
     const unpaidTot=unpaid.reduce((s,i)=>s+(+i.total||0),0)
     const scopes=new Set()
