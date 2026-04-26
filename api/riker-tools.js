@@ -3481,7 +3481,7 @@ const send_contract = {
       '',
       'Benefits: Priority scheduling, price lock, and customer portal access.',
       '',
-      'Questions? Call or text (817) 320-4911 or reply to this email.',
+      'Questions? Call or text (214) 994-4799 or reply to this email.',
       '',
       'Thank you,',
       'Jon Stephens — Stephens Advanced LLC'

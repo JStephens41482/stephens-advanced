@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#0d0f14">
+<title>Review &amp; Sign — Stephens Advanced LLC</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--fire:#f05a28;--purple:#a855f7;--darker:#0d0f14;--dark:#1a1a2e;--white:#f0f1f4;--ok:#22c55e;--bad:#ef4444;--radius:12px;--rs:8px;--card:rgba(255,255,255,.04);--b:rgba(255,255,255,.10);--t:rgba(255,255,255,.85);--td:rgba(255,255,255,.55)}
+body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--darker);color:var(--t);font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased;min-height:100vh}
+a{color:var(--fire);text-decoration:none}
+.hdr{background:rgba(13,15,20,.97);backdrop-filter:blur(12px);border-bottom:1px solid var(--b);padding:18px 16px;position:sticky;top:0;z-index:100}
+.hdr-inner{max-width:680px;margin:0 auto;display:flex;align-items:center;gap:12px}
+.logo-icon{width:36px;height:36px;background:linear-gradient(135deg,#f05a28,#ff8c5a);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px}
+.logo{font-size:18px;font-weight:900;color:#fff;letter-spacing:-.3px}
+.logo-sub{font-size:10px;color:var(--td);letter-spacing:1.5px;text-transform:uppercase;font-weight:700}
+main{max-width:680px;margin:0 auto;padding:20px 16px 64px}
+.card{background:var(--card);border:1px solid var(--b);border-radius:var(--radius);padding:18px 20px;margin-bottom:14px}
+.card-t{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:var(--fire);margin-bottom:10px}
+h1{font-size:24px;font-weight:800;color:#fff;letter-spacing:-.5px;margin-bottom:6px}
+.sub{font-size:13px;color:var(--td);margin-bottom:18px}
+.row{display:flex;justify-content:space-between;gap:12px;font-size:13px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05)}
+.row:last-child{border-bottom:none}
+.row .l{color:var(--td)}
+.row .v{color:var(--t);font-weight:600;text-align:right}
+.line{display:grid;grid-template-columns:1fr auto;gap:8px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.05);align-items:start}
+.line:last-of-type{border-bottom:none}
+.line-d{font-size:13px;color:var(--t)}
+.line-q{font-size:11px;color:var(--td);margin-top:2px}
+.line-t{font-size:13px;font-weight:700;color:var(--t);white-space:nowrap}
+.total{display:flex;justify-content:space-between;padding-top:14px;margin-top:10px;border-top:1.5px solid var(--fire);font-size:16px;font-weight:800;color:#fff}
+input[type="text"]{width:100%;padding:12px 14px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:var(--rs);color:#fff;font-size:14px;font-family:inherit}
+input[type="text"]:focus{outline:none;border-color:var(--fire)}
+.label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--td);margin-bottom:6px;display:block}
+canvas{width:100%;height:200px;background:#fff;border-radius:var(--rs);touch-action:none;display:block}
+.canvas-wrap{position:relative;background:#fff;border-radius:var(--rs);padding:2px}
+.canvas-ph{position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:12px;color:#aaa;pointer-events:none}
+.btn{display:inline-block;padding:14px 28px;border-radius:var(--rs);font-size:15px;font-weight:800;text-decoration:none;cursor:pointer;border:none;width:100%;text-align:center;font-family:inherit}
+.btn-primary{background:linear-gradient(135deg,#f05a28,#ff7d4a);color:#fff}
+.btn-primary:disabled{opacity:.5;cursor:not-allowed}
+.btn-ghost{background:transparent;color:var(--td);border:1px solid var(--b)}
+.spin{display:inline-block;width:14px;height:14px;border:2px solid #fff;border-right-color:transparent;border-radius:50%;animation:s 1s linear infinite}
+@keyframes s{to{transform:rotate(360deg)}}
+.banner-bad{background:rgba(239,68,68,.08);border:1.5px solid #ef4444;border-radius:var(--radius);padding:16px;margin-bottom:14px;text-align:center}
+.banner-good{background:rgba(34,197,94,.08);border:1.5px solid #22c55e;border-radius:var(--radius);padding:24px;margin-bottom:14px;text-align:center}
+.muted{font-size:11px;color:var(--td);line-height:1.6;margin-top:14px;padding:12px 14px;background:rgba(255,255,255,.03);border-radius:var(--rs)}
+.foot{margin-top:32px;padding:18px 0;border-top:1px solid var(--b);text-align:center;font-size:11px;color:var(--td)}
+.foot-ph{color:var(--fire);font-weight:700}
+@media(max-width:540px){main{padding:14px 12px 40px}.card{padding:14px 16px}h1{font-size:20px}}
+</style>
+</head>
+<body>
+<header class="hdr">
+  <div class="hdr-inner">
+    <div class="logo-icon">🔥</div>
+    <div>
+      <div class="logo">Stephens Advanced</div>
+      <div class="logo-sub">Review &amp; Sign</div>
+    </div>
+  </div>
+</header>
+<main id="root">
+  <div class="card" style="text-align:center;color:var(--td)">
+    <div class="spin" style="border-color:var(--fire);border-right-color:transparent;width:24px;height:24px;margin:0 auto 12px"></div>
+    Loading…
+  </div>
+</main>
+<script>
+const SB = supabase.createClient(
+  'https://motjasdokoxwiodwzyps.supabase.co',
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1vdGphc2Rva294d2lvZHd6eXBzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzNDI2NTcsImV4cCI6MjA4ODkxODY1N30.IMf0plnDRhVgts9LjJr219Tax4J175iuWN1u6ZKTZ-I',
+  {auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}}
+)
+const $ = id => document.getElementById(id)
+const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')
+const fmt = n => '$' + (+(n||0)).toFixed(2)
+const token = new URLSearchParams(location.search).get('token') || ''
+let state = { sig: '', sigOn: false, drawn: false }
+
+function showError(msg){
+  $('root').innerHTML = `<div class="banner-bad"><div style="font-size:32px;margin-bottom:8px">⚠️</div><div style="font-weight:800;color:#fff;font-size:16px;margin-bottom:6px">Could not load</div><div style="font-size:13px;color:var(--td)">${esc(msg)}</div></div>
+  <div class="foot">Need help? Call <a class="foot-ph" href="tel:+12149944799">(214) 994-4799</a></div>`
+}
+function showSigned(){
+  $('root').innerHTML = `<div class="banner-good"><div style="font-size:48px;margin-bottom:10px">✓</div><div style="font-weight:800;color:#22c55e;font-size:20px;margin-bottom:8px">Signed — thank you!</div><div style="font-size:13px;color:var(--td)">A copy will be emailed to you. You can close this window.</div></div>
+  <div class="foot">Stephens Advanced LLC · Fire Suppression &amp; Safety<br>jonathan@stephensadvanced.com · <a class="foot-ph" href="tel:+12149944799">(214) 994-4799</a></div>`
+}
+
+async function load(){
+  if(!token){showError('No signing token in URL.');return}
+  try{
+    const { data: sigReq, error } = await SB.from('signature_requests').select('*').eq('token', token).maybeSingle()
+    if(error || !sigReq){showError('This signing link is invalid or has been removed.');return}
+    if(sigReq.signed_at){
+      $('root').innerHTML = `<div class="banner-good"><div style="font-size:48px;margin-bottom:10px">✓</div><div style="font-weight:800;color:#22c55e;font-size:18px">Already signed</div><div style="font-size:13px;color:var(--td);margin-top:8px">Signed by ${esc(sigReq.signed_by_name||'')} on ${new Date(sigReq.signed_at).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}</div></div>
+      <div class="foot">Need a copy? Call <a class="foot-ph" href="tel:+12149944799">(214) 994-4799</a></div>`
+      return
+    }
+    if(sigReq.expires_at && new Date(sigReq.expires_at) < new Date()){
+      showError('This signing link has expired. Please contact us for a fresh one.');return
+    }
+    // Pull the linked job, invoice, lines, location
+    const [{data:job},{data:loc},{data:inv}] = await Promise.all([
+      SB.from('jobs').select('id,job_number,scope,completed_at,scheduled_date,technician,notes').eq('id', sigReq.job_id).maybeSingle(),
+      SB.from('locations').select('id,name,address,city,state,zip,contact_name,contact_phone').eq('id', sigReq.location_id).maybeSingle(),
+      sigReq.invoice_id ? SB.from('invoices').select('id,invoice_number,date,subtotal,total,status,invoice_lines(description,quantity,unit_price,total,sort_order,deleted_at)').eq('id', sigReq.invoice_id).maybeSingle() : Promise.resolve({data:null})
+    ])
+    const lines = inv?.invoice_lines ? inv.invoice_lines.filter(l=>!l.deleted_at).sort((a,b)=>(a.sort_order||0)-(b.sort_order||0)) : []
+    render({sigReq, job, loc, inv, lines})
+  }catch(e){
+    console.error(e)
+    showError('Network error: ' + (e.message || e))
+  }
+}
+
+function render({sigReq, job, loc, inv, lines}){
+  const dateStr = job?.completed_at ? new Date(job.completed_at).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric',timeZone:'UTC'}) : ''
+  let h = `<h1>Please review and sign</h1>
+  <div class="sub">Service performed at <strong>${esc(loc?.name||'your location')}</strong>${dateStr?` on ${esc(dateStr)}`:''}.</div>`
+
+  // Service location card
+  if(loc){
+    h += `<div class="card"><div class="card-t">Service location</div>
+      <div class="row"><span class="l">Site</span><span class="v">${esc(loc.name||'')}</span></div>
+      ${[loc.address,loc.city,loc.state,loc.zip].filter(Boolean).length?`<div class="row"><span class="l">Address</span><span class="v">${esc([loc.address,loc.city,loc.state,loc.zip].filter(Boolean).join(', '))}</span></div>`:''}
+      ${job?.technician?`<div class="row"><span class="l">Technician</span><span class="v">${esc(job.technician)}</span></div>`:''}
+      ${job?.scope?.length?`<div class="row"><span class="l">Scope</span><span class="v">${esc(job.scope.join(' · '))}</span></div>`:''}
+    </div>`
+  }
+
+  // Invoice
+  if(inv && lines.length){
+    h += `<div class="card"><div class="card-t">Invoice ${esc(inv.invoice_number||'')}</div>`
+    lines.forEach(l => {
+      const qty = +l.quantity||1, price = +l.unit_price||0, total = +l.total||(qty*price)
+      h += `<div class="line"><div><div class="line-d">${esc(l.description||'')}</div>${qty!==1||price?`<div class="line-q">${qty} × ${fmt(price)}</div>`:''}</div><div class="line-t">${fmt(total)}</div></div>`
+    })
+    h += `<div class="total"><span>Total</span><span>${fmt(inv.total)}</span></div></div>`
+  }
+
+  // Tech notes
+  if(job?.notes){
+    h += `<div class="card"><div class="card-t">Tech notes</div><div style="font-size:13px;color:var(--t);white-space:pre-wrap">${esc(job.notes)}</div></div>`
+  }
+
+  // Signature
+  h += `<div class="card"><div class="card-t">Signature</div>
+    <div style="font-size:12px;color:var(--td);margin-bottom:14px">By signing below, I acknowledge the service described above was performed${inv?` and authorize charges of <strong style="color:#fff">${fmt(inv.total)}</strong>`:''}.</div>
+    <label class="label">Your name</label>
+    <input type="text" id="signerName" placeholder="Type your full name" autocomplete="name">
+    <label class="label" style="margin-top:14px">Sign below</label>
+    <div class="canvas-wrap">
+      <canvas id="sigCanvas" width="600" height="200"></canvas>
+      <div class="canvas-ph" id="sigPh">Sign with your finger or mouse</div>
+    </div>
+    <button class="btn btn-ghost" style="margin-top:8px;padding:8px 14px;font-size:12px;width:auto" onclick="clearSig()">Clear signature</button>
+  </div>
+
+  <button class="btn btn-primary" id="submitBtn" onclick="submitSignature()" disabled>✍️ Sign and submit</button>
+  <div class="muted">Your typed name and drawn signature, along with this invoice, will be emailed back to you and to Stephens Advanced as a record of authorization.</div>
+  <div class="foot">Stephens Advanced LLC · Fire Suppression &amp; Safety<br>jonathan@stephensadvanced.com · <a class="foot-ph" href="tel:+12149944799">(214) 994-4799</a></div>`
+
+  $('root').innerHTML = h
+
+  // Wire signature canvas
+  const c = $('sigCanvas')
+  // Resize canvas to actual displayed pixel ratio
+  const rect = c.getBoundingClientRect()
+  c.width = rect.width * 2; c.height = 400
+  const ctx = c.getContext('2d')
+  ctx.scale(2,2); ctx.strokeStyle = '#222'; ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.lineJoin = 'round'
+
+  function gp(e){const r = c.getBoundingClientRect();const t = e.touches?e.touches[0]:e;return {x:t.clientX-r.left, y:t.clientY-r.top}}
+  function down(e){e.preventDefault();state.sigOn=true;state.drawn=true;const p=gp(e);ctx.beginPath();ctx.moveTo(p.x,p.y);if($('sigPh'))$('sigPh').style.display='none';updateSubmit()}
+  function move(e){if(!state.sigOn)return;e.preventDefault();const p=gp(e);ctx.lineTo(p.x,p.y);ctx.stroke()}
+  function up(){state.sigOn=false}
+  c.addEventListener('mousedown',down);c.addEventListener('mousemove',move);c.addEventListener('mouseup',up);c.addEventListener('mouseleave',up)
+  c.addEventListener('touchstart',down,{passive:false});c.addEventListener('touchmove',move,{passive:false});c.addEventListener('touchend',up)
+  $('signerName').addEventListener('input', updateSubmit)
+}
+
+function updateSubmit(){
+  const name = $('signerName')?.value?.trim() || ''
+  const ok = state.drawn && name.length >= 2
+  $('submitBtn').disabled = !ok
+}
+
+function clearSig(){
+  const c = $('sigCanvas')
+  if(!c)return
+  const ctx = c.getContext('2d')
+  ctx.clearRect(0,0,c.width,c.height)
+  state.drawn = false
+  if($('sigPh'))$('sigPh').style.display=''
+  updateSubmit()
+}
+
+async function submitSignature(){
+  const name = $('signerName').value.trim()
+  const c = $('sigCanvas')
+  const sigData = c.toDataURL('image/png')
+  if(!name || !state.drawn){return}
+  const btn = $('submitBtn')
+  btn.disabled = true
+  btn.innerHTML = '<span class="spin"></span> Signing…'
+  try{
+    const res = await fetch('/api/sign-job', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({token, signed_by_name: name, signature_data: sigData})
+    })
+    const data = await res.json()
+    if(!res.ok){throw new Error(data.error||'Sign failed')}
+    showSigned()
+  }catch(e){
+    console.error(e)
+    btn.innerHTML = '✍️ Sign and submit'
+    btn.disabled = false
+    alert('Could not submit: ' + (e.message||e))
+  }
+}
+
+load()
+</script>
+</body>
+</html>

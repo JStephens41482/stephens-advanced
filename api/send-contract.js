@@ -222,7 +222,7 @@ function buildContractEmail({ customerName, locationName, signUrl }) {
       Fire Suppression Systems &bull; Inspections &bull; Installations &bull; Service
     </p>
     <p style="margin:0 0 4px;font-size:11px;color:#999;line-height:1.6">
-      <a href="tel:+18173204911" style="color:#f05a28;text-decoration:none">(817) 320-4911</a> &bull;
+      <a href="tel:+12149944799" style="color:#f05a28;text-decoration:none">(214) 994-4799</a> &bull;
       <a href="mailto:jonathan@stephensadvanced.com" style="color:#f05a28;text-decoration:none">jonathan@stephensadvanced.com</a>
     </p>
     <p style="margin:8px 0 0;font-size:10px;color:#666">
