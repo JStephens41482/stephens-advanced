@@ -108,8 +108,12 @@ module.exports = async function handler(req, res) {
   const messageSid = req.body.MessageSid
   const numMedia = parseInt(req.body.NumMedia || '0', 10)
 
-  // MMS: download attached images and build Claude vision blocks
+  // MMS: download attached images, build Claude vision blocks, AND save to
+  // Supabase storage so Riker can later forward them by URL via
+  // send_email_with_attachment. The signed URL is appended to the message
+  // body as "[attachment: <url>]" so it appears in the conversation context.
   let attachments = []
+  let attachmentUrls = []
   if (numMedia > 0) {
     const sid = process.env.TWILIO_ACCOUNT_SID
     const token = process.env.TWILIO_AUTH_TOKEN
@@ -122,11 +126,27 @@ module.exports = async function handler(req, res) {
         const headers = auth ? { Authorization: auth } : {}
         const resp = await fetch(mediaUrl, { headers })
         if (!resp.ok) continue
-        const buf = await resp.arrayBuffer()
+        const buf = Buffer.from(await resp.arrayBuffer())
         attachments.push({
           type: 'image',
-          source: { type: 'base64', media_type: mediaType, data: Buffer.from(buf).toString('base64') }
+          source: { type: 'base64', media_type: mediaType, data: buf.toString('base64') }
         })
+        // Persist to storage for downstream forwarding (Phase 3 / pic-to-customer flow)
+        try {
+          const ext = (mediaType.split('/')[1] || 'jpg').replace('jpeg', 'jpg')
+          const path = `mms/${messageSid || 'unknown'}/${Date.now()}-${i}.${ext}`
+          const { error: upErr } = await supabase.storage
+            .from('email-attachments')
+            .upload(path, buf, { contentType: mediaType, upsert: true })
+          if (!upErr) {
+            const { data: signed } = await supabase.storage
+              .from('email-attachments')
+              .createSignedUrl(path, 60 * 60 * 24 * 7)  // 7-day URL — enough for Riker to forward across multiple turns
+            if (signed?.signedUrl) attachmentUrls.push(signed.signedUrl)
+          }
+        } catch (e) {
+          console.warn('[sms-inbound] storage upload failed:', e.message)
+        }
       } catch (e) {
         console.warn('[sms-inbound] MMS fetch failed:', mediaUrl, e.message)
       }
@@ -204,8 +224,12 @@ module.exports = async function handler(req, res) {
       conv = newConv
     }
 
-    // Log inbound in messages (append-only audit)
-    const logBody = body || (attachments.length ? `[${attachments.length} photo${attachments.length > 1 ? 's' : ''}]` : '')
+    // Log inbound in messages (append-only audit). For MMS, append the
+    // signed storage URLs so Riker can pull them back into Phase-3 tools
+    // (send_email_with_attachment) on a later turn — the URL stays in
+    // the conversation transcript for 7 days.
+    const urlSuffix = attachmentUrls.length ? '\n\n[attachments: ' + attachmentUrls.join(' , ') + ']' : ''
+    const logBody = (body || (attachments.length ? `[${attachments.length} photo${attachments.length > 1 ? 's' : ''}]` : '')) + urlSuffix
     await supabase.from('messages').insert({
       conversation_id: conv.id,
       direction: 'inbound', channel: 'sms',

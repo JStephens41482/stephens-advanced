@@ -4044,6 +4044,8 @@ const ALL_TOOLS = {
   send_on_my_way,
   // Phase 2 — inbox management
   manage_email, list_labels, create_label, forward_email,
+  // Phase 3 — attachments
+  list_attachments_in_thread, read_attachment_text, save_email_attachment_to_storage, send_email_with_attachment,
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -4225,6 +4227,175 @@ const forward_email = {
     } catch {}
 
     return { ok: true, forwarded_to: to, subject }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PHASE 3 — ATTACHMENTS (read + save + send)
+// ═══════════════════════════════════════════════════════════════
+
+// Helper: walk a Gmail message payload tree to find every attachment part.
+function collectAttachments(payload, out = []) {
+  if (!payload) return out
+  if (payload.filename && payload.body?.attachmentId) {
+    out.push({
+      filename: payload.filename,
+      mime_type: payload.mimeType || 'application/octet-stream',
+      size: payload.body.size || 0,
+      attachment_id: payload.body.attachmentId,
+    })
+  }
+  for (const child of (payload.parts || [])) collectAttachments(child, out)
+  return out
+}
+
+const list_attachments_in_thread = {
+  schema: {
+    name: 'list_attachments_in_thread',
+    description: "List every attachment across every message in a Gmail thread. Returns filename, mime_type, size (bytes), and message_id + attachment_id you'll need to fetch the bytes via read_attachment_text or save_email_attachment_to_storage.",
+    input_schema: {
+      type: 'object',
+      properties: { thread_id: { type: 'string' } },
+      required: ['thread_id']
+    }
+  },
+  async handler(input, ctx) {
+    let token; try { token = await getGmailToken() } catch (e) { return { error: e.message } }
+    try {
+      const thread = await gmailFetch(token, `users/me/threads/${input.thread_id}?format=full`)
+      const all = []
+      for (const msg of (thread.messages || [])) {
+        const parts = collectAttachments(msg.payload)
+        for (const p of parts) all.push({ ...p, message_id: msg.id })
+      }
+      return { count: all.length, attachments: all }
+    } catch (e) { return { error: e.message } }
+  }
+}
+
+const read_attachment_text = {
+  schema: {
+    name: 'read_attachment_text',
+    description: "Fetch a Gmail attachment and return its text content. Works for text/* and (best-effort) for HTML. PDFs and images are NOT parsed — only their metadata returned. Capped at ~50KB returned text per call. Use list_attachments_in_thread first to find the attachment_id.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        message_id: { type: 'string' },
+        attachment_id: { type: 'string' }
+      },
+      required: ['message_id', 'attachment_id']
+    }
+  },
+  async handler(input, ctx) {
+    let token; try { token = await getGmailToken() } catch (e) { return { error: e.message } }
+    try {
+      const att = await gmailFetch(token, `users/me/messages/${input.message_id}/attachments/${input.attachment_id}`)
+      const data = att.data
+      if (!data) return { error: 'Attachment empty' }
+      const buf = Buffer.from(data, 'base64url')
+      const size = buf.length
+      // Try UTF-8 decode for text-likely buffers (heuristic: looks ASCII-ish in first 1KB)
+      const sample = buf.slice(0, Math.min(1024, buf.length))
+      const printable = sample.filter(b => (b >= 32 && b < 127) || b === 9 || b === 10 || b === 13).length
+      const isProbablyText = printable / sample.length > 0.85
+      if (!isProbablyText) {
+        return { binary: true, size, hint: 'Binary content (likely PDF/image). Use save_email_attachment_to_storage to forward it; do not try to read inline.' }
+      }
+      const text = buf.slice(0, 50 * 1024).toString('utf-8').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+      return { text, size, truncated: size > 50 * 1024 }
+    } catch (e) { return { error: e.message } }
+  }
+}
+
+const save_email_attachment_to_storage = {
+  schema: {
+    name: 'save_email_attachment_to_storage',
+    description: "Pull a Gmail attachment and copy it to Supabase storage so it can be referenced by URL later (e.g. forwarded via send_email_with_attachment, attached to a job/invoice document, etc.). Returns a signed URL valid for 1 hour. Use list_attachments_in_thread first for IDs.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        message_id: { type: 'string' },
+        attachment_id: { type: 'string' },
+        filename: { type: 'string', description: 'Override the filename. Defaults to the original.' }
+      },
+      required: ['message_id', 'attachment_id']
+    }
+  },
+  async handler(input, ctx) {
+    let token; try { token = await getGmailToken() } catch (e) { return { error: e.message } }
+    try {
+      // Need filename + mime from message metadata (Gmail attachments endpoint
+      // returns just bytes, not filename). Fetch metadata-format message to find it.
+      const metaMsg = await gmailFetch(token, `users/me/messages/${input.message_id}?format=full`)
+      const all = collectAttachments(metaMsg.payload)
+      const meta = all.find(a => a.attachment_id === input.attachment_id)
+      if (!meta) return { error: 'Attachment metadata not found in message' }
+
+      const att = await gmailFetch(token, `users/me/messages/${input.message_id}/attachments/${input.attachment_id}`)
+      const buf = Buffer.from(att.data, 'base64url')
+
+      const safeName = (input.filename || meta.filename || 'attachment').replace(/[^\w.\-]/g, '_')
+      const path = `inbound/${input.message_id}/${input.attachment_id}-${safeName}`
+      const { error: upErr } = await ctx.supabase.storage.from('email-attachments').upload(path, buf, { contentType: meta.mime_type, upsert: true })
+      if (upErr) return { error: 'Storage upload failed: ' + upErr.message }
+      const { data: signed, error: signErr } = await ctx.supabase.storage.from('email-attachments').createSignedUrl(path, 60 * 60)
+      if (signErr) return { error: 'Signed URL failed: ' + signErr.message }
+      return { ok: true, url: signed.signedUrl, filename: safeName, mime_type: meta.mime_type, size: meta.size, expires_in_seconds: 3600 }
+    } catch (e) { return { error: e.message } }
+  }
+}
+
+const send_email_with_attachment = {
+  schema: {
+    name: 'send_email_with_attachment',
+    description: "Send a branded email (via the Phase-1 template) with one or more attachments. Pass attachment_urls — typically Supabase storage signed URLs from save_email_attachment_to_storage, OR a public URL of an MMS pic Jon texted you. Files are fetched, base64-encoded, and attached to the outbound email via Resend's attachments parameter. Use this to satisfy 'Riker, send this pic to <customer> as the inspection-tag photo'.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        to: { type: 'string' },
+        subject: { type: 'string' },
+        body: { type: 'string' },
+        attachment_urls: { type: 'array', items: { type: 'string' }, description: 'One or more URLs to fetch and attach. Resolved by GET; data is base64-encoded into the outgoing email.' },
+        filenames: { type: 'array', items: { type: 'string' }, description: 'Optional. Same length as attachment_urls; overrides the filename Resend sees.' }
+      },
+      required: ['to', 'subject', 'body', 'attachment_urls']
+    }
+  },
+  async handler(input, ctx) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.to)) return { error: 'Invalid email address' }
+    if (!Array.isArray(input.attachment_urls) || !input.attachment_urls.length) return { error: 'attachment_urls required' }
+
+    // Fetch each URL, base64-encode for Resend
+    const attachments = []
+    for (let i = 0; i < input.attachment_urls.length; i++) {
+      const url = input.attachment_urls[i]
+      try {
+        const r = await fetch(url)
+        if (!r.ok) return { error: `Fetch failed for ${url}: ${r.status}` }
+        const buf = Buffer.from(await r.arrayBuffer())
+        if (buf.length > 20 * 1024 * 1024) return { error: `Attachment ${i} too large (${buf.length} bytes; 20MB cap)` }
+        const filename = (input.filenames && input.filenames[i]) || (url.split('/').pop().split('?')[0]) || `attachment-${i}`
+        attachments.push({ filename, content: buf.toString('base64') })
+      } catch (e) {
+        return { error: `Attachment ${i} fetch error: ${e.message}` }
+      }
+    }
+
+    try {
+      await sendEmailRaw({ to: input.to, subject: input.subject, body: input.body, attachments })
+    } catch (e) { return { error: e.message } }
+
+    try {
+      await ctx.supabase.from('audit_log').insert({
+        action: 'email_sent_with_attachment',
+        entity_type: 'email',
+        entity_id: input.to,
+        actor: 'riker',
+        details: { to: input.to, subject: input.subject, attachment_count: attachments.length }
+      })
+    } catch {}
+
+    return { ok: true, to: input.to, attached: attachments.length }
   }
 }
 
