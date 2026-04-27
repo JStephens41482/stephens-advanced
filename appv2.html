@@ -7161,14 +7161,21 @@ async function _confirmSendEmail(){
       dueDate:d.inv.due_date?new Date(d.inv.due_date).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):'',
       lines:d.ls,total:d.total,poNumber:d.inv.po_number||''
     })
-    const invIframe=document.createElement('iframe')
-    invIframe.style.cssText='position:absolute;left:-9999px;top:0;width:580px;height:1056px;border:none;background:#fff'
-    document.body.appendChild(invIframe)
-    const invDoc=invIframe.contentDocument||invIframe.contentWindow.document
-    invDoc.open();invDoc.write(invPdfHtml);invDoc.close()
+    // Render in a visible (off-frame, hidden behind app) DIV on the main page,
+    // not an iframe. html2canvas reliably captures DOM rendered in the main
+    // document; an iframe approach was producing blank canvases. Capture the
+    // INNER content div (not the wrap) so the line items + letterhead actually
+    // get walked.
+    const invStyleMatch=invPdfHtml.match(/<style>([\s\S]*?)<\/style>/)
+    const invBodyMatch=invPdfHtml.match(/<body[^>]*>([\s\S]*?)<\/body>/)
+    const invWrap=document.createElement('div')
+    invWrap.style.cssText='position:fixed;left:0;top:0;width:660px;background:#fff;color:#222;z-index:-9999;visibility:hidden'
+    invWrap.innerHTML=(invStyleMatch?'<style>'+invStyleMatch[1]+'</style>':'')+(invBodyMatch?invBodyMatch[1]:invPdfHtml)
+    document.body.appendChild(invWrap)
     await new Promise(r=>setTimeout(r,400))
-    const invBlob=await html2pdf().set({margin:[0.4,0.4,0.4,0.4],filename:'invoice.pdf',image:{type:'jpeg',quality:0.98},html2canvas:{scale:2,useCORS:false,allowTaint:true,windowWidth:580,backgroundColor:'#ffffff'},jsPDF:{unit:'in',format:'letter',orientation:'portrait'}}).from(invDoc.body).outputPdf('blob')
-    document.body.removeChild(invIframe)
+    const invInner=invWrap.querySelector('div')
+    const invBlob=await html2pdf().set({margin:[0.4,0.4,0.4,0.4],filename:'invoice.pdf',image:{type:'jpeg',quality:0.98},html2canvas:{scale:2,backgroundColor:'#ffffff'},jsPDF:{unit:'in',format:'letter',orientation:'portrait'}}).from(invInner).outputPdf('blob')
+    document.body.removeChild(invWrap)
     const invBuf=await invBlob.arrayBuffer()
     const invB64=btoa(new Uint8Array(invBuf).reduce((s,b)=>s+String.fromCharCode(b),''))
     attachments.unshift({filename:'Stephens-Advanced-Invoice-'+d.invNum+'.pdf',content:invB64})
@@ -7569,14 +7576,18 @@ async function kioskEmailInvoice(paid){
           dueDate:d.inv.due_date?new Date(d.inv.due_date).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):'',
           lines:d.ls,total:d.total,poNumber:d.inv.po_number||''
         })
-        const invIframe=document.createElement('iframe')
-        invIframe.style.cssText='position:absolute;left:-9999px;top:0;width:580px;height:1056px;border:none;background:#fff'
-        document.body.appendChild(invIframe)
-        const invDoc=invIframe.contentDocument||invIframe.contentWindow.document
-        invDoc.open();invDoc.write(invPdfHtml);invDoc.close()
+        // Same DOM-render pattern as the Money-tab path (iframe approach
+        // captures blank canvas; visible DIV + from(inner) actually works).
+        const invStyleMatch=invPdfHtml.match(/<style>([\s\S]*?)<\/style>/)
+        const invBodyMatch=invPdfHtml.match(/<body[^>]*>([\s\S]*?)<\/body>/)
+        const invWrap=document.createElement('div')
+        invWrap.style.cssText='position:fixed;left:0;top:0;width:660px;background:#fff;color:#222;z-index:-9999;visibility:hidden'
+        invWrap.innerHTML=(invStyleMatch?'<style>'+invStyleMatch[1]+'</style>':'')+(invBodyMatch?invBodyMatch[1]:invPdfHtml)
+        document.body.appendChild(invWrap)
         await new Promise(r=>setTimeout(r,400))
-        const invBlob=await html2pdf().set({margin:[0.4,0.4,0.4,0.4],filename:'invoice.pdf',image:{type:'jpeg',quality:0.98},html2canvas:{scale:2,useCORS:false,allowTaint:true,windowWidth:580,backgroundColor:'#ffffff'},jsPDF:{unit:'in',format:'letter',orientation:'portrait'}}).from(invDoc.body).outputPdf('blob')
-        document.body.removeChild(invIframe)
+        const invInner=invWrap.querySelector('div')
+        const invBlob=await html2pdf().set({margin:[0.4,0.4,0.4,0.4],filename:'invoice.pdf',image:{type:'jpeg',quality:0.98},html2canvas:{scale:2,backgroundColor:'#ffffff'},jsPDF:{unit:'in',format:'letter',orientation:'portrait'}}).from(invInner).outputPdf('blob')
+        document.body.removeChild(invWrap)
         const invBuf=await invBlob.arrayBuffer()
         const invB64=btoa(new Uint8Array(invBuf).reduce((s,b)=>s+String.fromCharCode(b),''))
         attachments.push({filename:'Stephens-Advanced-Invoice-'+d.invNum+'.pdf',content:invB64})
