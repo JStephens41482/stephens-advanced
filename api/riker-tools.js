@@ -140,15 +140,23 @@ async function getGmailToken() {
   return data.access_token
 }
 
-async function gmailFetch(token, path) {
-  const res = await fetch('https://gmail.googleapis.com/gmail/v1/' + path, {
-    headers: { Authorization: `Bearer ${token}` }
-  })
-  const data = await res.json()
+async function gmailFetch(token, path, opts = {}) {
+  const init = { headers: { Authorization: `Bearer ${token}` } }
+  if (opts.method && opts.method !== 'GET') {
+    init.method = opts.method
+    if (opts.body !== undefined) {
+      init.body = typeof opts.body === 'string' ? opts.body : JSON.stringify(opts.body)
+      init.headers['Content-Type'] = 'application/json'
+    }
+  }
+  const res = await fetch('https://gmail.googleapis.com/gmail/v1/' + path, init)
+  // Some endpoints (modify, batchModify, trash) return 204 No Content.
+  if (res.status === 204) return { ok: true }
+  const data = await res.json().catch(() => ({}))
   if (!res.ok) {
     const msg = data.error?.message || res.statusText
     if (msg.includes('Insufficient Permission') || msg.includes('insufficient authentication'))
-      throw new Error('Gmail scope missing — re-authorize with gmail.readonly or gmail.modify scope')
+      throw new Error('Gmail scope missing — re-authorize with gmail.modify scope (or gmail.readonly for read-only paths)')
     throw new Error('Gmail API: ' + msg)
   }
   return data
@@ -4033,7 +4041,191 @@ const ALL_TOOLS = {
   get_business_report, get_ar_aging, get_audit_log,
   list_service_requests, respond_to_service_request,
   list_custom_items, add_custom_item, delete_custom_item,
-  send_on_my_way
+  send_on_my_way,
+  // Phase 2 — inbox management
+  manage_email, list_labels, create_label, forward_email,
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PHASE 2 — INBOX MANAGEMENT
+// One verb-driven tool keeps the prompt budget tight (vs. 7 separate tools).
+// ═══════════════════════════════════════════════════════════════
+
+const manage_email = {
+  schema: {
+    name: 'manage_email',
+    description: "Take an action on an existing Gmail message or thread (yours, jonathan@). Verbs: archive, unarchive, trash, untrash, mark_read, mark_unread, apply_label, remove_label. Pass message_id (single message) OR thread_id (whole thread). For label verbs, pass label_name (e.g. 'Riker', 'Brycer/Submitted'); the tool resolves the name to an ID via list_labels. Use after read_inbox / search_email when Jon says things like 'archive every Brycer email this week' or 'mark these read'.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        verb: { type: 'string', enum: ['archive', 'unarchive', 'trash', 'untrash', 'mark_read', 'mark_unread', 'apply_label', 'remove_label'] },
+        message_id: { type: 'string', description: 'Gmail message ID. Either this OR thread_id.' },
+        thread_id: { type: 'string', description: 'Gmail thread ID — applies the verb to every message in the thread.' },
+        label_name: { type: 'string', description: 'Required for apply_label / remove_label. Case-insensitive name; nested labels use slash (e.g. "Riker/Drafts").' }
+      },
+      required: ['verb']
+    }
+  },
+  async handler(input, ctx) {
+    const { verb, message_id, thread_id, label_name } = input
+    if (!message_id && !thread_id) return { error: 'Pass message_id or thread_id' }
+    if ((verb === 'apply_label' || verb === 'remove_label') && !label_name) return { error: 'label_name required for ' + verb }
+
+    let token
+    try { token = await getGmailToken() } catch (e) { return { error: e.message } }
+
+    // Resolve label name → ID if needed
+    let labelId = null
+    if (verb === 'apply_label' || verb === 'remove_label') {
+      try {
+        const list = await gmailFetch(token, 'users/me/labels')
+        const match = (list.labels || []).find(l => l.name.toLowerCase() === label_name.toLowerCase())
+        if (!match) return { error: `Label '${label_name}' not found. Use list_labels to see what's available, or create_label first.` }
+        labelId = match.id
+      } catch (e) { return { error: 'Label lookup failed: ' + e.message } }
+    }
+
+    // Build modify body or pick endpoint
+    const target = thread_id ? `threads/${thread_id}` : `messages/${message_id}`
+    let body, method = 'POST', path
+    switch (verb) {
+      case 'archive':      body = { removeLabelIds: ['INBOX'] }; path = `users/me/${target}/modify`; break
+      case 'unarchive':    body = { addLabelIds: ['INBOX'] };    path = `users/me/${target}/modify`; break
+      case 'mark_read':    body = { removeLabelIds: ['UNREAD'] };path = `users/me/${target}/modify`; break
+      case 'mark_unread':  body = { addLabelIds: ['UNREAD'] };   path = `users/me/${target}/modify`; break
+      case 'apply_label':  body = { addLabelIds: [labelId] };    path = `users/me/${target}/modify`; break
+      case 'remove_label': body = { removeLabelIds: [labelId] }; path = `users/me/${target}/modify`; break
+      case 'trash':        path = `users/me/${target}/trash`; break
+      case 'untrash':      path = `users/me/${target}/untrash`; break
+      default: return { error: `Unknown verb: ${verb}` }
+    }
+
+    try {
+      await gmailFetch(token, path, { method, body })
+    } catch (e) {
+      return { error: e.message }
+    }
+
+    // Audit
+    try {
+      await ctx.supabase.from('audit_log').insert({
+        action: 'email_' + verb,
+        entity_type: thread_id ? 'email_thread' : 'email_message',
+        entity_id: thread_id || message_id,
+        actor: 'riker',
+        details: { verb, label_name: label_name || null }
+      })
+    } catch {}
+
+    return { ok: true, verb, target: thread_id ? `thread:${thread_id}` : `message:${message_id}` }
+  }
+}
+
+// ─── list_labels ────────────────────────────────────────────────
+const list_labels = {
+  schema: {
+    name: 'list_labels',
+    description: "List all Gmail labels in jonathan@'s account (system labels + user-created). Use before manage_email's apply_label/remove_label so you know what label_name strings are valid. Returns just names + types (system vs user) — IDs resolved internally.",
+    input_schema: { type: 'object', properties: {} }
+  },
+  async handler(input, ctx) {
+    let token
+    try { token = await getGmailToken() } catch (e) { return { error: e.message } }
+    try {
+      const data = await gmailFetch(token, 'users/me/labels')
+      const labels = (data.labels || []).map(l => ({ name: l.name, type: l.type }))
+        .sort((a, b) => (a.type === b.type ? a.name.localeCompare(b.name) : (a.type === 'system' ? -1 : 1)))
+      return { count: labels.length, labels }
+    } catch (e) { return { error: e.message } }
+  }
+}
+
+// ─── create_label ───────────────────────────────────────────────
+const create_label = {
+  schema: {
+    name: 'create_label',
+    description: "Create a new Gmail label (e.g. 'Riker/Drafts', 'Customers/Mauro'). Use slashes for nested labels. Returns the new label's name. Idempotent: if a label with the same name exists, returns it without erroring.",
+    input_schema: {
+      type: 'object',
+      properties: { name: { type: 'string', description: 'Label name. Slashes create nesting.' } },
+      required: ['name']
+    }
+  },
+  async handler(input, ctx) {
+    const { name } = input
+    if (!name || !name.trim()) return { error: 'name required' }
+    let token
+    try { token = await getGmailToken() } catch (e) { return { error: e.message } }
+    try {
+      // Idempotency check
+      const existing = await gmailFetch(token, 'users/me/labels')
+      const match = (existing.labels || []).find(l => l.name.toLowerCase() === name.trim().toLowerCase())
+      if (match) return { ok: true, name: match.name, created: false }
+      const created = await gmailFetch(token, 'users/me/labels', { method: 'POST', body: { name: name.trim(), labelListVisibility: 'labelShow', messageListVisibility: 'show' } })
+      return { ok: true, name: created.name, created: true }
+    } catch (e) { return { error: e.message } }
+  }
+}
+
+// ─── forward_email ──────────────────────────────────────────────
+const forward_email = {
+  schema: {
+    name: 'forward_email',
+    description: "Forward an existing email (by message_id) to another recipient. Optionally adds a note above the quoted original. Sends through the branded template chrome. Use when Jon says 'Riker, forward that RFQ to Mauro at mauro@grill.com'.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        message_id: { type: 'string', description: 'Gmail message ID of the email to forward.' },
+        to: { type: 'string', description: 'Recipient email address.' },
+        note: { type: 'string', description: 'Optional note from you to add above the forwarded content.' }
+      },
+      required: ['message_id', 'to']
+    }
+  },
+  async handler(input, ctx) {
+    const { message_id, to, note } = input
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return { error: 'Invalid email address' }
+    let token
+    try { token = await getGmailToken() } catch (e) { return { error: e.message } }
+    let original
+    try {
+      original = await gmailFetch(token, `users/me/messages/${message_id}?format=full`)
+    } catch (e) { return { error: 'Could not fetch original: ' + e.message } }
+
+    // Pull headers
+    const hdrs = (original.payload?.headers || []).reduce((acc, h) => { acc[h.name.toLowerCase()] = h.value; return acc }, {})
+    const origSubject = hdrs.subject || '(no subject)'
+    const origFrom = hdrs.from || '(unknown sender)'
+    const origDate = hdrs.date || ''
+
+    // Pull plain-text body if present, else fall back to snippet
+    let origText = original.snippet || ''
+    function findPart(p, mime) {
+      if (!p) return null
+      if (p.mimeType === mime && p.body?.data) return Buffer.from(p.body.data, 'base64').toString('utf-8')
+      for (const c of (p.parts || [])) { const r = findPart(c, mime); if (r) return r }
+      return null
+    }
+    const text = findPart(original.payload, 'text/plain')
+    if (text) origText = text
+
+    const subject = origSubject.toLowerCase().startsWith('fwd:') ? origSubject : `Fwd: ${origSubject}`
+    const noteParagraph = note ? `${note}\n\n` : ''
+    const body = `${noteParagraph}---------- Forwarded message ----------\nFrom: ${origFrom}\nDate: ${origDate}\nSubject: ${origSubject}\n\n${origText}`
+
+    try {
+      await sendEmailRaw({ to, subject, body, plain: false })
+    } catch (e) { return { error: 'Send failed: ' + e.message } }
+
+    try {
+      await ctx.supabase.from('audit_log').insert({
+        action: 'email_forwarded', entity_type: 'email_message', entity_id: message_id,
+        actor: 'riker', details: { to, has_note: !!note }
+      })
+    } catch {}
+
+    return { ok: true, forwarded_to: to, subject }
+  }
 }
 
 // null = all tools. Keeps Jon contexts unrestricted; trims customer contexts.
