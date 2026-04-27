@@ -7167,7 +7167,7 @@ async function _confirmSendEmail(){
     const invDoc=invIframe.contentDocument||invIframe.contentWindow.document
     invDoc.open();invDoc.write(invPdfHtml);invDoc.close()
     await new Promise(r=>setTimeout(r,400))
-    const invBlob=await html2pdf().set({margin:[0.4,0.4,0.4,0.4],filename:'invoice.pdf',image:{type:'jpeg',quality:0.98},html2canvas:{scale:2,useCORS:true,allowTaint:true,windowWidth:580,backgroundColor:'#ffffff'},jsPDF:{unit:'in',format:'letter',orientation:'portrait'}}).from(invDoc.body).outputPdf('blob')
+    const invBlob=await html2pdf().set({margin:[0.4,0.4,0.4,0.4],filename:'invoice.pdf',image:{type:'jpeg',quality:0.98},html2canvas:{scale:2,useCORS:false,allowTaint:true,windowWidth:580,backgroundColor:'#ffffff'},jsPDF:{unit:'in',format:'letter',orientation:'portrait'}}).from(invDoc.body).outputPdf('blob')
     document.body.removeChild(invIframe)
     const invBuf=await invBlob.arrayBuffer()
     const invB64=btoa(new Uint8Array(invBuf).reduce((s,b)=>s+String.fromCharCode(b),''))
@@ -7581,7 +7581,7 @@ async function kioskEmailInvoice(paid){
         const invDoc=invIframe.contentDocument||invIframe.contentWindow.document
         invDoc.open();invDoc.write(invPdfHtml);invDoc.close()
         await new Promise(r=>setTimeout(r,400))
-        const invBlob=await html2pdf().set({margin:[0.4,0.4,0.4,0.4],filename:'invoice.pdf',image:{type:'jpeg',quality:0.98},html2canvas:{scale:2,useCORS:true,allowTaint:true,windowWidth:580,backgroundColor:'#ffffff'},jsPDF:{unit:'in',format:'letter',orientation:'portrait'}}).from(invDoc.body).outputPdf('blob')
+        const invBlob=await html2pdf().set({margin:[0.4,0.4,0.4,0.4],filename:'invoice.pdf',image:{type:'jpeg',quality:0.98},html2canvas:{scale:2,useCORS:false,allowTaint:true,windowWidth:580,backgroundColor:'#ffffff'},jsPDF:{unit:'in',format:'letter',orientation:'portrait'}}).from(invDoc.body).outputPdf('blob')
         document.body.removeChild(invIframe)
         const buf=await invBlob.arrayBuffer()
         const b64=btoa(new Uint8Array(buf).reduce((s,b)=>s+String.fromCharCode(b),''))
