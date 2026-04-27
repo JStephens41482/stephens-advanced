@@ -19,7 +19,7 @@ a{color:var(--fire);text-decoration:none}
 .logo-sub{font-size:10px;color:var(--td);letter-spacing:1.5px;text-transform:uppercase;font-weight:700}
 main{max-width:680px;margin:0 auto;padding:20px 16px 64px}
 .card{background:var(--card);border:1px solid var(--b);border-radius:var(--radius);padding:18px 20px;margin-bottom:14px}
-.card-t{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:var(--fire);margin-bottom:10px}
+.card-t{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:var(--td);margin-bottom:10px}
 h1{font-size:24px;font-weight:800;color:#fff;letter-spacing:-.5px;margin-bottom:6px}
 .sub{font-size:13px;color:var(--td);margin-bottom:18px}
 .row{display:flex;justify-content:space-between;gap:12px;font-size:13px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05)}
@@ -32,20 +32,38 @@ h1{font-size:24px;font-weight:800;color:#fff;letter-spacing:-.5px;margin-bottom:
 .line-q{font-size:11px;color:var(--td);margin-top:2px}
 .line-t{font-size:13px;font-weight:700;color:var(--t);white-space:nowrap}
 .total{display:flex;justify-content:space-between;padding-top:14px;margin-top:10px;border-top:1.5px solid var(--fire);font-size:16px;font-weight:800;color:#fff}
-input[type="text"]{width:100%;padding:14px 16px;background:#fff;border:2px solid var(--fire);border-radius:var(--rs);color:#0d0f14;font-size:17px;font-weight:600;font-family:inherit;box-shadow:0 0 0 4px rgba(240,90,40,.18)}
-input[type="text"]:focus{outline:none;border-color:#ff7d4a;box-shadow:0 0 0 4px rgba(240,90,40,.35)}
+input[type="text"]{width:100%;padding:14px 16px;background:#fff;border:2px solid rgba(255,255,255,.18);border-radius:var(--rs);color:#0d0f14;font-size:17px;font-weight:600;font-family:inherit}
+input[type="text"]:focus{outline:none;border-color:var(--fire);box-shadow:0 0 0 3px rgba(240,90,40,.25)}
 input[type="text"]::placeholder{color:#999;font-weight:400}
 .label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--td);margin-bottom:6px;display:block}
 canvas{width:100%;height:200px;background:#fff;border-radius:var(--rs);touch-action:none;display:block}
-.canvas-wrap{position:relative;background:#fff;border-radius:var(--rs);padding:2px;border:2px solid var(--fire);box-shadow:0 0 0 4px rgba(240,90,40,.18)}
+.canvas-wrap{position:relative;background:#fff;border-radius:var(--rs);padding:2px;border:2px solid rgba(255,255,255,.18)}
+.canvas-wrap.focused{border-color:var(--fire);box-shadow:0 0 0 3px rgba(240,90,40,.25)}
 .canvas-ph{position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:12px;color:#aaa;pointer-events:none}
 .step{display:flex;gap:12px;align-items:flex-start;margin-bottom:18px}
-.step-num{flex-shrink:0;width:30px;height:30px;border-radius:50%;background:var(--fire);color:#fff;font-size:14px;font-weight:900;display:flex;align-items:center;justify-content:center;margin-top:2px;transition:background .2s}
-.step.done .step-num{background:#22c55e}
+.step-num{flex-shrink:0;width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.10);color:#fff;font-size:14px;font-weight:900;display:flex;align-items:center;justify-content:center;margin-top:2px;transition:background .2s,color .2s}
+.step.done .step-num{background:#22c55e;color:#fff}
 .step.done .step-num::before{content:'✓';font-size:16px}
 .step.done .step-num span{display:none}
 .step-body{flex:1;min-width:0}
 .step-title{font-size:14px;font-weight:800;color:#fff;margin-bottom:8px}
+.amount-pill{display:inline-block;background:rgba(34,197,94,.10);border:1px solid rgba(34,197,94,.35);border-radius:999px;padding:4px 12px;font-size:12px;font-weight:700;color:#22c55e;margin-left:8px}
+.amount-pill.zero{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.15);color:var(--td)}
+.amount-big{font-size:28px;font-weight:900;color:#fff;letter-spacing:-.5px}
+.amount-row{display:flex;align-items:baseline;gap:10px;margin-bottom:4px}
+.amount-row .l{font-size:11px;color:var(--td);text-transform:uppercase;letter-spacing:1.5px;font-weight:700}
+.pay-grid{display:flex;flex-direction:column;gap:8px}
+.pay-opt{display:flex;align-items:center;gap:14px;padding:14px 16px;background:rgba(255,255,255,.04);border:1.5px solid rgba(255,255,255,.10);border-radius:var(--rs);cursor:pointer;transition:all .15s;color:var(--t)}
+.pay-opt:hover{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.20)}
+.pay-opt.selected{background:rgba(34,197,94,.08);border-color:#22c55e}
+.pay-opt input[type="radio"]{appearance:none;-webkit-appearance:none;width:18px;height:18px;border:2px solid rgba(255,255,255,.30);border-radius:50%;margin:0;flex-shrink:0;cursor:pointer;position:relative}
+.pay-opt.selected input[type="radio"]{border-color:#22c55e;background:#22c55e}
+.pay-opt.selected input[type="radio"]::after{content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:6px;height:6px;background:#fff;border-radius:50%}
+.pay-opt-label{flex:1;font-size:14px;font-weight:600;color:#fff}
+.pay-opt-sub{font-size:11px;color:var(--td);font-weight:400;margin-top:2px}
+.pay-opt-icon{font-size:20px;width:24px;text-align:center}
+.check-num{margin-top:10px;display:none}
+.pay-opt.selected + .check-num.show{display:block}
 .btn-status{font-size:12px;color:var(--td);text-align:center;margin-top:10px;font-weight:600}
 .btn-status.ready{color:#22c55e}
 .btn{display:inline-block;padding:14px 28px;border-radius:var(--rs);font-size:15px;font-weight:800;text-decoration:none;cursor:pointer;border:none;width:100%;text-align:center;font-family:inherit}
@@ -58,7 +76,7 @@ canvas{width:100%;height:200px;background:#fff;border-radius:var(--rs);touch-act
 .banner-good{background:rgba(34,197,94,.08);border:1.5px solid #22c55e;border-radius:var(--radius);padding:24px;margin-bottom:14px;text-align:center}
 .muted{font-size:11px;color:var(--td);line-height:1.6;margin-top:14px;padding:12px 14px;background:rgba(255,255,255,.03);border-radius:var(--rs)}
 .foot{margin-top:32px;padding:18px 0;border-top:1px solid var(--b);text-align:center;font-size:11px;color:var(--td)}
-.foot-ph{color:var(--fire);font-weight:700}
+.foot-ph{color:var(--t);font-weight:700;text-decoration:underline;text-decoration-color:rgba(255,255,255,.30)}
 @media(max-width:540px){main{padding:14px 12px 40px}.card{padding:14px 16px}h1{font-size:20px}}
 </style>
 </head>
@@ -88,14 +106,20 @@ const $ = id => document.getElementById(id)
 const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')
 const fmt = n => '$' + (+(n||0)).toFixed(2)
 const token = new URLSearchParams(location.search).get('token') || ''
-let state = { sig: '', sigOn: false, drawn: false }
+let state = { sig: '', sigOn: false, drawn: false, payment: null, checkNumber: '', invoiceId: null, amount: 0 }
 
 function showError(msg){
   $('root').innerHTML = `<div class="banner-bad"><div style="font-size:32px;margin-bottom:8px">⚠️</div><div style="font-weight:800;color:#fff;font-size:16px;margin-bottom:6px">Could not load</div><div style="font-size:13px;color:var(--td)">${esc(msg)}</div></div>
   <div class="foot">Need help? Call <a class="foot-ph" href="tel:+12149944799">(214) 994-4799</a></div>`
 }
-function showSigned(){
-  $('root').innerHTML = `<div class="banner-good"><div style="font-size:48px;margin-bottom:10px">✓</div><div style="font-weight:800;color:#22c55e;font-size:20px;margin-bottom:8px">Signed — thank you!</div><div style="font-size:13px;color:var(--td)">A copy will be emailed to you. You can close this window.</div></div>
+function showSigned(data){
+  const pm = state.payment
+  let payLine = ''
+  if(pm === 'cash') payLine = '<div style="font-size:13px;color:var(--t);margin-top:10px"><strong>Cash payment</strong> — please hand to the technician.</div>'
+  else if(pm === 'check') payLine = `<div style="font-size:13px;color:var(--t);margin-top:10px"><strong>Check payment</strong>${state.checkNumber?` (#${esc(state.checkNumber)})`:''} — please hand to the technician.</div>`
+  else if(pm === 'card') payLine = `<div style="font-size:13px;color:var(--t);margin-top:10px"><strong>Pay with card</strong> — we'll text you a secure link shortly.</div>${data?.payment_link?`<a class="btn btn-primary" style="margin-top:14px;display:inline-block" href="${esc(data.payment_link)}">💳 Pay ${fmt(state.amount)} now</a>`:''}`
+  else if(pm === 'invoice') payLine = '<div style="font-size:13px;color:var(--t);margin-top:10px"><strong>Pay later</strong> — we\'ll email you the invoice.</div>'
+  $('root').innerHTML = `<div class="banner-good"><div style="font-size:48px;margin-bottom:10px">✓</div><div style="font-weight:800;color:#22c55e;font-size:20px;margin-bottom:8px">Signed — thank you!</div><div style="font-size:13px;color:var(--td)">A copy will be emailed to you.</div>${payLine}</div>
   <div class="foot">Stephens Advanced LLC · Fire Suppression &amp; Safety<br>jonathan@stephensadvanced.com · <a class="foot-ph" href="tel:+12149944799">(214) 994-4799</a></div>`
 }
 
@@ -128,8 +152,19 @@ async function load(){
 
 function render({sigReq, job, loc, inv, lines}){
   const dateStr = job?.completed_at ? new Date(job.completed_at).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric',timeZone:'UTC'}) : ''
+  const amount = inv ? +inv.total||0 : 0
+  const hasCharge = amount > 0
+  state.invoiceId = inv?.id || null
+  state.amount = amount
+
   let h = `<h1>Please review and sign</h1>
   <div class="sub">Service performed at <strong>${esc(loc?.name||'your location')}</strong>${dateStr?` on ${esc(dateStr)}`:''}.</div>`
+
+  // Amount card — always visible (no charge / amount due)
+  h += `<div class="card"><div class="card-t">Amount due</div>
+    <div class="amount-row"><span class="amount-big">${hasCharge?fmt(amount):'No charge'}</span>${hasCharge?'':'<span class="amount-pill zero">Informational sign-off only</span>'}</div>
+    ${inv?`<div style="font-size:12px;color:var(--td);margin-top:4px">Invoice ${esc(inv.invoice_number||'')}</div>`:''}
+  </div>`
 
   // Service location card
   if(loc){
@@ -141,9 +176,9 @@ function render({sigReq, job, loc, inv, lines}){
     </div>`
   }
 
-  // Invoice
+  // Invoice line items (only if we have them)
   if(inv && lines.length){
-    h += `<div class="card"><div class="card-t">Invoice ${esc(inv.invoice_number||'')}</div>`
+    h += `<div class="card"><div class="card-t">Line items</div>`
     lines.forEach(l => {
       const qty = +l.quantity||1, price = +l.unit_price||0, total = +l.total||(qty*price)
       h += `<div class="line"><div><div class="line-d">${esc(l.description||'')}</div>${qty!==1||price?`<div class="line-q">${qty} × ${fmt(price)}</div>`:''}</div><div class="line-t">${fmt(total)}</div></div>`
@@ -156,9 +191,9 @@ function render({sigReq, job, loc, inv, lines}){
     h += `<div class="card"><div class="card-t">Tech notes</div><div style="font-size:13px;color:var(--t);white-space:pre-wrap">${esc(job.notes)}</div></div>`
   }
 
-  // Signature
-  h += `<div class="card"><div class="card-t">Signature</div>
-    <div style="font-size:12px;color:var(--td);margin-bottom:18px">By signing below, I acknowledge the service described above was performed${inv?` and authorize charges of <strong style="color:#fff">${fmt(inv.total)}</strong>`:''}.</div>
+  // Signature + payment
+  h += `<div class="card"><div class="card-t">Sign-off</div>
+    <div style="font-size:12px;color:var(--td);margin-bottom:18px">By signing below, I acknowledge the service described above was performed${hasCharge?` and authorize charges of <strong style="color:#fff">${fmt(amount)}</strong>`:''}.</div>
 
     <div class="step" id="step1">
       <div class="step-num"><span>1</span></div>
@@ -172,18 +207,52 @@ function render({sigReq, job, loc, inv, lines}){
       <div class="step-num"><span>2</span></div>
       <div class="step-body">
         <div class="step-title">Draw your signature</div>
-        <div class="canvas-wrap">
+        <div class="canvas-wrap" id="canvasWrap">
           <canvas id="sigCanvas" width="600" height="200"></canvas>
           <div class="canvas-ph" id="sigPh">Sign with your finger or mouse</div>
         </div>
         <button class="btn btn-ghost" style="margin-top:8px;padding:8px 14px;font-size:12px;width:auto" onclick="clearSig()">Clear signature</button>
       </div>
     </div>
+
+    ${hasCharge?`
+    <div class="step" id="step3">
+      <div class="step-num"><span>3</span></div>
+      <div class="step-body">
+        <div class="step-title">How are you paying today?</div>
+        <div class="pay-grid">
+          <label class="pay-opt" data-pay="cash">
+            <input type="radio" name="pay" value="cash">
+            <span class="pay-opt-icon">💵</span>
+            <span class="pay-opt-label">Cash<div class="pay-opt-sub">Hand to technician now</div></span>
+          </label>
+          <label class="pay-opt" data-pay="check">
+            <input type="radio" name="pay" value="check">
+            <span class="pay-opt-icon">🧾</span>
+            <span class="pay-opt-label">Check<div class="pay-opt-sub">Hand to technician now</div></span>
+          </label>
+          <div class="check-num" id="checkNumWrap">
+            <input type="text" id="checkNum" placeholder="Check number (optional)" inputmode="numeric" autocomplete="off">
+          </div>
+          <label class="pay-opt" data-pay="card">
+            <input type="radio" name="pay" value="card">
+            <span class="pay-opt-icon">💳</span>
+            <span class="pay-opt-label">Pay with card<div class="pay-opt-sub">We'll text you a secure payment link</div></span>
+          </label>
+          <label class="pay-opt" data-pay="invoice">
+            <input type="radio" name="pay" value="invoice">
+            <span class="pay-opt-icon">📧</span>
+            <span class="pay-opt-label">Pay later (invoice)<div class="pay-opt-sub">Email me the invoice</div></span>
+          </label>
+        </div>
+      </div>
+    </div>
+    `:''}
   </div>
 
-  <button class="btn btn-primary" id="submitBtn" onclick="submitSignature()" disabled>✍️ Sign and submit</button>
-  <div class="btn-status" id="btnStatus">Complete steps 1 and 2 above to enable</div>
-  <div class="muted">Your typed name and drawn signature, along with this invoice, will be emailed back to you and to Stephens Advanced as a record of authorization.</div>
+  <button class="btn btn-primary" id="submitBtn" onclick="submitSignature()" disabled>Sign and submit</button>
+  <div class="btn-status" id="btnStatus">${hasCharge?'Complete steps 1, 2, and 3 above to enable':'Complete steps 1 and 2 above to enable'}</div>
+  <div class="muted">Your typed name, drawn signature, and payment selection will be emailed back to you and to Stephens Advanced as a record of authorization.</div>
   <div class="foot">Stephens Advanced LLC · Fire Suppression &amp; Safety<br>jonathan@stephensadvanced.com · <a class="foot-ph" href="tel:+12149944799">(214) 994-4799</a></div>`
 
   $('root').innerHTML = h
@@ -203,21 +272,44 @@ function render({sigReq, job, loc, inv, lines}){
   c.addEventListener('mousedown',down);c.addEventListener('mousemove',move);c.addEventListener('mouseup',up);c.addEventListener('mouseleave',up)
   c.addEventListener('touchstart',down,{passive:false});c.addEventListener('touchmove',move,{passive:false});c.addEventListener('touchend',up)
   $('signerName').addEventListener('input', updateSubmit)
+
+  // Wire payment-method radios (only present when there's a charge)
+  document.querySelectorAll('.pay-opt').forEach(opt => {
+    opt.addEventListener('click', () => {
+      const val = opt.dataset.pay
+      state.payment = val
+      document.querySelectorAll('.pay-opt').forEach(o => o.classList.remove('selected'))
+      opt.classList.add('selected')
+      const r = opt.querySelector('input[type="radio"]')
+      if(r) r.checked = true
+      const cn = $('checkNumWrap')
+      if(cn) cn.classList.toggle('show', val === 'check')
+      updateSubmit()
+    })
+  })
+  const cn = $('checkNum')
+  if(cn) cn.addEventListener('input', e => { state.checkNumber = e.target.value.trim() })
 }
 
 function updateSubmit(){
   const name = $('signerName')?.value?.trim() || ''
   const nameOk = name.length >= 2
-  const ok = state.drawn && nameOk
+  const hasCharge = state.amount > 0
+  const payOk = !hasCharge || !!state.payment
+  const ok = state.drawn && nameOk && payOk
   $('submitBtn').disabled = !ok
   if($('step1')) $('step1').classList.toggle('done', nameOk)
   if($('step2')) $('step2').classList.toggle('done', state.drawn)
+  if($('step3')) $('step3').classList.toggle('done', !!state.payment)
   const s = $('btnStatus')
   if(s){
     if(ok){ s.textContent = '✓ Ready to submit'; s.classList.add('ready') }
-    else if(!nameOk && !state.drawn){ s.textContent = 'Complete steps 1 and 2 above to enable'; s.classList.remove('ready') }
-    else if(!nameOk){ s.textContent = 'Type your full name above (step 1) to enable'; s.classList.remove('ready') }
-    else { s.textContent = 'Draw your signature above (step 2) to enable'; s.classList.remove('ready') }
+    else { s.classList.remove('ready')
+      if(!nameOk) s.textContent = 'Type your full name above (step 1) to enable'
+      else if(!state.drawn) s.textContent = 'Draw your signature above (step 2) to enable'
+      else if(!payOk) s.textContent = 'Pick a payment method (step 3) to enable'
+      else s.textContent = 'Complete the steps above to enable'
+    }
   }
 }
 
@@ -235,21 +327,29 @@ async function submitSignature(){
   const name = $('signerName').value.trim()
   const c = $('sigCanvas')
   const sigData = c.toDataURL('image/png')
+  const hasCharge = state.amount > 0
   if(!name || !state.drawn){return}
+  if(hasCharge && !state.payment){return}
   const btn = $('submitBtn')
   btn.disabled = true
   btn.innerHTML = '<span class="spin"></span> Signing…'
   try{
     const res = await fetch('/api/sign-job', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({token, signed_by_name: name, signature_data: sigData})
+      body: JSON.stringify({
+        token,
+        signed_by_name: name,
+        signature_data: sigData,
+        payment_method: state.payment || null,
+        check_number: state.payment === 'check' ? (state.checkNumber || null) : null
+      })
     })
     const data = await res.json()
     if(!res.ok){throw new Error(data.error||'Sign failed')}
-    showSigned()
+    showSigned(data)
   }catch(e){
     console.error(e)
-    btn.innerHTML = '✍️ Sign and submit'
+    btn.innerHTML = 'Sign and submit'
     btn.disabled = false
     alert('Could not submit: ' + (e.message||e))
   }

@@ -260,21 +260,21 @@ body.es .lang-es{display:block}
       <div class="form-group">
         <label class="lang-en">Legal Name *</label>
         <label class="lang-es">Nombre Legal *</label>
-        <input type="text" id="legalName" required placeholder="Business legal name">
+        <input type="text" id="legalName" required placeholder="Business legal name" data-ph-es="Nombre legal de la empresa">
       </div>
       <div class="form-group">
         <label>DBA</label>
-        <input type="text" id="dba" placeholder="Doing business as">
+        <input type="text" id="dba" placeholder="Doing business as" data-ph-es="Nombre comercial">
       </div>
       <div class="form-group full">
         <label class="lang-en">Service Address *</label>
         <label class="lang-es">Direccion de Servicio *</label>
-        <input type="text" id="serviceAddress" required placeholder="Street, City, State ZIP">
+        <input type="text" id="serviceAddress" required placeholder="Street, City, State ZIP" data-ph-es="Calle, Ciudad, Estado CP">
       </div>
       <div class="form-group full">
         <label class="lang-en">Billing Address</label>
         <label class="lang-es">Direccion de Facturacion</label>
-        <input type="text" id="billingAddress" placeholder="If different from service address">
+        <input type="text" id="billingAddress" placeholder="If different from service address" data-ph-es="Si es diferente a la direccion de servicio">
       </div>
     </div>
   </div>
@@ -295,7 +295,7 @@ body.es .lang-es{display:block}
       <div class="form-group">
         <label class="lang-en">Title</label>
         <label class="lang-es">Titulo</label>
-        <input type="text" id="primaryTitle" placeholder="e.g. Owner, Manager">
+        <input type="text" id="primaryTitle" placeholder="e.g. Owner, Manager" data-ph-es="ej. Propietario, Gerente">
       </div>
       <div class="form-group">
         <label class="lang-en">Phone *</label>
@@ -332,7 +332,7 @@ body.es .lang-es{display:block}
       <div class="form-group full">
         <label class="lang-en">Preferred Service Day / Time</label>
         <label class="lang-es">Dia / Hora Preferida de Servicio</label>
-        <input type="text" id="preferredServiceTime" placeholder="e.g. Tuesday mornings, any weekday before noon">
+        <input type="text" id="preferredServiceTime" placeholder="e.g. Tuesday mornings, any weekday before noon" data-ph-es="ej. Martes por la manana, dias laborales antes del mediodia">
       </div>
     </div>
   </div>
@@ -755,7 +755,7 @@ body.es .lang-es{display:block}
       <div class="form-group">
         <label class="lang-en">Title *</label>
         <label class="lang-es">Titulo *</label>
-        <input type="text" id="signedTitle" required placeholder="e.g. Owner, Manager">
+        <input type="text" id="signedTitle" required placeholder="e.g. Owner, Manager" data-ph-es="ej. Propietario, Gerente">
       </div>
       <div class="form-group">
         <label class="lang-en">Date</label>
@@ -810,6 +810,11 @@ function setLang(lang) {
   document.body.classList.toggle('es', lang === 'es');
   document.querySelectorAll('.lang-btn').forEach(b => {
     b.classList.toggle('active', b.textContent.trim() === lang.toUpperCase());
+  });
+  // Swap placeholders on any input/textarea that opted in via data-ph-es
+  document.querySelectorAll('[data-ph-es]').forEach(el => {
+    if (!el.dataset.phEn) el.dataset.phEn = el.getAttribute('placeholder') || '';
+    el.setAttribute('placeholder', lang === 'es' ? el.dataset.phEs : el.dataset.phEn);
   });
 }
 

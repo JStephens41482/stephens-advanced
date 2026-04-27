@@ -977,10 +977,6 @@ function showPortalLanding(){
           <button id="pl-btn" onclick="portalPhoneLookup()" class="btn">Text me a sign-in link →</button>
           <div id="pl-status" style="text-align:center;margin-top:10px;font-size:13px;min-height:20px;color:var(--text-2)"></div>
         </div>
-        <div style="display:flex;align-items:center;gap:8px;margin-top:14px;font-family:var(--font-mono);font-size:10.5px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase">
-          <span style="width:6px;height:6px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 3px rgba(74,222,128,.15);display:inline-block"></span>
-          Encrypted · no password needed
-        </div>
       </div>
 
       <div id="pl-pane-invoice" style="display:none">
@@ -1047,11 +1043,11 @@ async function portalInvLookup(){
     const dt=fmtDate(inv.date,{month:'long',day:'numeric',year:'numeric'})
     const total=+(inv.total)||0
     result.innerHTML=`
-      <div style="border:1px solid #e8eaed;border-radius:var(--r);padding:16px;margin-top:4px">
-        <div style="font-size:16px;font-weight:900;color:#1a1a2e">${esc(inv.invoice_number||'')}</div>
-        <div style="font-size:12px;color:#888;margin-top:2px">${dt}</div>
-        <div style="font-size:24px;font-weight:900;color:var(--fire);margin:12px 0">${fmt(total)}</div>
-        <button id="inv-pay-btn" onclick="portalInvPay('${inv.id}','${esc(inv.invoice_number||'')}',${total},this)" style="width:100%;padding:14px;border-radius:var(--r);background:var(--fire);color:#fff;font-size:15px;font-weight:800;border:none;cursor:pointer;min-height:50px">💳 Pay $${total.toFixed(2)} →</button>
+      <div style="border:1px solid #e8eaed;border-radius:var(--r);padding:18px;margin-top:4px">
+        <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;font-weight:700">Invoice</div>
+        <div style="font-size:22px;font-weight:900;color:#1a1a2e;margin-top:2px;letter-spacing:-.3px">${esc(inv.invoice_number||'')}</div>
+        <div style="font-size:13px;color:#666;margin-top:4px">${dt} · Amount due ${fmt(total)}</div>
+        <button id="inv-pay-btn" onclick="portalInvPay('${inv.id}','${esc(inv.invoice_number||'')}',${total},this)" style="width:100%;padding:14px;border-radius:var(--r);background:var(--fire);color:#fff;font-size:15px;font-weight:800;border:none;cursor:pointer;min-height:50px;margin-top:14px">Pay now</button>
         <div style="font-size:11px;color:#999;margin-top:6px;text-align:center">Secure payment powered by Square</div>
       </div>`
     btn.textContent='Look Up Invoice →';btn.disabled=false
