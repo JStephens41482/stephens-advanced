@@ -62,8 +62,6 @@ canvas{width:100%;height:200px;background:#fff;border-radius:var(--rs);touch-act
 .pay-opt-label{flex:1;font-size:14px;font-weight:600;color:#fff}
 .pay-opt-sub{font-size:11px;color:var(--td);font-weight:400;margin-top:2px}
 .pay-opt-icon{font-size:20px;width:24px;text-align:center}
-.check-num{margin-top:10px;display:none}
-.pay-opt.selected + .check-num.show{display:block}
 .btn-status{font-size:12px;color:var(--td);text-align:center;margin-top:10px;font-weight:600}
 .btn-status.ready{color:#22c55e}
 .btn{display:inline-block;padding:14px 28px;border-radius:var(--rs);font-size:15px;font-weight:800;text-decoration:none;cursor:pointer;border:none;width:100%;text-align:center;font-family:inherit}
@@ -106,7 +104,7 @@ const $ = id => document.getElementById(id)
 const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')
 const fmt = n => '$' + (+(n||0)).toFixed(2)
 const token = new URLSearchParams(location.search).get('token') || ''
-let state = { sig: '', sigOn: false, drawn: false, payment: null, checkNumber: '', invoiceId: null, amount: 0 }
+let state = { sig: '', sigOn: false, drawn: false, payment: null, invoiceId: null, amount: 0 }
 
 function showError(msg){
   $('root').innerHTML = `<div class="banner-bad"><div style="font-size:32px;margin-bottom:8px">⚠️</div><div style="font-weight:800;color:#fff;font-size:16px;margin-bottom:6px">Could not load</div><div style="font-size:13px;color:var(--td)">${esc(msg)}</div></div>
@@ -116,7 +114,7 @@ function showSigned(data){
   const pm = state.payment
   let payLine = ''
   if(pm === 'cash') payLine = '<div style="font-size:13px;color:var(--t);margin-top:10px"><strong>Cash payment</strong> — please hand to the technician.</div>'
-  else if(pm === 'check') payLine = `<div style="font-size:13px;color:var(--t);margin-top:10px"><strong>Check payment</strong>${state.checkNumber?` (#${esc(state.checkNumber)})`:''} — please hand to the technician.</div>`
+  else if(pm === 'check') payLine = '<div style="font-size:13px;color:var(--t);margin-top:10px"><strong>Check payment</strong> — please hand to the technician.</div>'
   else if(pm === 'card') payLine = `<div style="font-size:13px;color:var(--t);margin-top:10px"><strong>Pay with card</strong> — we'll text you a secure link shortly.</div>${data?.payment_link?`<a class="btn btn-primary" style="margin-top:14px;display:inline-block" href="${esc(data.payment_link)}">💳 Pay ${fmt(state.amount)} now</a>`:''}`
   else if(pm === 'invoice') payLine = '<div style="font-size:13px;color:var(--t);margin-top:10px"><strong>Pay later</strong> — we\'ll email you the invoice.</div>'
   $('root').innerHTML = `<div class="banner-good"><div style="font-size:48px;margin-bottom:10px">✓</div><div style="font-weight:800;color:#22c55e;font-size:20px;margin-bottom:8px">Signed — thank you!</div><div style="font-size:13px;color:var(--td)">A copy will be emailed to you.</div>${payLine}</div>
@@ -231,9 +229,6 @@ function render({sigReq, job, loc, inv, lines}){
             <span class="pay-opt-icon">🧾</span>
             <span class="pay-opt-label">Check<div class="pay-opt-sub">Hand to technician now</div></span>
           </label>
-          <div class="check-num" id="checkNumWrap">
-            <input type="text" id="checkNum" placeholder="Check number (optional)" inputmode="numeric" autocomplete="off">
-          </div>
           <label class="pay-opt" data-pay="card">
             <input type="radio" name="pay" value="card">
             <span class="pay-opt-icon">💳</span>
@@ -276,19 +271,14 @@ function render({sigReq, job, loc, inv, lines}){
   // Wire payment-method radios (only present when there's a charge)
   document.querySelectorAll('.pay-opt').forEach(opt => {
     opt.addEventListener('click', () => {
-      const val = opt.dataset.pay
-      state.payment = val
+      state.payment = opt.dataset.pay
       document.querySelectorAll('.pay-opt').forEach(o => o.classList.remove('selected'))
       opt.classList.add('selected')
       const r = opt.querySelector('input[type="radio"]')
       if(r) r.checked = true
-      const cn = $('checkNumWrap')
-      if(cn) cn.classList.toggle('show', val === 'check')
       updateSubmit()
     })
   })
-  const cn = $('checkNum')
-  if(cn) cn.addEventListener('input', e => { state.checkNumber = e.target.value.trim() })
 }
 
 function updateSubmit(){
@@ -340,8 +330,7 @@ async function submitSignature(){
         token,
         signed_by_name: name,
         signature_data: sigData,
-        payment_method: state.payment || null,
-        check_number: state.payment === 'check' ? (state.checkNumber || null) : null
+        payment_method: state.payment || null
       })
     })
     const data = await res.json()
