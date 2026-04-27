@@ -998,10 +998,14 @@ async function portalPhoneLookup(){
   try{
     const res=await fetch('/api/portal-lookup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phone})})
     const data=await res.json()
-    if(data.success){
+    if(data.success&&data.sms_sent!==false){
       st.style.color='#059669'
       st.textContent='Check your texts — we just sent your portal link'
       btn.textContent='Sent ✓';btn.style.background='#059669'
+    }else if(data.success&&data.sms_sent===false){
+      st.style.color='var(--bad)'
+      st.textContent='We found your account but the text didn’t go out. Call (214) 994-4799 and we’ll send it manually.'
+      btn.textContent='Send Me My Link →';btn.disabled=false
     }else{
       st.style.color='#888'
       st.textContent="We couldn't find that number. Give us a call at (214) 994-4799 and we'll get you set up."

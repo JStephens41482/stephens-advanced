@@ -68,19 +68,44 @@ module.exports = async function handler(req, res) {
 
   const portalUrl = 'https://stephensadvanced.com/portal?t=' + token
 
-  // Send SMS
-  try {
-    const baseUrl = process.env.VERCEL_URL ? 'https://' + process.env.VERCEL_URL : 'https://stephensadvanced.com'
-    await fetch(baseUrl + '/api/send-sms', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        to: '+1' + digits,
-        body: 'Here\'s your Stephens Advanced portal link:\n' + portalUrl + '\n\nThis link is active for 15 days. Bookmark it for easy access.'
+  // Send SMS — call Twilio directly. The previous version fetched
+  // baseUrl + '/api/send-sms' which silently failed in production
+  // (Vercel deployment-protection / self-routing issues). Inlining
+  // makes this a single hop, with the real error visible in the response.
+  let smsSent = false
+  let smsError = null
+  const sid = process.env.TWILIO_ACCOUNT_SID
+  const tokenTw = process.env.TWILIO_AUTH_TOKEN
+  const from = process.env.TWILIO_PHONE_NUMBER
+  if (!sid || !tokenTw || !from) {
+    smsError = 'twilio_not_configured'
+  } else {
+    try {
+      const auth = Buffer.from(sid + ':' + tokenTw).toString('base64')
+      const params = new URLSearchParams({
+        To: '+1' + digits,
+        From: from,
+        Body: "Here's your Stephens Advanced portal link:\n" + portalUrl + '\n\nThis link is active for 15 days. Bookmark it for easy access.'
       })
-    })
-  } catch (e) {
-    console.error('SMS send error:', e)
+      const twResp = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Basic ' + auth,
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: params.toString()
+      })
+      const twData = await twResp.json()
+      if (twResp.ok) {
+        smsSent = true
+      } else {
+        smsError = twData.message || ('twilio_status_' + twResp.status)
+        console.error('portal-lookup Twilio error:', twData)
+      }
+    } catch (e) {
+      smsError = e.message
+      console.error('portal-lookup SMS exception:', e)
+    }
   }
 
   // Audit log
@@ -94,5 +119,7 @@ module.exports = async function handler(req, res) {
     })
   } catch (e) {}
 
-  res.json({ success: true })
+  // Report SMS status truthfully so the UI can show real errors instead
+  // of silently telling the user "Check your texts" when nothing was sent.
+  res.json({ success: true, sms_sent: smsSent, sms_error: smsError })
 }
