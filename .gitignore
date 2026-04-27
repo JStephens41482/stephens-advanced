@@ -35,3 +35,27 @@ test-results/
 node_modules/
 playwright-report/
 .design-audit-tmp/
+
+# Superpowers brainstorm session files (preserved locally, not tracked)
+.superpowers/brainstorm/
+img/sa-logo.svg
+img/sa-icon.svg
+img/icon-preview.png
+img/logo-preview.png
+img/icon-preview.html
+sigtest.png
+sa_audit/
+js_payload.txt
+preview_logo.py
+preview_icon.py
+extract_icon.py
+capture_audit.py
+capture_audit_redo.py
+cors_server.py
+paste_helper.py
+generate_book_images.py
+generate_keep_score_images.py
+insert_images_to_docx.py
+test_api.py
+wait_and_insert.py
+logo-preview.html

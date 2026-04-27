@@ -2,6 +2,7 @@
 // Sends contract invitation email via Resend — Stephens Advanced LLC
 
 const { createClient } = require('@supabase/supabase-js')
+const { renderEmail, renderText } = require('./email-template')
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' })
@@ -69,40 +70,37 @@ module.exports = async function handler(req, res) {
     const locationName = location?.name || billingAccount?.name || ''
     const signUrl = `https://www.stephensadvanced.com/sign-contract?token=${contractId}`
 
-    // ── 3. Build branded HTML email ─────────────────────────────────
-    const html = buildContractEmail({ customerName, locationName, signUrl })
+    // ── 3. Build branded HTML email via shared template ─────────────
+    const benefitsHtml = `
+      <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px;background:#fef7f4;border:1px solid #fde0d2;border-radius:8px">
+      <tr><td style="padding:18px 22px">
+        <p style="margin:0 0 10px;font-size:12px;font-weight:700;color:#d04010;text-transform:uppercase;letter-spacing:0.5px">Benefits of Your Agreement</p>
+        <table cellpadding="0" cellspacing="0" style="font-size:13px;color:#444;line-height:1.8">
+          <tr><td style="padding:2px 8px 2px 0;vertical-align:top;color:#f05a28;font-size:15px">&#10003;</td><td><strong>Priority Scheduling</strong> &mdash; first access to preferred service windows</td></tr>
+          <tr><td style="padding:2px 8px 2px 0;vertical-align:top;color:#f05a28;font-size:15px">&#10003;</td><td><strong>Price Lock Guarantee</strong> &mdash; locked-in annual rates for the term</td></tr>
+          <tr><td style="padding:2px 8px 2px 0;vertical-align:top;color:#f05a28;font-size:15px">&#10003;</td><td><strong>Prompt-Pay Discount</strong> &mdash; save with autopay or early payment</td></tr>
+          <tr><td style="padding:2px 8px 2px 0;vertical-align:top;color:#f05a28;font-size:15px">&#10003;</td><td><strong>Customer Portal</strong> &mdash; view invoices, reports, and schedule service online</td></tr>
+        </table>
+      </td></tr>
+      </table>`
 
-    // ── 4. Send via Resend ──────────────────────────────────────────
-    // Explicit plaintext + 7-bit ASCII enforcement. Without these two
-    // together, the URL '=' gets corrupted: any high-bit char in the body
-    // forces SMTP quoted-printable encoding, which then re-decodes the
-    // URL's '=' as part of a hex escape on the receiver side.
-    const text = [
-      'STEPHENS ADVANCED LLC -- FIRE SUPPRESSION SERVICES',
-      '',
-      'SERVICE AGREEMENT',
-      '',
-      `Dear ${customerName||''},`,
-      '',
-      `Your service agreement${locationName ? ' for ' + locationName : ''} is ready to review and sign.`,
-      '',
-      'Benefits of your agreement:',
-      '  - Priority scheduling',
-      '  - Price-lock guarantee',
-      '  - Prompt-pay discount',
-      '  - Customer portal access',
-      '',
-      'Review and sign here:',
-      signUrl,
-      '',
-      'The link is unique to your account. Sign on any device.',
-      '',
-      '---',
-      'Stephens Advanced LLC',
-      'Fire Suppression Systems - Inspections - Installations - Service',
-      '(214) 994-4799 - jonathan@stephensadvanced.com',
-      'www.stephensadvanced.com'
-    ].join('\n').replace(/[^\x20-\x7E\n\r\t]/g,'')
+    const opts = {
+      headline: 'Service Agreement',
+      subheadline: 'Stephens Advanced LLC &mdash; Fire Suppression Services',
+      greeting: `Dear ${customerName},`,
+      intro: `Thank you for choosing Stephens Advanced for your fire suppression service needs${locationName ? ' at ' + locationName : ''}. Your annual service agreement is ready for review and signature.`,
+      bodyHtml: benefitsHtml,
+      cta: { label: 'Review & Sign Agreement', url: signUrl },
+      fineprint: 'This link is unique to your account. You can complete the signing on any device.',
+      spanish: {
+        greeting: `Estimado/a ${customerName},`,
+        intro: 'Su acuerdo de servicio anual esta listo para revisar y firmar. Beneficios: programacion prioritaria, precio garantizado, descuento por pago rapido, portal del cliente.',
+        ctaLabel: 'Revisar y Firmar Acuerdo',
+      },
+    }
+
+    const html = renderEmail(opts)
+    const text = renderText(opts)
 
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -162,109 +160,4 @@ module.exports = async function handler(req, res) {
     console.error('send-contract error:', err)
     return res.status(500).json({ error: err.message })
   }
-}
-
-// ── Email template ────────────────────────────────────────────────────
-function buildContractEmail({ customerName, locationName, signUrl }) {
-  const esc = s => String(s == null ? '' : s)
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;').replace(/'/g, '&#39;')
-
-  return `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#f4f4f7;font-family:Arial,Helvetica,sans-serif">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f7;padding:32px 16px">
-<tr><td align="center">
-<table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%">
-
-  <!-- Header -->
-  <tr><td style="background:#f05a28;padding:28px 32px;border-radius:10px 10px 0 0;text-align:center">
-    <img src="https://www.stephensadvanced.com/icon-120.png" alt="Stephens Advanced" width="60" height="60" style="display:block;margin:0 auto 12px;border-radius:12px">
-    <h1 style="margin:0;color:#fff;font-size:22px;font-weight:700;letter-spacing:-0.3px">Service Agreement</h1>
-    <p style="margin:6px 0 0;color:rgba(255,255,255,0.85);font-size:13px">Stephens Advanced LLC &mdash; Fire Suppression Services</p>
-  </td></tr>
-
-  <!-- Body -->
-  <tr><td style="background:#ffffff;padding:32px;border-left:1px solid #e8e8eb;border-right:1px solid #e8e8eb">
-
-    <p style="margin:0 0 16px;font-size:15px;color:#222;line-height:1.6">
-      Dear ${esc(customerName)},
-    </p>
-    <p style="margin:0 0 20px;font-size:14px;color:#444;line-height:1.7">
-      Thank you for choosing Stephens Advanced for your fire suppression service needs${locationName ? ' at <strong>' + esc(locationName) + '</strong>' : ''}. Your annual service agreement is ready for review and signature.
-    </p>
-
-    <!-- Benefits box -->
-    <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 24px;background:#fef7f4;border:1px solid #fde0d2;border-radius:8px">
-    <tr><td style="padding:20px 24px">
-      <p style="margin:0 0 10px;font-size:13px;font-weight:700;color:#d04010;text-transform:uppercase;letter-spacing:0.5px">Benefits of Your Agreement</p>
-      <table cellpadding="0" cellspacing="0" style="font-size:13px;color:#444;line-height:1.8">
-        <tr><td style="padding:2px 8px 2px 0;vertical-align:top;color:#f05a28;font-size:15px">&#10003;</td><td><strong>Priority Scheduling</strong> &mdash; first access to preferred service windows</td></tr>
-        <tr><td style="padding:2px 8px 2px 0;vertical-align:top;color:#f05a28;font-size:15px">&#10003;</td><td><strong>Price Lock Guarantee</strong> &mdash; locked-in annual rates for the term</td></tr>
-        <tr><td style="padding:2px 8px 2px 0;vertical-align:top;color:#f05a28;font-size:15px">&#10003;</td><td><strong>Prompt-Pay Discount</strong> &mdash; save with autopay or early payment</td></tr>
-        <tr><td style="padding:2px 8px 2px 0;vertical-align:top;color:#f05a28;font-size:15px">&#10003;</td><td><strong>Customer Portal</strong> &mdash; view invoices, reports, and schedule service online</td></tr>
-      </table>
-    </td></tr>
-    </table>
-
-    <!-- CTA Button -->
-    <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 28px">
-    <tr><td align="center">
-      <a href="${esc(signUrl)}" target="_blank" style="display:inline-block;background:#f05a28;color:#ffffff;font-size:16px;font-weight:700;text-decoration:none;padding:14px 40px;border-radius:8px;letter-spacing:0.2px">
-        Review &amp; Sign Agreement
-      </a>
-    </td></tr>
-    </table>
-
-    <p style="margin:0 0 24px;font-size:12px;color:#888;text-align:center;line-height:1.5">
-      This link is unique to your account. You can complete the signing on any device.<br>
-      If the button doesn't work, copy this URL: <a href="${esc(signUrl)}" style="color:#f05a28;word-break:break-all">${esc(signUrl)}</a>
-    </p>
-
-    <!-- Divider -->
-    <hr style="border:none;border-top:1px solid #eee;margin:24px 0">
-
-    <!-- Spanish version -->
-    <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 8px;background:#f8f8fa;border-radius:8px">
-    <tr><td style="padding:20px 24px">
-      <p style="margin:0 0 8px;font-size:12px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:0.5px">Espa&ntilde;ol</p>
-      <p style="margin:0 0 12px;font-size:13px;color:#555;line-height:1.7">
-        Estimado/a ${esc(customerName)}, su acuerdo de servicio anual est&aacute; listo para revisar y firmar.
-      </p>
-      <p style="margin:0 0 8px;font-size:13px;color:#555;line-height:1.7"><strong>Beneficios de su acuerdo:</strong></p>
-      <ul style="margin:0 0 12px;padding-left:18px;font-size:13px;color:#555;line-height:1.8">
-        <li><strong>Programaci&oacute;n prioritaria</strong> &mdash; acceso preferente a horarios de servicio</li>
-        <li><strong>Precio garantizado</strong> &mdash; tarifas fijas durante el t&eacute;rmino del contrato</li>
-        <li><strong>Descuento por pago r&aacute;pido</strong> &mdash; ahorre con pago autom&aacute;tico</li>
-        <li><strong>Portal del cliente</strong> &mdash; vea facturas, reportes y programe servicio en l&iacute;nea</li>
-      </ul>
-      <a href="${esc(signUrl)}" target="_blank" style="display:inline-block;background:#f05a28;color:#ffffff;font-size:13px;font-weight:700;text-decoration:none;padding:10px 28px;border-radius:6px">
-        Revisar y Firmar Acuerdo
-      </a>
-    </td></tr>
-    </table>
-
-  </td></tr>
-
-  <!-- Footer -->
-  <tr><td style="background:#1a1a2e;padding:24px 32px;border-radius:0 0 10px 10px;text-align:center">
-    <p style="margin:0 0 6px;font-size:13px;color:#ccc;font-weight:600">Stephens Advanced LLC</p>
-    <p style="margin:0 0 4px;font-size:11px;color:#999;line-height:1.6">
-      Fire Suppression Systems &bull; Inspections &bull; Installations &bull; Service
-    </p>
-    <p style="margin:0 0 4px;font-size:11px;color:#999;line-height:1.6">
-      <a href="tel:+12149944799" style="color:#f05a28;text-decoration:none">(214) 994-4799</a> &bull;
-      <a href="mailto:jonathan@stephensadvanced.com" style="color:#f05a28;text-decoration:none">jonathan@stephensadvanced.com</a>
-    </p>
-    <p style="margin:8px 0 0;font-size:10px;color:#666">
-      <a href="https://www.stephensadvanced.com" style="color:#f05a28;text-decoration:none">www.stephensadvanced.com</a>
-    </p>
-  </td></tr>
-
-</table>
-</td></tr>
-</table>
-</body>
-</html>`
 }

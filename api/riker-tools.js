@@ -56,21 +56,50 @@ async function sendSMSRaw(to, body) {
   return data.sid
 }
 
-async function sendEmailRaw({ to, subject, body, inReplyTo, references }) {
+const { renderEmail, renderText } = require('./email-template')
+
+async function sendEmailRaw({ to, subject, body, inReplyTo, references, attachments, plain }) {
   const apiKey = process.env.RESEND_API_KEY
   if (!apiKey) throw new Error('RESEND_API_KEY not configured')
-  const html = body.split('\n\n').map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('')
+
+  // `plain: true` sends a barebones inline-HTML email (used for thread replies
+  // where the customer is already mid-conversation and template chrome would
+  // be jarring). Default is to wrap in the branded template.
+  let html, text
+  if (plain) {
+    html = body.split('\n\n').map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('')
+    text = body
+  } else {
+    // Promote the first paragraph to "intro" and the rest to body HTML so
+    // simple Riker-driven sends ("send Mauro a follow-up about the receipt")
+    // get the full template chrome with logo + footer.
+    const paragraphs = body.split('\n\n').map(p => p.trim()).filter(Boolean)
+    const intro = paragraphs[0] || ''
+    const restHtml = paragraphs.slice(1).map(p => `<p style="margin:0 0 14px;font-size:14px;color:#444;line-height:1.7">${p.replace(/\n/g, '<br>')}</p>`).join('')
+    const opts = {
+      headline: subject || 'Stephens Advanced',
+      subheadline: 'Stephens Advanced LLC &mdash; Fire Suppression &amp; Safety',
+      intro,
+      bodyHtml: restHtml,
+    }
+    html = renderEmail(opts)
+    text = renderText(opts)
+  }
+
   const headers = {}
   if (inReplyTo) headers['In-Reply-To'] = inReplyTo
   if (references) headers['References'] = references
+  const payload = {
+    from: 'Stephens Advanced <jonathan@stephensadvanced.com>',
+    to: [to], subject, html, text,
+  }
+  if (Object.keys(headers).length) payload.headers = headers
+  if (attachments && attachments.length) payload.attachments = attachments
+
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      from: 'Stephens Advanced <jonathan@stephensadvanced.com>',
-      to: [to], subject, html, text: body,
-      ...(Object.keys(headers).length ? { headers } : {})
-    })
+    body: JSON.stringify(payload)
   })
   const data = await res.json()
   if (!res.ok) throw new Error('Resend send failed: ' + (data.message || res.status))

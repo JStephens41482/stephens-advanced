@@ -4,6 +4,7 @@
 // Used by the "Send for signature" button on the job detail screen.
 
 const { createClient } = require('@supabase/supabase-js')
+const { renderEmail, renderText } = require('./email-template')
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end()
@@ -69,8 +70,19 @@ module.exports = async function handler(req, res) {
 
     if (email && wantEmail) {
       try {
-        const html = buildSigRequestEmail({ customerName, locationName, invNum, total, signUrl, lines: invLines })
-        const text = buildSigRequestText({ customerName, locationName, invNum, total, signUrl, lines: invLines })
+        const opts = {
+          headline: 'Please review and sign',
+          subheadline: 'Stephens Advanced LLC &mdash; Fire Suppression &amp; Safety',
+          greeting: `Hi ${customerName},`,
+          intro: `We just completed work at ${locationName}. ` + (invNum
+            ? `Please review Invoice ${invNum}${total ? ` (${total})` : ''} and sign to acknowledge service.`
+            : `Please sign to acknowledge service.`),
+          lineItems: invLines,
+          totalLabel: 'Total',
+          total: total,
+          cta: { label: 'Review & Sign', url: signUrl },
+          fineprint: 'The link is unique to your account and expires in 14 days. Sign on any device — no app needed.',
+        }
         const r = await fetch('https://api.resend.com/emails', {
           method: 'POST',
           headers: {
@@ -82,8 +94,8 @@ module.exports = async function handler(req, res) {
             to: [email],
             bcc: ['jonathan@stephensadvanced.com'],
             subject: `Please sign — ${invNum ? 'Invoice ' + invNum + ' · ' : ''}Stephens Advanced${locationName ? ' | ' + locationName : ''}`,
-            html,
-            text
+            html: renderEmail(opts),
+            text: renderText(opts),
           })
         })
         emailResult = await r.json()
@@ -131,100 +143,3 @@ module.exports = async function handler(req, res) {
   }
 }
 
-function buildSigRequestEmail({ customerName, locationName, invNum, total, signUrl, lines }) {
-  const esc = s => String(s == null ? '' : s)
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;').replace(/'/g, '&#39;')
-  const fmt = n => '$' + (+(n||0)).toFixed(2)
-
-  let lineRows = ''
-  if (lines && lines.length) {
-    lineRows = lines.map(l => {
-      const qty = +l.quantity || 1
-      const price = +l.unit_price || 0
-      const lt = +l.total || (qty * price)
-      const qtyStr = qty !== 1 ? `${qty} × ${fmt(price)}` : ''
-      return `<tr>
-        <td style="padding:8px 0;border-bottom:1px solid #eee;font-size:13px;color:#333">
-          ${esc(l.description||'')}${qtyStr ? `<div style="font-size:11px;color:#999;margin-top:2px">${qtyStr}</div>` : ''}
-        </td>
-        <td style="padding:8px 0;border-bottom:1px solid #eee;font-size:13px;color:#333;font-weight:600;text-align:right;white-space:nowrap;vertical-align:top">${fmt(lt)}</td>
-      </tr>`
-    }).join('')
-    lineRows = `<table width="100%" cellpadding="0" cellspacing="0" style="margin-top:18px">${lineRows}
-      <tr><td style="padding:12px 0 0;font-size:14px;color:#1a1a1a;font-weight:800">Total</td>
-      <td style="padding:12px 0 0;font-size:14px;color:#f05a28;font-weight:800;text-align:right">${esc(total||fmt(lines.reduce((s,l)=>s+(+l.total||0),0)))}</td></tr>
-    </table>`
-  }
-
-  return `<!DOCTYPE html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#f4f4f7;font-family:Arial,Helvetica,sans-serif">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f7;padding:32px 16px"><tr><td align="center">
-<table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#fff;border-radius:12px;overflow:hidden">
-<tr><td style="padding:32px 36px 20px">
-  <div style="font-size:14px;font-weight:700;color:#f05a28;letter-spacing:1px;text-transform:uppercase">Stephens Advanced LLC</div>
-  <h1 style="font-size:22px;color:#1a1a1a;margin:8px 0 0">Please review and sign</h1>
-  <p style="font-size:14px;color:#444;line-height:1.55;margin:18px 0 0">
-    Hi ${esc(customerName)}, we just completed work at <strong>${esc(locationName)}</strong>.
-    ${invNum ? `Please review <strong>Invoice ${esc(invNum)}</strong>${total ? ` (<strong>${esc(total)}</strong>)` : ''} and sign to acknowledge service.` : `Please sign to acknowledge service.`}
-  </p>
-  ${lineRows}
-  <div style="margin:28px 0">
-    <a href="${esc(signUrl)}" target="_blank" style="display:inline-block;background:#f05a28;color:#ffffff;font-size:16px;font-weight:700;text-decoration:none;padding:14px 36px;border-radius:8px">
-      ✍️ Review &amp; Sign
-    </a>
-  </div>
-  <p style="font-size:12px;color:#888;line-height:1.55;margin:0">
-    The link is unique to your account and expires in 14 days. Sign on any device — no app needed.
-    <br>If the button doesn't work: <a href="${esc(signUrl)}" style="color:#f05a28;word-break:break-all">${esc(signUrl)}</a>
-  </p>
-</td></tr>
-<tr><td style="background:#fafafa;padding:20px 36px;border-top:1px solid #eee;font-size:11px;color:#999;line-height:1.5">
-  Stephens Advanced LLC · Fire Suppression &amp; Safety · DFW Texas<br>
-  jonathan@stephensadvanced.com · (214) 994-4799
-</td></tr>
-</table>
-</td></tr></table>
-</body></html>`
-}
-
-// Plaintext fallback. Without this, Gmail auto-generates a plaintext from
-// the HTML and mangles `?token=UUID` into `?token�UUID` — making the link
-// unclickable for plaintext-only email clients.
-function buildSigRequestText({ customerName, locationName, invNum, total, signUrl, lines }) {
-  const fmt = n => '$' + (+(n||0)).toFixed(2)
-  const ascii = s => String(s||'').replace(/[^\x20-\x7E]/g,'')
-  const lineText = (lines && lines.length)
-    ? lines.map(l => {
-        const qty = +l.quantity || 1, price = +l.unit_price || 0
-        const lt = +l.total || (qty * price)
-        return `  ${(qty !== 1 ? qty + ' x ' : '') + ascii((l.description||'').replace(/\s+/g,' '))}  ${fmt(lt)}`
-      }).join('\n') + `\n  ${'-'.repeat(40)}\n  TOTAL: ${total || fmt(lines.reduce((s,l)=>s+(+l.total||0),0))}\n`
-    : ''
-  // Whole body must be 7-bit ASCII so SMTP doesn't apply quoted-printable
-  // encoding (which would re-decode the URL's '=' as part of a hex escape).
-  const body = [
-    'STEPHENS ADVANCED LLC',
-    '',
-    'PLEASE REVIEW AND SIGN',
-    '',
-    `Hi ${customerName||''}, we just completed work at ${locationName||''}.`,
-    invNum
-      ? `Please review Invoice ${invNum}${total ? ` (${total})` : ''} and sign to acknowledge service.`
-      : 'Please sign to acknowledge service.',
-    '',
-    lineText,
-    `Review and sign here:`,
-    signUrl,
-    '',
-    'The link is unique to your account and expires in 14 days.',
-    'Sign on any device -- no app needed.',
-    '',
-    '---',
-    'Stephens Advanced LLC',
-    'Fire Suppression and Safety - DFW Texas',
-    '(214) 994-4799 - jonathan@stephensadvanced.com'
-  ].join('\n')
-  return body.replace(/[^\x20-\x7E\n\r\t]/g,'')
-}

@@ -3,6 +3,7 @@
 // stamps the linked job's signature_data and notifies Jon.
 
 const { createClient } = require('@supabase/supabase-js')
+const { renderEmail, renderText } = require('./email-template')
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end()
@@ -109,10 +110,15 @@ module.exports = async function handler(req, res) {
       const locName = loc?.name || 'a customer'
       const invStr = inv ? `Invoice ${inv.invoice_number} ($${(+inv.total).toFixed(2)})` : 'their service'
       const subject = `✍️ ${locName} just signed`
-      const payNote = payment_method ? ` · paid by ${paymentLabel(payment_method, check_number)}` : ''
-      const html = `<p style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6">
-        <strong>${signed_by_name}</strong> at <strong>${locName}</strong> just signed for ${invStr}${payNote}.</p>
-        <p style="font-family:Arial,sans-serif;font-size:13px;color:#555">Sign request: ${sigReq.id}<br>Signed at: ${nowIso}${payment_method?`<br>Payment: ${paymentLabel(payment_method, check_number)}`:''}</p>`
+      const payLabel = payment_method ? paymentLabel(payment_method, check_number) : ''
+      const opts = {
+        headline: 'Customer signed',
+        subheadline: 'Stephens Advanced &mdash; offsite signer',
+        intro: `${signed_by_name} at ${locName} just signed for ${invStr}${payLabel ? ' · paid by ' + payLabel : ''}.`,
+        bodyHtml: `<p style="margin:0 0 6px;font-size:13px;color:#555;line-height:1.55"><strong>Sign request:</strong> ${sigReq.id}</p>
+                   <p style="margin:0 0 6px;font-size:13px;color:#555;line-height:1.55"><strong>Signed at:</strong> ${nowIso}</p>
+                   ${payLabel ? `<p style="margin:0 0 6px;font-size:13px;color:#555;line-height:1.55"><strong>Payment:</strong> ${payLabel}</p>` : ''}`,
+      }
       // Email Jon
       if (process.env.RESEND_API_KEY) {
         await fetch('https://api.resend.com/emails', {
@@ -121,7 +127,9 @@ module.exports = async function handler(req, res) {
           body: JSON.stringify({
             from: 'Stephens Advanced <jonathan@stephensadvanced.com>',
             to: ['jonathan@stephensadvanced.com'],
-            subject, html
+            subject,
+            html: renderEmail(opts),
+            text: renderText(opts),
           })
         })
       }
