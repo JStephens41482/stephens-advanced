@@ -654,9 +654,20 @@ async function autoReschedule(req, res, SB) {
 // DEPARTURE CHECK — Every 5 min during work hours
 // Reads Jon's GPS beacon, computes drive time to next job,
 // texts him when it's time to leave. Fires once per job.
+//
+// CONFIRMATION GATE (added 2026-04-27):
+//   Only fires for jobs flipped to "confirmed with customer" via the
+//   toggle on the job detail page (sets jobs.confirmed_at). Tentative
+//   jobs stay silent — they're "I'll probably swing by" not commitments.
+//
+// TEST SAFETY GATE:
+//   Env var DISPATCHER_TEST_ONLY (default 'true' = safe). When true,
+//   only fires for jobs whose location name contains "test" (case-insensitive).
+//   Set to 'false' in Vercel env to go live for all confirmed jobs.
 // ═══════════════════════════════════════════════════════════════
 async function runDepartureCheck(SB) {
   const key = process.env.GOOGLE_MAPS_API_KEY
+  const testOnly = (process.env.DISPATCHER_TEST_ONLY ?? 'true').toLowerCase() !== 'false'
   const now = new Date()
 
   // Work hours only: 5 AM – 9 PM Central
@@ -665,15 +676,17 @@ async function runDepartureCheck(SB) {
 
   const todayStr = now.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' }) // YYYY-MM-DD
 
-  // Today's scheduled jobs that haven't had a departure alert yet
+  // Today's CONFIRMED scheduled jobs that haven't had a departure alert yet.
+  // Tentative jobs (confirmed_at IS NULL) are intentionally excluded.
   const { data: jobs, error: jobsErr } = await SB.from('jobs')
-    .select('id, scheduled_time, departure_alert_sent_at, location:locations(name, address, city, state, zip)')
+    .select('id, scheduled_time, departure_alert_sent_at, confirmed_at, location:locations(name, address, city, state, zip)')
     .eq('status', 'scheduled')
     .eq('scheduled_date', todayStr)
     .is('departure_alert_sent_at', null)
+    .not('confirmed_at', 'is', null)
     .order('scheduled_time')
   if (jobsErr) throw new Error('jobs query: ' + jobsErr.message)
-  if (!jobs || !jobs.length) return { ok: true, checked: 0, alerted: 0 }
+  if (!jobs || !jobs.length) return { ok: true, checked: 0, alerted: 0, gate: testOnly ? 'TEST_ONLY' : 'LIVE' }
 
   // Jon's current GPS — use if fresh (< 15 min)
   const { data: jonLoc } = await SB.from('jon_location')
