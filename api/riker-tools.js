@@ -4010,43 +4010,8 @@ const search_email = {
 // REGISTRY + CONTEXT FILTERING
 // ═══════════════════════════════════════════════════════════════
 
-const ALL_TOOLS = {
-  get_today_summary, query_jobs, lookup_client, get_invoices,
-  get_schedule_slots, get_equipment, get_pending_confirmations,
-  get_todos, read_memory, get_rate_card, get_jon_location,
-  schedule_job, approve_pending, reject_pending, send_sms,
-  add_client, create_billing_account, list_locations_by_account, assign_location_to_billing_account,
-  add_todo, write_memory, delete_memory, mark_invoice_paid,
-  lookup_business,
-  update_client, delete_client, merge_clients,
-  update_invoice, void_invoice, delete_invoice,
-  build_route,
-  get_job_activity, add_job_note,
-  update_job, cancel_job,
-  send_email, get_conversation_history, create_invoice, list_job_documents,
-  mazon_list_queue, mazon_mark_funded, mazon_void,
-  escalate_to_jon,
-  request_owner_otp, verify_owner_otp,
-  // Phase 3 — email inbox copilot
-  search_email, read_inbox, read_email_thread, draft_email_reply, approve_email_draft,
-  // Phase 4 — web lookup
-  web_search_brave, web_fetch, get_weather,
-  // Phase 5 — extended ops tools
-  reschedule_job,
-  get_invoice_lines, add_invoice_line, update_invoice_line, delete_invoice_line,
-  generate_portal_link,
-  list_techs, add_tech, update_tech, assign_job_to_tech,
-  get_brycer_queue, mark_brycer_submitted,
-  list_contracts, create_contract, send_contract,
-  get_business_report, get_ar_aging, get_audit_log,
-  list_service_requests, respond_to_service_request,
-  list_custom_items, add_custom_item, delete_custom_item,
-  send_on_my_way,
-  // Phase 2 — inbox management
-  manage_email, list_labels, create_label, forward_email,
-  // Phase 3 — attachments
-  list_attachments_in_thread, read_attachment_text, save_email_attachment_to_storage, send_email_with_attachment,
-}
+// ALL_TOOLS declaration is moved below, after every const tool definition,
+// to satisfy temporal-dead-zone for the new Phase 2/3/4 tools.
 
 // ═══════════════════════════════════════════════════════════════
 // PHASE 2 — INBOX MANAGEMENT
@@ -4397,6 +4362,253 @@ const send_email_with_attachment = {
 
     return { ok: true, to: input.to, attached: attachments.length }
   }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PHASE 4 — DRAFTS + REPLY_ALL
+// ═══════════════════════════════════════════════════════════════
+
+// Build a base64url-encoded RFC822 message for Gmail's drafts API.
+function buildRawRfc822({ to, cc, bcc, subject, html, text, inReplyTo, references }) {
+  const boundary = 'sa-' + Math.random().toString(36).slice(2)
+  const headers = [
+    'From: Stephens Advanced <jonathan@stephensadvanced.com>',
+    `To: ${(Array.isArray(to) ? to : [to]).join(', ')}`,
+  ]
+  if (cc && cc.length) headers.push(`Cc: ${(Array.isArray(cc) ? cc : [cc]).join(', ')}`)
+  if (bcc && bcc.length) headers.push(`Bcc: ${(Array.isArray(bcc) ? bcc : [bcc]).join(', ')}`)
+  headers.push(`Subject: ${subject || ''}`)
+  if (inReplyTo) headers.push(`In-Reply-To: ${inReplyTo}`)
+  if (references) headers.push(`References: ${references}`)
+  headers.push('MIME-Version: 1.0')
+  headers.push(`Content-Type: multipart/alternative; boundary="${boundary}"`)
+  const body = [
+    '',
+    `--${boundary}`,
+    'Content-Type: text/plain; charset="UTF-8"',
+    'Content-Transfer-Encoding: 7bit',
+    '',
+    (text || '').replace(/[^\x20-\x7E\n\r\t]/g, ''),
+    '',
+    `--${boundary}`,
+    'Content-Type: text/html; charset="UTF-8"',
+    'Content-Transfer-Encoding: 7bit',
+    '',
+    html || '',
+    '',
+    `--${boundary}--`,
+    ''
+  ].join('\r\n')
+  const raw = headers.join('\r\n') + '\r\n' + body
+  return Buffer.from(raw, 'utf-8').toString('base64url')
+}
+
+const create_holding_draft = {
+  schema: {
+    name: 'create_holding_draft',
+    description: "Create a Gmail draft (saved in Drafts, NOT sent). Distinct from draft_email_reply, which is a Riker-internal pending-approval slot. Use this when Jon says 'Riker, draft an email to mauro@grill.com about the discount and leave it in my drafts so I can edit before sending.' Returns the Gmail draft ID.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        to: { type: 'string' },
+        cc: { type: 'array', items: { type: 'string' } },
+        bcc: { type: 'array', items: { type: 'string' } },
+        subject: { type: 'string' },
+        body: { type: 'string', description: 'Plain-text body. Wrapped in the Phase-1 branded template for HTML side; both versions saved.' }
+      },
+      required: ['to', 'subject', 'body']
+    }
+  },
+  async handler(input, ctx) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.to)) return { error: 'Invalid email address' }
+    let token; try { token = await getGmailToken() } catch (e) { return { error: e.message } }
+
+    const paragraphs = input.body.split('\n\n').map(p => p.trim()).filter(Boolean)
+    const intro = paragraphs[0] || ''
+    const restHtml = paragraphs.slice(1).map(p => `<p style="margin:0 0 14px;font-size:14px;color:#444;line-height:1.7">${p.replace(/\n/g, '<br>')}</p>`).join('')
+    const opts = {
+      headline: input.subject || 'Stephens Advanced',
+      subheadline: 'Stephens Advanced LLC &mdash; Fire Suppression &amp; Safety',
+      intro, bodyHtml: restHtml,
+    }
+    const html = renderEmail(opts)
+    const text = renderText(opts)
+
+    const raw = buildRawRfc822({ to: input.to, cc: input.cc, bcc: input.bcc, subject: input.subject, html, text })
+    try {
+      const draft = await gmailFetch(token, 'users/me/drafts', { method: 'POST', body: { message: { raw } } })
+      try {
+        await ctx.supabase.from('audit_log').insert({
+          action: 'email_draft_created', entity_type: 'email_draft', entity_id: draft.id,
+          actor: 'riker', details: { to: input.to, subject: input.subject }
+        })
+      } catch {}
+      return { ok: true, draft_id: draft.id, message_id: draft.message?.id, to: input.to, subject: input.subject }
+    } catch (e) { return { error: e.message } }
+  }
+}
+
+const list_drafts = {
+  schema: {
+    name: 'list_drafts',
+    description: "List drafts currently saved in Gmail (the human-edit-then-send queue, not the Riker-pending-approval queue). Returns id, subject, recipient, and snippet for each.",
+    input_schema: {
+      type: 'object',
+      properties: { limit: { type: 'integer', description: 'Max drafts to return (default 20, cap 100).' } }
+    }
+  },
+  async handler(input, ctx) {
+    let token; try { token = await getGmailToken() } catch (e) { return { error: e.message } }
+    const limit = Math.min(100, Number(input.limit) || 20)
+    try {
+      const list = await gmailFetch(token, `users/me/drafts?maxResults=${limit}`)
+      const ids = (list.drafts || []).map(d => d.id)
+      const drafts = []
+      for (const id of ids) {
+        const d = await gmailFetch(token, `users/me/drafts/${id}?format=metadata`)
+        const hdrs = (d.message?.payload?.headers || []).reduce((acc, h) => { acc[h.name.toLowerCase()] = h.value; return acc }, {})
+        drafts.push({
+          draft_id: id,
+          message_id: d.message?.id,
+          to: hdrs.to || '',
+          subject: hdrs.subject || '',
+          snippet: d.message?.snippet || ''
+        })
+      }
+      return { count: drafts.length, drafts }
+    } catch (e) { return { error: e.message } }
+  }
+}
+
+const delete_draft = {
+  schema: {
+    name: 'delete_draft',
+    description: "Delete a Gmail draft permanently (different from trash; this is unrecoverable). Use draft_id from create_holding_draft or list_drafts.",
+    input_schema: {
+      type: 'object',
+      properties: { draft_id: { type: 'string' } },
+      required: ['draft_id']
+    }
+  },
+  async handler(input, ctx) {
+    let token; try { token = await getGmailToken() } catch (e) { return { error: e.message } }
+    try {
+      await gmailFetch(token, `users/me/drafts/${input.draft_id}`, { method: 'DELETE' })
+      try {
+        await ctx.supabase.from('audit_log').insert({
+          action: 'email_draft_deleted', entity_type: 'email_draft', entity_id: input.draft_id,
+          actor: 'riker', details: {}
+        })
+      } catch {}
+      return { ok: true, deleted: input.draft_id }
+    } catch (e) { return { error: e.message } }
+  }
+}
+
+const reply_all = {
+  schema: {
+    name: 'reply_all',
+    description: "Reply to a Gmail message AND copy everyone in the original To + Cc lines (excluding jonathan@). Maintains the thread by adding In-Reply-To and References headers. Subject becomes 'Re: <original>'. Sent immediately via Resend through the branded template (use create_holding_draft instead if you want it to wait for human review).",
+    input_schema: {
+      type: 'object',
+      properties: {
+        message_id: { type: 'string', description: 'Gmail ID of the message you are replying to.' },
+        body: { type: 'string', description: 'Reply body in plain text.' },
+        plain: { type: 'boolean', description: 'If true, send as a barebones inline reply (no logo header). Better for active threads. Default false.' }
+      },
+      required: ['message_id', 'body']
+    }
+  },
+  async handler(input, ctx) {
+    let token; try { token = await getGmailToken() } catch (e) { return { error: e.message } }
+    let original
+    try { original = await gmailFetch(token, `users/me/messages/${input.message_id}?format=full`) } catch (e) { return { error: 'Could not fetch original: ' + e.message } }
+
+    const hdrs = (original.payload?.headers || []).reduce((acc, h) => { acc[h.name.toLowerCase()] = h.value; return acc }, {})
+    const origMsgId = hdrs['message-id'] || ''
+    const origSubject = hdrs.subject || '(no subject)'
+    const subject = origSubject.toLowerCase().startsWith('re:') ? origSubject : `Re: ${origSubject}`
+
+    // Build recipient list: original From + To + Cc, minus jonathan@
+    function parseAddrs(s) {
+      if (!s) return []
+      return s.split(',').map(a => {
+        const m = a.match(/<([^>]+)>/)
+        return (m ? m[1] : a).trim().toLowerCase()
+      }).filter(a => a && a.includes('@'))
+    }
+    const me = 'jonathan@stephensadvanced.com'
+    const recipients = new Set([...parseAddrs(hdrs.from), ...parseAddrs(hdrs.to), ...parseAddrs(hdrs.cc)])
+    recipients.delete(me)
+    if (!recipients.size) return { error: 'No recipients on original message' }
+    const [primary, ...others] = Array.from(recipients)
+
+    try {
+      await sendEmailRaw({
+        to: primary,
+        subject,
+        body: input.body,
+        plain: !!input.plain,
+        inReplyTo: origMsgId,
+        references: hdrs.references ? `${hdrs.references} ${origMsgId}` : origMsgId,
+      })
+      // Resend doesn't auto-CC — additional recipients sent as separate messages
+      // is the simplest way without breaking thread integrity. Acceptable trade.
+      for (const cc of others) {
+        try { await sendEmailRaw({ to: cc, subject, body: input.body, plain: !!input.plain, inReplyTo: origMsgId, references: hdrs.references ? `${hdrs.references} ${origMsgId}` : origMsgId }) } catch {}
+      }
+    } catch (e) { return { error: 'Send failed: ' + e.message } }
+
+    try {
+      await ctx.supabase.from('audit_log').insert({
+        action: 'email_reply_all', entity_type: 'email_message', entity_id: input.message_id,
+        actor: 'riker', details: { recipients: Array.from(recipients), subject }
+      })
+    } catch {}
+
+    return { ok: true, replied_to: Array.from(recipients), subject }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// REGISTRY (placed after every tool const so all references resolve)
+// ═══════════════════════════════════════════════════════════════
+
+const ALL_TOOLS = {
+  get_today_summary, query_jobs, lookup_client, get_invoices,
+  get_schedule_slots, get_equipment, get_pending_confirmations,
+  get_todos, read_memory, get_rate_card, get_jon_location,
+  schedule_job, approve_pending, reject_pending, send_sms,
+  add_client, create_billing_account, list_locations_by_account, assign_location_to_billing_account,
+  add_todo, write_memory, delete_memory, mark_invoice_paid,
+  lookup_business,
+  update_client, delete_client, merge_clients,
+  update_invoice, void_invoice, delete_invoice,
+  build_route,
+  get_job_activity, add_job_note,
+  update_job, cancel_job,
+  send_email, get_conversation_history, create_invoice, list_job_documents,
+  mazon_list_queue, mazon_mark_funded, mazon_void,
+  escalate_to_jon,
+  request_owner_otp, verify_owner_otp,
+  search_email, read_inbox, read_email_thread, draft_email_reply, approve_email_draft,
+  web_search_brave, web_fetch, get_weather,
+  reschedule_job,
+  get_invoice_lines, add_invoice_line, update_invoice_line, delete_invoice_line,
+  generate_portal_link,
+  list_techs, add_tech, update_tech, assign_job_to_tech,
+  get_brycer_queue, mark_brycer_submitted,
+  list_contracts, create_contract, send_contract,
+  get_business_report, get_ar_aging, get_audit_log,
+  list_service_requests, respond_to_service_request,
+  list_custom_items, add_custom_item, delete_custom_item,
+  send_on_my_way,
+  // Phase 2 — inbox management
+  manage_email, list_labels, create_label, forward_email,
+  // Phase 3 — attachments
+  list_attachments_in_thread, read_attachment_text, save_email_attachment_to_storage, send_email_with_attachment,
+  // Phase 4 — drafts + reply_all
+  create_holding_draft, list_drafts, delete_draft, reply_all,
 }
 
 // null = all tools. Keeps Jon contexts unrestricted; trims customer contexts.
