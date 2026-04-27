@@ -7539,7 +7539,6 @@ async function kioskEmailInvoice(paid){
         const pj=await payRes.json();if(pj.success&&pj.paymentLink)payUrl=pj.paymentLink
       }catch(e){}
     }
-    // Build the email HTML body
     const html=buildInvoiceEmailHtml({
       invNum:d.invNum,custName:d.custName,
       addr:[d.loc.address,d.loc.city,d.loc.state,d.loc.zip].filter(Boolean).join(', '),
@@ -7548,17 +7547,13 @@ async function kioskEmailInvoice(paid){
       lines:d.ls,total:d.total,portalUrl,payUrl:paid?'':payUrl,
       poNumber:d.inv.po_number||'',docs:d.atts,rpts:d.rpts
     })
-
     // Build the invoice PDF — prefer Mazon-stamped version if present, otherwise
     // generate fresh from the same buildInvoicePdfHtml the Money-tab flow uses.
     const attachments=[]
     try{
-      // Re-fetch the invoice row in case mazon_stamped_pdf_url got populated
-      // since the kiosk session loaded.
       const {data:invRow}=await SB.from('invoices').select('mazon_stamped_pdf_url').eq('id',d.invId).maybeSingle()
       const stampedUrl=invRow?.mazon_stamped_pdf_url
       if(stampedUrl){
-        // Download the Mazon-stamped PDF and attach it instead of generating fresh.
         const r=await fetch(stampedUrl)
         if(r.ok){
           const buf=await r.arrayBuffer()
@@ -7567,7 +7562,6 @@ async function kioskEmailInvoice(paid){
         }
       }
       if(!attachments.length){
-        // No stamped version (or download failed) — generate fresh.
         const invPdfHtml=buildInvoicePdfHtml({
           invNum:d.invNum,custName:d.custName,
           addr:[d.loc.address,d.loc.city,d.loc.state,d.loc.zip].filter(Boolean).join(', '),
@@ -7583,12 +7577,11 @@ async function kioskEmailInvoice(paid){
         await new Promise(r=>setTimeout(r,400))
         const invBlob=await html2pdf().set({margin:[0.4,0.4,0.4,0.4],filename:'invoice.pdf',image:{type:'jpeg',quality:0.98},html2canvas:{scale:2,useCORS:false,allowTaint:true,windowWidth:580,backgroundColor:'#ffffff'},jsPDF:{unit:'in',format:'letter',orientation:'portrait'}}).from(invDoc.body).outputPdf('blob')
         document.body.removeChild(invIframe)
-        const buf=await invBlob.arrayBuffer()
-        const b64=btoa(new Uint8Array(buf).reduce((s,b)=>s+String.fromCharCode(b),''))
-        attachments.push({filename:'Stephens-Advanced-Invoice-'+d.invNum+'.pdf',content:b64})
+        const invBuf=await invBlob.arrayBuffer()
+        const invB64=btoa(new Uint8Array(invBuf).reduce((s,b)=>s+String.fromCharCode(b),''))
+        attachments.push({filename:'Stephens-Advanced-Invoice-'+d.invNum+'.pdf',content:invB64})
       }
     }catch(e){console.error('kiosk PDF gen:',e)}
-
     await fetch('/api/send-email',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({to,subject:`${paid?'Receipt':'Invoice'} ${d.invNum} — Stephens Advanced LLC`,html,invoiceNumber:d.invNum,customerName:d.custName,attachments})
     })
@@ -7758,10 +7751,10 @@ function buildInvoicePdfHtml({invNum,custName,addr,date,dueDate,lines,total,poNu
     <!-- Letterhead -->
     <div style="display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:28px;border-bottom:3px solid #f05a28;margin-bottom:32px">
       <div>
-        <div style="font-size:22px;font-weight:900;color:#111;letter-spacing:-.4px">Stephens <span style="color:#f05a28">Advanced</span> LLC</div>
-          <div style="font-size:12px;color:#666;margin-top:4px;line-height:1.6">
-            Fire Suppression &amp; Safety<br>
-            DFW Texas &nbsp;&bull;&nbsp; Licensed &amp; Insured<br>
+        <div style="font-size:22px;font-weight:900;color:#111;letter-spacing:-.4px">Stephens Advanced LLC</div>
+        <div style="font-size:12px;color:#666;margin-top:4px;line-height:1.6">
+          Fire Suppression &amp; Safety<br>
+          DFW Texas &nbsp;&bull;&nbsp; Licensed &amp; Insured<br>
           (214) 994-4799 &nbsp;&bull;&nbsp; jonathan@stephensadvanced.com
         </div>
       </div>
