@@ -159,6 +159,10 @@ select{-webkit-appearance:none;appearance:none}
 /* KIOSK MODE — hide every escape affordance when phone is handed to customer */
 body.kiosk-mode .nav,body.kiosk-mode .fab,body.kiosk-mode .chat-fab{display:none!important}
 body.kiosk-mode .ov{z-index:9999}
+/* Bug M fix: when a kiosk-locked overlay is open, it must fully cover any
+   underlying overlays (openJob, etc.). Force full-viewport positioning + max
+   z-index so nothing leaks through on wide viewports. */
+.kiosk-locked{position:fixed!important;top:0!important;right:0!important;bottom:0!important;left:0!important;width:100vw!important;height:100vh!important;z-index:10000!important;background:var(--bg)!important}
 .kiosk-locked .ov-back,.kiosk-locked .del-btn,.kiosk-locked .ov-act{display:none!important}
 .nav button{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:8px 0;min-height:52px;border-radius:10px;color:var(--g2);transition:color .15s,background .15s}
 .nav button.on{color:var(--fire);background:var(--fires)}
@@ -5230,16 +5234,28 @@ async function openKiosk(jobId){
   const l = D.locs.find(x=>x.id===(j.location_id||j.location?.id))||j.location||{}
   const ba = D.bas.find(x=>x.id===j.billing_account_id)||{}
 
-  // The kiosk needs an invoice to display. If one doesn't exist yet, generate it
-  // from current job lines — but DO NOT mark the job complete (kiosk finalize does that).
+  // The kiosk needs an invoice to display. If one doesn't exist yet, generate it.
+  // SOURCE OF TRUTH for line items is jobs.work_order_lines JSONB on the job
+  // itself — NOT the global jobLines (which only reflects whichever job openJob
+  // was called with last). Using the global led to wrong invoices when openKiosk
+  // was triggered before openJob populated jobLines for the current job.
   let inv = D.invs.find(i=>i.job_id===jobId)
   if(!inv){
-    const lines = (jobLines||[]).filter(l2=>(l2.desc||'').trim()).map(l2=>({
-      description:(l2.desc||'').trim(),
-      quantity:+(l2.qty)||1,
-      unit_price:+(l2.price)||0,
-      total:(+(l2.qty)||1)*(+(l2.price)||0)
-    }))
+    let rawLines = []
+    if(j.work_order_lines && j.work_order_lines.length){
+      rawLines = j.work_order_lines
+    } else if(typeof buildJobLines==='function'){
+      // Fallback: derive from location equipment + rate card
+      rawLines = buildJobLines(j)
+    }
+    const lines = rawLines
+      .map(l2=>({
+        description:((l2.desc||l2.description)||'').trim(),
+        quantity:+(l2.qty||l2.quantity)||1,
+        unit_price:+(l2.price||l2.unit_price)||0,
+      }))
+      .filter(l2=>l2.description)
+      .map(l2=>({...l2, total:l2.quantity*l2.unit_price}))
     if(!lines.length){toast('Add at least one line item before handing off',false);return}
     const travel = await calcTravelCharge(l)
     if(travel && travel.charge>0) lines.push({description:travel.desc,quantity:1,unit_price:travel.charge,total:travel.charge})
@@ -5248,7 +5264,7 @@ async function openKiosk(jobId){
     const{data:newInv,error} = await SB.from('invoices').insert({
       job_id:jobId, location_id:l.id, billing_account_id:l.billing_account_id,
       invoice_number:invNum, subtotal:sub, total:sub, status:'draft', date:td(),
-      notes:(jobNotes||'').trim()||null
+      notes:(j.notes||'').trim()||null
     }).select().single()
     if(error){toast('Could not generate invoice: '+error.message,false);return}
     if(newInv && lines.length) await SB.from('invoice_lines').insert(lines.map((ln,i2)=>({invoice_id:newInv.id,...ln,sort_order:i2})))
@@ -5286,8 +5302,11 @@ function _kioskRefresh(){
 
 function _kioskStepNum(){
   const order = ['intro','missing_info','view_invoice','view_reports','payment_method','contract','sign_invoice','done_handback']
+  const reportCount = (D.reports||[]).filter(r=>r.job_id===kioskState.j.id).length
+  const requiredMissing = (kioskState.missingFields||[]).filter(f=>!f.optional).length
   let visible = order.filter(s=>{
-    if(s==='missing_info' && !kioskState.missingFields.length) return false
+    if(s==='missing_info' && requiredMissing===0) return false
+    if(s==='view_reports' && reportCount===0) return false
     if(s==='contract' && !kioskState.contractNeeded) return false
     return true
   })
@@ -5299,12 +5318,18 @@ function _kioskGoto(step){ kioskState.step = step; _kioskRefresh() }
 
 function _kioskNext(){
   const flow = ['intro','missing_info','view_invoice','view_reports','payment_method','contract','sign_invoice','done_handback','pin_exit','tech_summary']
-  let i = flow.indexOf(kioskState.step) + 1
+  // For step-skip decisions: how many reports does this job have?
+  const k = kioskState
+  const reportCount = (D.reports||[]).filter(r=>r.job_id===k.j.id).length
+  // Bug D fix: skip missing_info if EVERY remaining missing field is optional.
+  const requiredMissing = (k.missingFields||[]).filter(f=>!f.optional).length
+  let i = flow.indexOf(k.step) + 1
   while(i < flow.length){
     const s = flow[i]
-    if(s==='missing_info' && !kioskState.missingFields.length){ i++; continue }
-    if(s==='contract' && !kioskState.contractNeeded){ i++; continue }
-    kioskState.step = s; _kioskRefresh(); return
+    if(s==='missing_info' && requiredMissing===0){ i++; continue }
+    if(s==='view_reports' && reportCount===0){ i++; continue }
+    if(s==='contract' && !k.contractNeeded){ i++; continue }
+    k.step = s; _kioskRefresh(); return
   }
 }
 
@@ -5555,12 +5580,17 @@ async function _kioskFinalize(method){
   }
   const nowIso = new Date().toISOString()
 
+  // Bug P fix: payment_received_at marks PHYSICAL receipt of money. For
+  // bill-me ('invoice'), nothing was received yet — leave it NULL until the
+  // customer actually pays.
   const jobUpd = {
     signature_data: k.choices.signatureData,
-    payment_received_at: nowIso,
     kiosk_session_id: null,
     status: 'completed',
     completed_at: nowIso
+  }
+  if(method==='cash' || method==='check'){
+    jobUpd.payment_received_at = nowIso
   }
   await SB.from('jobs').update(jobUpd).eq('id', k.jobId)
 
@@ -5593,6 +5623,14 @@ async function _kioskFinalize(method){
   OVS.forEach(s=>{const el=document.getElementById(s);if(el){el.classList.remove('kiosk-locked');delete el.dataset.kiosk}})
   document.body.classList.remove('kiosk-mode')
   kioskState = null
+  // Bug K fix: re-render the active tab so the now-completed job moves out of
+  // the SCHEDULED list immediately. Without this, await load() updates D.jobs
+  // but the previously-rendered list HTML stays stale until the user navigates.
+  const activeBtn = document.querySelector('.nav button.on')
+  const v = activeBtn?.dataset?.v
+  if(v==='vJobs' && typeof rJobs==='function') rJobs()
+  else if(v==='vCal' && typeof rCal==='function') rCal()
+  else if(v==='vMoney' && typeof rMoney==='function') rMoney()
   toast(method==='invoice' ? 'Invoice sent ✓' : 'Payment recorded ✓')
 }
 
