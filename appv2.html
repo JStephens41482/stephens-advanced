@@ -3479,7 +3479,7 @@ async function openJob(id){
       </select>
     </div>`:''}
     ${j.status==='completed'?'':(j.scheduled_date!==td()?`<button style="width:100%;padding:10px;margin-top:8px;border-radius:var(--rs);background:transparent;border:1.5px solid var(--fire);color:var(--fire);font-size:12px;font-weight:800;cursor:pointer;min-height:44px" onclick="addToTodaySchedule('${j.id}')">📅 Add to Today's Schedule</button>`:'<div style="font-size:11px;color:var(--ok);font-weight:700;margin-top:8px;text-align:center">✓ On today\'s schedule</div>')}
-    ${j.status==='completed'?'':`<button id="confirm-toggle-${j.id}" onclick="toggleJobConfirmed('${j.id}')" style="width:100%;min-height:44px;margin-top:8px;border-radius:var(--rs);font-size:12px;font-weight:800;letter-spacing:.5px;cursor:pointer;${j.confirmed_at?'background:#10b981;color:#fff;border:none':'background:transparent;color:#10b981;border:1.5px dashed #10b981'}">${j.confirmed_at?`✓ TIME CONFIRMED WITH CUSTOMER${j.confirmed_by?' · '+esc(j.confirmed_by):''} · TAP TO UNCONFIRM`:'☐ TAP TO MARK CONFIRMED WITH CUSTOMER'}</button>`}
+    ${j.status==='completed'?'':`<button id="confirm-toggle-${j.id}" onclick="toggleJobConfirmed('${j.id}')" style="width:100%;min-height:48px;margin-top:8px;border-radius:var(--rs);font-size:12px;font-weight:800;letter-spacing:.5px;cursor:pointer;transition:all .15s;${j.confirmed_at?'background:#10b981;color:#fff;border:none;box-shadow:0 0 0 4px rgba(16,185,129,.25),0 4px 14px rgba(16,185,129,.4)':'background:transparent;color:#10b981;border:1.5px dashed #10b981;box-shadow:none'}">${j.confirmed_at?`✓ TIME CONFIRMED WITH CUSTOMER${j.confirmed_by?' · '+esc(j.confirmed_by):''} · TAP TO UNCONFIRM`:'☐ TAP TO MARK CONFIRMED WITH CUSTOMER'}</button>`}
   </div>
 
   <!-- LOCATION -->
@@ -4167,17 +4167,37 @@ async function assignJob(jobId,techId){
 async function toggleJobConfirmed(jobId){
   const j=D.jobs.find(x=>x.id===jobId)
   if(!j){toast('Job not found');return}
-  const isConfirmed=!!j.confirmed_at
-  const upd=isConfirmed
+  const wasConfirmed=!!j.confirmed_at
+  const upd=wasConfirmed
     ?{confirmed_at:null,confirmed_by:null,confirmation_method:null,departure_alert_sent_at:null}
     :{confirmed_at:new Date().toISOString(),confirmed_by:'Jon',confirmation_method:'in_person'}
   const{error}=await SB.from('jobs').update(upd).eq('id',jobId)
   if(error){toast('Error: '+error.message);return}
   await load()
-  toast(isConfirmed?'Unconfirmed — no leave-now alerts':'Confirmed — Riker will text you when to leave')
-  // Re-render the open job overlay so the toggle button updates immediately.
-  const slot=stk.find(s=>{const el=document.getElementById(s);return el&&el.dataset.jobId===jobId})
-  if(slot){pop();await openJob(jobId)}
+  // Update the button DOM in place. The previous version did pop() + openJob()
+  // to re-render the whole overlay — that didn't work reliably (the duplicate-
+  // detection in openJob short-circuited the re-render). Direct DOM update is
+  // both faster and more reliable.
+  const j2 = D.jobs.find(x=>x.id===jobId)
+  const btn = document.getElementById('confirm-toggle-'+jobId)
+  if(btn && j2){
+    const isC = !!j2.confirmed_at
+    btn.innerHTML = isC
+      ? `✓ TIME CONFIRMED WITH CUSTOMER${j2.confirmed_by?' · '+esc(j2.confirmed_by):''} · TAP TO UNCONFIRM`
+      : '☐ TAP TO MARK CONFIRMED WITH CUSTOMER'
+    if(isC){
+      btn.style.background = '#10b981'
+      btn.style.color = '#fff'
+      btn.style.border = 'none'
+      btn.style.boxShadow = '0 0 0 4px rgba(16,185,129,.25),0 4px 14px rgba(16,185,129,.4)'
+    } else {
+      btn.style.background = 'transparent'
+      btn.style.color = '#10b981'
+      btn.style.border = '1.5px dashed #10b981'
+      btn.style.boxShadow = 'none'
+    }
+  }
+  toast(wasConfirmed?'Unconfirmed — no leave-now alerts':'✓ Confirmed — Riker will text you when to leave')
 }
 
 let sigCtx=null,sigOn=false
