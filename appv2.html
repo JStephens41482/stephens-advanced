@@ -5213,9 +5213,14 @@ function _kioskUuid(){
 }
 
 function _kioskMissingFields(loc, ba){
+  // Required fields are gates — if the customer leaves them blank, the kiosk
+  // will not advance. These are the things Jon needs for follow-up texts,
+  // emailed invoices, and showing up next time. Other fields (DBA, secondary
+  // contact) stay optional.
   const ask = []
   if(!loc?.contact_email)              ask.push({key:'contact_email',     label:'Best email for invoices?',           type:'email',  target:'location'})
-  if(!loc?.contact_phone)              ask.push({key:'contact_phone',     label:'Best phone number?',                  type:'tel',    target:'location'})
+  if(!loc?.contact_phone)              ask.push({key:'contact_phone',     label:'Best phone number for service updates?', type:'tel', target:'location'})
+  if(!loc?.address)                    ask.push({key:'address',           label:'Street address of this location?',    type:'text',   target:'location'})
   if(!loc?.contact_name)               ask.push({key:'contact_name',      label:'Who at this location should we ask for?', type:'text', target:'location'})
   if(!ba?.legal_name && !loc?.name)    ask.push({key:'legal_name',        label:'Legal business name (for invoicing)?',type:'text',   target:'billing'})
   if(!ba?.dba)                         ask.push({key:'dba',               label:'Doing-business-as name (if different)?',type:'text', target:'billing', optional:true})
@@ -5225,6 +5230,16 @@ function _kioskMissingFields(loc, ba){
 function _kioskHasSignedContract(baId){
   if(!baId) return false
   return (D.contracts||[]).some(c => c.billing_account_id===baId && c.signed && c.status==='active')
+}
+
+// Bill-me-later is only an option if the billing account is set up for it —
+// either a billing arrangement on file (auto-charge / billed-invoice election)
+// OR a saved card we can charge later. Otherwise the customer must pay now.
+function _kioskCanBillLater(ba){
+  if(!ba) return false
+  if(ba.billing_election === 'auto_charge' || ba.billing_election === 'billed_invoice') return true
+  if(ba.card_on_file) return true
+  return false
 }
 
 async function openKiosk(jobId){
@@ -5310,11 +5325,12 @@ function _kioskStepNum(){
   const reportCount = (D.reports||[]).filter(r=>r.job_id===k.j.id).length
   const requiredMissing = (k.missingFields||[]).filter(f=>!f.optional).length
   const isCard = k.choices.paymentMethod === 'card'
+  const cardSdkAvailable = !!k.choices.cardSdkAvailable
   let visible = order.filter(s=>{
     if(s==='missing_info' && requiredMissing===0) return false
     if(s==='view_reports' && reportCount===0) return false
-    if(s==='card_choice' && !isCard) return false
-    if(s==='card_capture' && !isCard) return false
+    if(s==='card_choice' && (!isCard || !cardSdkAvailable)) return false
+    if(s==='card_capture' && (!isCard || !cardSdkAvailable)) return false
     if(s==='contract' && !k.contractNeeded) return false
     return true
   })
@@ -5325,18 +5341,25 @@ function _kioskStepNum(){
 function _kioskGoto(step){ kioskState.step = step; _kioskRefresh() }
 
 function _kioskNext(){
-  const flow = ['intro','missing_info','view_invoice','view_reports','payment_method','card_choice','card_capture','contract','sign_invoice','done_handback','pin_exit','tech_summary']
+  // PIN was removed 2026-04-28 — Jon got stuck on a PIN keypad mid-job at a
+  // real customer. Customer hands back → tech taps Done → straight to summary.
+  // The PIN was security theater (customer was inside the full app already).
+  const flow = ['intro','missing_info','view_invoice','view_reports','payment_method','card_choice','card_capture','contract','sign_invoice','done_handback','tech_summary']
   const k = kioskState
   const reportCount = (D.reports||[]).filter(r=>r.job_id===k.j.id).length
   const requiredMissing = (k.missingFields||[]).filter(f=>!f.optional).length
   const isCard = k.choices.paymentMethod === 'card'
+  // If Square SDK isn't configured for this deployment, skip card_choice +
+  // card_capture and let the tech-summary instruct Jon to charge via the
+  // Square app on his phone.
+  const cardSdkAvailable = !!k.choices.cardSdkAvailable
   let i = flow.indexOf(k.step) + 1
   while(i < flow.length){
     const s = flow[i]
     if(s==='missing_info' && requiredMissing===0){ i++; continue }
     if(s==='view_reports' && reportCount===0){ i++; continue }
-    if(s==='card_choice' && !isCard){ i++; continue }
-    if(s==='card_capture' && !isCard){ i++; continue }
+    if(s==='card_choice' && (!isCard || !cardSdkAvailable)){ i++; continue }
+    if(s==='card_capture' && (!isCard || !cardSdkAvailable)){ i++; continue }
     if(s==='contract' && !k.contractNeeded){ i++; continue }
     k.step = s; _kioskRefresh(); return
   }
@@ -5365,20 +5388,26 @@ function _kioskRender(){
   </div>`
 
   if(k.step==='missing_info'){
+    // Required fields gate the Continue button. Optional fields don't.
+    const required = k.missingFields.filter(f=>!f.optional)
+    const requiredFilled = required.every(f => (k.choices.customerInfo[f.key]||'').trim())
     const inputs = k.missingFields.map((f,i)=>`
       <div style="margin-bottom:16px">
         <label style="display:block;font-size:13px;font-weight:700;margin-bottom:6px;color:var(--g1)">
-          ${esc(f.label)}${f.optional?' <span style="color:var(--g3);font-weight:400">(optional)</span>':''}
+          ${esc(f.label)}${f.optional?' <span style="color:var(--g3);font-weight:400">(optional)</span>':' <span style="color:var(--bad);font-weight:700">*</span>'}
         </label>
         <input id="ki_${f.key}" type="${f.type}" value="${esc(k.choices.customerInfo[f.key]||'')}"
-          oninput="kioskState.choices.customerInfo['${f.key}']=this.value"
+          oninput="kioskState.choices.customerInfo['${f.key}']=this.value;_kioskUpdateMissingInfoButton()"
           style="width:100%;min-height:52px;font-size:16px;padding:12px;border:1px solid var(--b1);border-radius:var(--r);background:var(--c2);color:var(--w)">
       </div>`).join('')
+    const btnEnabled = requiredFilled
     return hdr + `<div class="ov-body" style="padding:24px">
       <h3 style="margin:0 0 8px;font-size:18px">A few quick questions</h3>
-      <p style="color:var(--g2);font-size:13px;margin:0 0 20px">We're missing a few details. Help us keep your records accurate.</p>
+      <p style="color:var(--g2);font-size:13px;margin:0 0 4px">We're missing a few details. The starred items are required so we can send invoices, schedule next time, and reach you.</p>
+      <p style="color:var(--g3);font-size:11px;margin:0 0 20px">If you have an accounts payable contact or different billing details, tell the tech directly so they can record it.</p>
       ${inputs}
-      <button onclick="_kioskSaveMissingThenNext()" style="width:100%;padding:16px;border-radius:var(--r);background:var(--fire);color:#fff;border:none;font-size:15px;font-weight:800;cursor:pointer;margin-top:12px">Save & Continue →</button>
+      <button id="ki_missing_continue" onclick="_kioskSaveMissingThenNext()" ${btnEnabled?'':'disabled'}
+        style="width:100%;padding:16px;border-radius:var(--r);background:${btnEnabled?'var(--fire)':'var(--c2)'};color:${btnEnabled?'#fff':'var(--g3)'};border:none;font-size:15px;font-weight:800;cursor:${btnEnabled?'pointer':'not-allowed'};margin-top:12px">Save & Continue →</button>
     </div>`
   }
 
@@ -5405,16 +5434,22 @@ function _kioskRender(){
     </div>`
   }
 
-  if(k.step==='payment_method') return hdr + `<div class="ov-body" style="padding:24px;text-align:center">
-    <h3 style="margin:0 0 8px">How would you like to pay?</h3>
-    <p style="color:var(--g2);font-size:13px;margin:0 0 24px">Choose one. Total: <b style="color:var(--ok)">${fmt(total)}</b></p>
-    <div style="display:flex;flex-direction:column;gap:10px;max-width:340px;margin:0 auto">
-      <button onclick="_kioskPickPayment('check')"  style="padding:18px;border-radius:var(--r);background:var(--c2);color:var(--w);border:1.5px solid var(--ok);font-size:15px;font-weight:800;cursor:pointer">✓ Pay by Check</button>
-      <button onclick="_kioskPickPayment('cash')"   style="padding:18px;border-radius:var(--r);background:var(--c2);color:var(--w);border:1.5px solid var(--ok);font-size:15px;font-weight:800;cursor:pointer">💵 Pay with Cash</button>
-      <button onclick="_kioskPickPayment('card')"   style="padding:18px;border-radius:var(--r);background:var(--c2);color:var(--w);border:1.5px solid var(--info);font-size:15px;font-weight:800;cursor:pointer">💳 Pay by Card</button>
-      <button onclick="_kioskPickPayment('invoice')" style="padding:18px;border-radius:var(--r);background:var(--c2);color:var(--g1);border:1px solid var(--b1);font-size:14px;font-weight:700;cursor:pointer">📧 Bill me later</button>
-    </div>
-  </div>`
+  if(k.step==='payment_method'){
+    // Bill-me only appears when the billing account is set up for it. Otherwise
+    // the customer has to pay right now via cash / check / card. No escape route.
+    const billMeOK = _kioskCanBillLater(ba)
+    return hdr + `<div class="ov-body" style="padding:24px;text-align:center">
+      <h3 style="margin:0 0 8px">How would you like to pay?</h3>
+      <p style="color:var(--g2);font-size:13px;margin:0 0 24px">Choose one. Total: <b style="color:var(--ok)">${fmt(total)}</b></p>
+      <div style="display:flex;flex-direction:column;gap:10px;max-width:340px;margin:0 auto">
+        <button onclick="_kioskPickPayment('check')"  style="padding:18px;border-radius:var(--r);background:var(--c2);color:var(--w);border:1.5px solid var(--ok);font-size:15px;font-weight:800;cursor:pointer">✓ Pay by Check</button>
+        <button onclick="_kioskPickPayment('cash')"   style="padding:18px;border-radius:var(--r);background:var(--c2);color:var(--w);border:1.5px solid var(--ok);font-size:15px;font-weight:800;cursor:pointer">💵 Pay with Cash</button>
+        <button onclick="_kioskPickPayment('card')"   style="padding:18px;border-radius:var(--r);background:var(--c2);color:var(--w);border:1.5px solid var(--info);font-size:15px;font-weight:800;cursor:pointer">💳 Pay by Card</button>
+        ${billMeOK?`<button onclick="_kioskPickPayment('invoice')" style="padding:18px;border-radius:var(--r);background:var(--c2);color:var(--g1);border:1px solid var(--b1);font-size:14px;font-weight:700;cursor:pointer">📧 Bill me later</button>`:''}
+      </div>
+      ${billMeOK?'':'<p style="color:var(--g3);font-size:11px;margin-top:18px;max-width:340px;margin-left:auto;margin-right:auto;line-height:1.5">If you have an accounts payable department or alternative billing arrangement, please mention it to the tech.</p>'}
+    </div>`
+  }
 
   if(k.step==='card_choice') return hdr + `<div class="ov-body" style="padding:24px;text-align:center">
     <h3 style="margin:0 0 8px">Save card on file?</h3>
@@ -5503,39 +5538,26 @@ function _kioskRender(){
     <div style="font-size:64px;margin-bottom:18px">✓</div>
     <h2 style="margin:0 0 12px;font-size:22px">All set, thank you.</h2>
     <p style="font-size:15px;color:var(--g1);max-width:340px;margin:0 auto 28px;line-height:1.5">Please hand the phone back to your tech.</p>
-    <button onclick="_kioskGoto('pin_exit')" style="width:100%;max-width:320px;padding:18px;border-radius:var(--r);background:var(--fire);color:#fff;border:none;font-size:15px;font-weight:800;cursor:pointer">Tech: Tap here</button>
+    <button onclick="_kioskGoto('tech_summary')" style="width:100%;max-width:320px;padding:18px;border-radius:var(--r);background:var(--fire);color:#fff;border:none;font-size:15px;font-weight:800;cursor:pointer">Tech: Tap here</button>
   </div>`
-
-  if(k.step==='pin_exit'){
-    const dots = (k.choices._pin||'').padEnd(4,'·').split('').map(c=>c==='·'?'<span style="color:var(--g3)">·</span>':'•').join('')
-    const num=(d)=>`<button onclick="_kioskPinPress('${d}')" style="padding:18px;border-radius:var(--r);background:var(--c2);color:var(--w);border:1px solid var(--b1);font-size:22px;font-weight:800;cursor:pointer">${d}</button>`
-    return hdr + `<div class="ov-body" style="padding:24px;text-align:center">
-      <h3 style="margin:0 0 6px">Tech PIN to unlock</h3>
-      <p style="color:var(--g2);font-size:12px;margin:0 0 20px">4-digit PIN exits kiosk and shows the summary.</p>
-      <div style="font-size:34px;letter-spacing:14px;margin:18px 0">${dots}</div>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-width:280px;margin:0 auto">
-        ${num('1')}${num('2')}${num('3')}${num('4')}${num('5')}${num('6')}${num('7')}${num('8')}${num('9')}
-        <button onclick="kioskState.choices._pin='';_kioskRefresh()" style="padding:18px;border-radius:var(--r);background:var(--c2);color:var(--g2);border:1px solid var(--b1);font-size:13px;cursor:pointer">Clear</button>
-        ${num('0')}
-        <button onclick="_kioskPinBack()" style="padding:18px;border-radius:var(--r);background:var(--c2);color:var(--g2);border:1px solid var(--b1);font-size:13px;cursor:pointer">←</button>
-      </div>
-    </div>`
-  }
 
   if(k.step==='tech_summary'){
     const pm = k.choices.paymentMethod
     const cardPaid = pm==='card' && k.choices.cardStatus==='paid'
+    const cardManual = pm==='card' && !cardPaid  // SDK not configured OR not yet run
     const collectMsg =
-      pm==='cash' ? '💵 Collect cash from the customer.' :
-      pm==='check' ? '✓ Get the check from the customer.' :
+      pm==='cash'    ? '💵 Collect cash from the customer.' :
+      pm==='check'   ? '✓ Get the check from the customer.' :
       pm==='invoice' ? '📧 No money to collect — bill them later.' :
-      cardPaid ? `✅ Card already charged ${fmt(total)} (last4 ${esc(k.choices.cardLast4||'????')}). Just confirm to close out.` :
+      cardPaid       ? `✅ Card already charged ${fmt(total)} (last4 ${esc(k.choices.cardLast4||'????')}). Tap below to close.` :
+      cardManual     ? `💳 Open Square app and charge ${fmt(total)}. When the charge clears, tap the button below.` :
       '— pick one with the customer first'
     const confirmBtn =
       pm==='cash'    ? `<button onclick="_kioskFinalize('cash')"    style="width:100%;padding:18px;border-radius:var(--r);background:var(--ok);color:#fff;border:none;font-size:16px;font-weight:800;cursor:pointer;margin-bottom:8px">💵 Got Cash</button>` :
       pm==='check'   ? `<button onclick="_kioskFinalize('check')"   style="width:100%;padding:18px;border-radius:var(--r);background:var(--ok);color:#fff;border:none;font-size:16px;font-weight:800;cursor:pointer;margin-bottom:8px">✓ Got Check #____</button>` :
       pm==='invoice' ? `<button onclick="_kioskFinalize('invoice')" style="width:100%;padding:18px;border-radius:var(--r);background:var(--fire);color:#fff;border:none;font-size:16px;font-weight:800;cursor:pointer;margin-bottom:8px">📧 Send Invoice & Reports</button>` :
       cardPaid       ? `<button onclick="_kioskFinalize('card')"    style="width:100%;padding:18px;border-radius:var(--r);background:var(--ok);color:#fff;border:none;font-size:16px;font-weight:800;cursor:pointer;margin-bottom:8px">✅ Close Job</button>` :
+      cardManual     ? `<button onclick="_kioskFinalize('card_manual')" style="width:100%;padding:18px;border-radius:var(--r);background:var(--ok);color:#fff;border:none;font-size:16px;font-weight:800;cursor:pointer;margin-bottom:8px">💳 Got Card (charged via Square app)</button>` :
       ''
     return hdr + `<div class="ov-body" style="padding:24px">
       <h3 style="margin:0 0 16px">Customer is done — your turn</h3>
@@ -5557,6 +5579,19 @@ function _kioskRender(){
   return hdr + `<div class="ov-body" style="padding:24px">Unknown step: ${esc(k.step)}</div>`
 }
 
+// Live-enable the Save & Continue button as required fields fill in.
+// Avoids _kioskRefresh() (which would blow away input focus mid-typing).
+function _kioskUpdateMissingInfoButton(){
+  const k = kioskState; if(!k || k.step!=='missing_info') return
+  const required = (k.missingFields||[]).filter(f=>!f.optional)
+  const ok = required.every(f => (k.choices.customerInfo[f.key]||'').trim())
+  const btn = document.getElementById('ki_missing_continue'); if(!btn) return
+  btn.disabled = !ok
+  btn.style.background = ok ? 'var(--fire)' : 'var(--c2)'
+  btn.style.color = ok ? '#fff' : 'var(--g3)'
+  btn.style.cursor = ok ? 'pointer' : 'not-allowed'
+}
+
 async function _kioskSaveMissingThenNext(){
   const k = kioskState
   const locUpd = {}, baUpd = {}
@@ -5571,14 +5606,22 @@ async function _kioskSaveMissingThenNext(){
   _kioskNext()
 }
 
-function _kioskPickPayment(method){
+async function _kioskPickPayment(method){
   kioskState.choices.paymentMethod = method
   if(method==='card'){
-    // Card flow goes: payment_method -> card_choice -> card_capture
     kioskState.choices.cardStatus = 'idle'
     kioskState.choices.cardError = null
     kioskState.choices.cardLast4 = null
     kioskState.choices.cardSavedOnFile = false
+    // Check whether Square SDK is configured for this deployment. If yes, the
+    // customer enters card directly via Web Payments SDK (cardChoice → cardCapture).
+    // If no, we skip those steps; tech-summary will instruct Jon to charge via
+    // the Square app on his phone after handback. Either way, customer continues
+    // to contract / sign — we still get a signature.
+    try {
+      const r = await fetch('/api/square-config')
+      kioskState.choices.cardSdkAvailable = r.ok
+    } catch { kioskState.choices.cardSdkAvailable = false }
   }
   _kioskNext()
 }
@@ -5803,22 +5846,28 @@ async function _kioskFinalize(method){
     status: 'completed',
     completed_at: nowIso
   }
-  if(method==='cash' || method==='check' || method==='card'){
-    // Card-via-SDK is also a real receipt — Square moved the money during
-    // card_capture, so payment_received_at applies the same as cash/check.
+  if(method==='cash' || method==='check' || method==='card' || method==='card_manual'){
+    // All physical-receipt methods stamp payment_received_at. Bill-me does not.
     jobUpd.payment_received_at = nowIso
   }
   await SB.from('jobs').update(jobUpd).eq('id', k.jobId)
 
-  // Stamp the invoice — but ONLY if our finalize is responsible for it.
+  // Stamp the invoice — ONLY if our finalize is responsible for it.
   //   - cash/check  → mark paid here (tech just confirmed receipt)
   //   - invoice     → mark sent (bill-me)
   //   - card        → /api/square already marked it paid during card_capture; skip
+  //   - card_manual → tech ran the charge in the Square app on his phone,
+  //                   the Supabase invoice still needs to reflect that
   const inv = D.invs.find(i=>i.job_id===k.jobId)
   if(inv && method!=='card'){
-    const invUpd = method==='invoice'
-      ? { status:'sent', sent_at: nowIso }
-      : { status:'paid', payment_method: method, paid_at: nowIso, payment_note: method==='check'?`Check #${checkNum}`:'Cash — paid in full' }
+    let invUpd
+    if(method==='invoice'){
+      invUpd = { status:'sent', sent_at: nowIso }
+    } else if(method==='card_manual'){
+      invUpd = { status:'paid', payment_method:'card', paid_at: nowIso, payment_note:'Square card · charged via Square app' }
+    } else {
+      invUpd = { status:'paid', payment_method: method, paid_at: nowIso, payment_note: method==='check'?`Check #${checkNum}`:'Cash — paid in full' }
+    }
     await SB.from('invoices').update(invUpd).eq('id', inv.id)
   }
 
@@ -5852,7 +5901,7 @@ async function _kioskFinalize(method){
   if(v==='vJobs' && typeof rJobs==='function') rJobs()
   else if(v==='vCal' && typeof rCal==='function') rCal()
   else if(v==='vMoney' && typeof rMoney==='function') rMoney()
-  toast(method==='invoice' ? 'Invoice sent ✓' : 'Payment recorded ✓')
+  toast(method==='invoice' ? 'Invoice sent ✓' : method==='card_manual' ? 'Card payment recorded ✓' : 'Payment recorded ✓')
 }
 
 async function _kioskCancel(){
@@ -7674,7 +7723,7 @@ async function _showEmailPreview(invId,to,custName,invNum){
   const ls=lines||[]
   const total=ls.reduce((s,l)=>s+(+l.total||0),0)||+inv.total||0
   const loc=D.locs.find(x=>x.id===inv.location_id)||{}
-  const subj=`Invoice ${inv.invoice_number||invNum} — Stephens Advanced LLC`
+  const subj=`${inv.status==='paid'?'PAID — ':''}Invoice ${inv.invoice_number||invNum} — Stephens Advanced LLC`
 
   // fetch all reports for this job
   let rpts=[]
@@ -7799,6 +7848,10 @@ async function _confirmSendEmail(){
   let docsMeta=[]
   try{docsMeta=await loadInvoiceAttachments(d.invId)}catch(e){console.error('load docs:',e)}
 
+  // Already-paid invoices (cash / check / card / card_on_file collected during
+  // the kiosk handoff) get a different email — green PAID banner, no Pay Now
+  // button, "thanks for your business" message instead of "to pay by check..."
+  const isPaid = d.inv.status === 'paid'
   let html=buildInvoiceEmailHtml({
     invNum:d.invNum,custName:d.custName,
     addr:[d.loc.address,d.loc.city,d.loc.state,d.loc.zip].filter(Boolean).join(', '),
@@ -7809,7 +7862,11 @@ async function _confirmSendEmail(){
     dueDate:d.inv.due_date?new Date(d.inv.due_date).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric',timeZone:'UTC'}):'',
     lines:d.ls,total:d.total,portalUrl,payUrl,
     poNumber:d.inv.po_number||'',
-    docs:docsMeta,rpts:d.rpts
+    docs:docsMeta,rpts:d.rpts,
+    paid:isPaid,
+    paidAt:d.inv.paid_at,
+    paymentMethod:d.inv.payment_method,
+    paymentNote:d.inv.payment_note
   })
 
   // append job photos to email if any exist
@@ -7922,7 +7979,7 @@ async function _confirmSendEmail(){
 
   try{
     const res=await fetch('/api/send-email',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({to:d.to,subject:`Invoice ${d.invNum} — Stephens Advanced LLC`,html,invoiceNumber:d.invNum,customerName:d.custName,attachments})
+      body:JSON.stringify({to:d.to,subject:`${isPaid?'PAID — ':''}Invoice ${d.invNum} — Stephens Advanced LLC`,html,invoiceNumber:d.invNum,customerName:d.custName,attachments})
     })
     const data=await res.json()
     if(data.success){
@@ -8391,7 +8448,7 @@ async function getOrCreatePortalToken(locId,baId){
   return token
 }
 
-function buildInvoiceEmailHtml({invNum,custName,addr,date,dueDate,lines,total,portalUrl,payUrl,poNumber,docs,rpts}){
+function buildInvoiceEmailHtml({invNum,custName,addr,date,dueDate,lines,total,portalUrl,payUrl,poNumber,docs,rpts,paid,paidAt,paymentMethod,paymentNote}){
   const lineRows=lines.map(l=>{const isTrv=(l.description||'').startsWith('Travel —');return`
     <tr>
       <td style="padding:10px 0;border-bottom:1px solid #f0f0f0;font-size:14px;color:${isTrv?'#f59e0b':'#333'}">${isTrv?'🚗 ':''}${l.description||''}${l.quantity>1?' ×'+l.quantity:''}</td>
@@ -8411,9 +8468,13 @@ function buildInvoiceEmailHtml({invNum,custName,addr,date,dueDate,lines,total,po
       </tr></table>
     </td></tr>
     <tr><td style="padding:28px 32px">
-      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#999;margin-bottom:6px">Invoice</div>
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#999;margin-bottom:6px">Invoice${paid?' · PAID':''}</div>
       <div style="font-size:28px;font-weight:900;color:#111;margin-bottom:4px">${invNum}</div>
       <div style="font-size:13px;color:#888">${date}${dueDate?' &nbsp;·&nbsp; Due '+dueDate:''}${poNumber?' &nbsp;·&nbsp; PO '+poNumber:''}</div>
+      ${paid?`<div style="margin-top:18px;padding:14px 18px;background:#dcfce7;border:2px solid #16a34a;border-radius:8px;text-align:center">
+        <div style="font-size:18px;font-weight:900;color:#15803d;letter-spacing:.5px">✅ PAID — Thank you</div>
+        <div style="font-size:12px;color:#166534;margin-top:4px">Total $${total.toFixed(2)}${paymentMethod?' · '+paymentMethod:''}${paidAt?' · '+new Date(paidAt).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric',timeZone:'UTC'}):''}${paymentNote?' · '+paymentNote:''}</div>
+      </div>`:''}
       <div style="margin-top:20px;padding:14px 16px;background:#fafafa;border-radius:8px">
         <div style="font-size:13px;font-weight:700;color:#111">${custName}</div>
         ${addr?`<div style="font-size:12px;color:#888;margin-top:2px">${addr}</div>`:''}
@@ -8425,14 +8486,17 @@ function buildInvoiceEmailHtml({invNum,custName,addr,date,dueDate,lines,total,po
         <tr><td style="padding-top:16px;font-size:18px;font-weight:900;color:#111;border-top:2px solid #111">Total</td>
             <td style="padding-top:16px;font-size:18px;font-weight:900;color:#f05a28;text-align:right;border-top:2px solid #111">$${total.toFixed(2)}</td></tr>
       </table>
-      ${payUrl?`<div style="margin-top:28px;text-align:center">
+      ${(!paid && payUrl)?`<div style="margin-top:28px;text-align:center">
         <a href="${payUrl}" style="display:inline-block;padding:16px 40px;background:#f05a28;color:#fff;text-decoration:none;border-radius:8px;font-size:16px;font-weight:900;letter-spacing:.3px">💳 Pay Now — $${total.toFixed(2)}</a>
         <div style="font-size:11px;color:#aaa;margin-top:8px">Secure payment via Square · Credit card, Apple Pay, or Google Pay</div>
       </div>`:''}
-      <div style="margin-top:20px;padding:16px;background:#fff8f5;border-left:4px solid #f05a28;border-radius:0 8px 8px 0;font-size:13px;color:#555;line-height:1.6">
+      ${paid?`<div style="margin-top:20px;padding:16px;background:#f0fdf4;border-left:4px solid #16a34a;border-radius:0 8px 8px 0;font-size:13px;color:#166534;line-height:1.6">
+        Thanks for your business — payment is recorded. This email is for your records.<br>
+        <span style="font-size:12px;color:#15803d">Questions? Reply to this email or call <strong>(214) 994-4799</strong>.</span>
+      </div>`:`<div style="margin-top:20px;padding:16px;background:#fff8f5;border-left:4px solid #f05a28;border-radius:0 8px 8px 0;font-size:13px;color:#555;line-height:1.6">
         To pay by check, make payable to <strong>Stephens Advanced LLC</strong> and give to your technician or call us to arrange delivery.<br>
         <span style="font-size:12px;color:#888">Questions? Reply to this email or call <strong>(214) 994-4799</strong>.</span>
-      </div>
+      </div>`}
       <div style="margin-top:24px;padding:16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px">
         <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:#64748b;margin-bottom:10px">📎 Attached to this Email</div>
         <div style="display:flex;align-items:center;gap:10px;padding:6px 0;font-size:13px;color:#334155"><span style="font-size:16px">🧾</span><span>Invoice ${invNum} (PDF)</span></div>
