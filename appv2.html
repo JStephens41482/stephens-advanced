@@ -5297,37 +5297,46 @@ function _kioskRefresh(){
   setTimeout(()=>{
     if(document.getElementById('ki_contract_sig')) _kioskAttachSig('ki_contract_sig')
     if(document.getElementById('ki_inv_sig'))      _kioskAttachSig('ki_inv_sig')
+    // Card form needs SDK init + attach. Only do it if the form container exists
+    // AND we haven't already attached for this kiosk session (Square SDK errors
+    // if you try to attach twice to the same container).
+    if(document.getElementById('ki_card_container') && !_kioskSqInstance?.attached) _kioskInitCardForm()
   }, 30)
 }
 
 function _kioskStepNum(){
-  const order = ['intro','missing_info','view_invoice','view_reports','payment_method','contract','sign_invoice','done_handback']
-  const reportCount = (D.reports||[]).filter(r=>r.job_id===kioskState.j.id).length
-  const requiredMissing = (kioskState.missingFields||[]).filter(f=>!f.optional).length
+  const order = ['intro','missing_info','view_invoice','view_reports','payment_method','card_choice','card_capture','contract','sign_invoice','done_handback']
+  const k = kioskState
+  const reportCount = (D.reports||[]).filter(r=>r.job_id===k.j.id).length
+  const requiredMissing = (k.missingFields||[]).filter(f=>!f.optional).length
+  const isCard = k.choices.paymentMethod === 'card'
   let visible = order.filter(s=>{
     if(s==='missing_info' && requiredMissing===0) return false
     if(s==='view_reports' && reportCount===0) return false
-    if(s==='contract' && !kioskState.contractNeeded) return false
+    if(s==='card_choice' && !isCard) return false
+    if(s==='card_capture' && !isCard) return false
+    if(s==='contract' && !k.contractNeeded) return false
     return true
   })
-  const idx = visible.indexOf(kioskState.step)
+  const idx = visible.indexOf(k.step)
   return idx>=0 ? `Step ${idx+1} of ${visible.length}` : ''
 }
 
 function _kioskGoto(step){ kioskState.step = step; _kioskRefresh() }
 
 function _kioskNext(){
-  const flow = ['intro','missing_info','view_invoice','view_reports','payment_method','contract','sign_invoice','done_handback','pin_exit','tech_summary']
-  // For step-skip decisions: how many reports does this job have?
+  const flow = ['intro','missing_info','view_invoice','view_reports','payment_method','card_choice','card_capture','contract','sign_invoice','done_handback','pin_exit','tech_summary']
   const k = kioskState
   const reportCount = (D.reports||[]).filter(r=>r.job_id===k.j.id).length
-  // Bug D fix: skip missing_info if EVERY remaining missing field is optional.
   const requiredMissing = (k.missingFields||[]).filter(f=>!f.optional).length
+  const isCard = k.choices.paymentMethod === 'card'
   let i = flow.indexOf(k.step) + 1
   while(i < flow.length){
     const s = flow[i]
     if(s==='missing_info' && requiredMissing===0){ i++; continue }
     if(s==='view_reports' && reportCount===0){ i++; continue }
+    if(s==='card_choice' && !isCard){ i++; continue }
+    if(s==='card_capture' && !isCard){ i++; continue }
     if(s==='contract' && !k.contractNeeded){ i++; continue }
     k.step = s; _kioskRefresh(); return
   }
@@ -5402,10 +5411,47 @@ function _kioskRender(){
     <div style="display:flex;flex-direction:column;gap:10px;max-width:340px;margin:0 auto">
       <button onclick="_kioskPickPayment('check')"  style="padding:18px;border-radius:var(--r);background:var(--c2);color:var(--w);border:1.5px solid var(--ok);font-size:15px;font-weight:800;cursor:pointer">✓ Pay by Check</button>
       <button onclick="_kioskPickPayment('cash')"   style="padding:18px;border-radius:var(--r);background:var(--c2);color:var(--w);border:1.5px solid var(--ok);font-size:15px;font-weight:800;cursor:pointer">💵 Pay with Cash</button>
-      <button disabled                              style="padding:18px;border-radius:var(--r);background:var(--c2);color:var(--g3);border:1.5px dashed var(--g3);font-size:13px;font-weight:700;cursor:not-allowed">💳 Card (coming soon)</button>
+      <button onclick="_kioskPickPayment('card')"   style="padding:18px;border-radius:var(--r);background:var(--c2);color:var(--w);border:1.5px solid var(--info);font-size:15px;font-weight:800;cursor:pointer">💳 Pay by Card</button>
       <button onclick="_kioskPickPayment('invoice')" style="padding:18px;border-radius:var(--r);background:var(--c2);color:var(--g1);border:1px solid var(--b1);font-size:14px;font-weight:700;cursor:pointer">📧 Bill me later</button>
     </div>
   </div>`
+
+  if(k.step==='card_choice') return hdr + `<div class="ov-body" style="padding:24px;text-align:center">
+    <h3 style="margin:0 0 8px">Save card on file?</h3>
+    <p style="color:var(--g2);font-size:13px;margin:0 auto 24px;max-width:340px">If you save it, future inspections can be auto-billed without a signature each time. Either way, you'll pay <b style="color:var(--ok)">${fmt(total)}</b> right now.</p>
+    <div style="display:flex;flex-direction:column;gap:10px;max-width:340px;margin:0 auto">
+      <button onclick="_kioskPickCardSave(true)"  style="padding:18px;border-radius:var(--r);background:var(--c2);color:var(--w);border:1.5px solid var(--ok);font-size:15px;font-weight:800;cursor:pointer">✓ Yes — save it for next time</button>
+      <button onclick="_kioskPickCardSave(false)" style="padding:18px;border-radius:var(--r);background:var(--c2);color:var(--g1);border:1px solid var(--b1);font-size:14px;font-weight:700;cursor:pointer">Just this time, don't save</button>
+    </div>
+  </div>`
+
+  if(k.step==='card_capture'){
+    const status = k.choices.cardStatus  // 'idle' | 'submitting' | 'error' | 'paid'
+    const errMsg = k.choices.cardError
+    const last4 = k.choices.cardLast4
+    if(status==='paid'){
+      return hdr + `<div class="ov-body" style="padding:32px 24px;text-align:center">
+        <div style="font-size:48px;margin-bottom:12px">✓</div>
+        <h3 style="margin:0 0 8px">Card charged</h3>
+        <p style="color:var(--g1);font-size:14px;margin:0 0 8px">${fmt(total)} on card ending ${esc(last4||'????')}</p>
+        ${k.choices.cardSavedOnFile?'<p style="color:var(--ok);font-size:12px;margin:8px 0 24px">✓ Saved for future bills</p>':'<p style="color:var(--g2);font-size:12px;margin:8px 0 24px">One-time charge — not saved</p>'}
+        <button onclick="_kioskNext()" style="width:100%;max-width:320px;padding:16px;border-radius:var(--r);background:var(--fire);color:#fff;border:none;font-size:15px;font-weight:800;cursor:pointer">Continue →</button>
+      </div>`
+    }
+    return hdr + `<div class="ov-body" style="padding:24px">
+      <h3 style="margin:0 0 8px;text-align:center">Enter card details</h3>
+      <p style="color:var(--g2);font-size:13px;margin:0 auto 16px;max-width:340px;text-align:center">Total: <b style="color:var(--ok)">${fmt(total)}</b>${k.choices.cardSaveOnFile?' · Card will be saved for future bills':' · One-time charge'}</p>
+      <div id="ki_card_container" style="background:#fff;border-radius:8px;padding:16px;min-height:90px;max-width:380px;margin:0 auto"></div>
+      <div id="ki_card_loading" style="text-align:center;color:var(--g2);font-size:13px;margin-top:12px">Loading secure card form…</div>
+      ${errMsg?`<div style="background:rgba(239,68,68,.1);border:1px solid var(--bad);color:var(--bad);padding:10px 14px;border-radius:6px;margin:12px auto;max-width:380px;font-size:13px">${esc(errMsg)}</div>`:''}
+      <button id="ki_pay_btn" onclick="_kioskSubmitCardPayment()" disabled
+        style="width:100%;max-width:380px;display:block;margin:16px auto 0;padding:16px;border-radius:var(--r);background:var(--g3);color:var(--g1);border:none;font-size:15px;font-weight:800;cursor:not-allowed">
+        ${status==='submitting'?'Processing…':'Pay '+fmt(total)}
+      </button>
+      <div style="text-align:center;margin-top:14px"><button onclick="_kioskGoto('payment_method')" style="background:none;border:none;color:var(--g2);font-size:12px;text-decoration:underline;cursor:pointer">← Choose a different payment method</button></div>
+    </div>`
+  }
+
 
   if(k.step==='contract'){
     const sigUi = k.choices.contractSignature
@@ -5478,17 +5524,24 @@ function _kioskRender(){
 
   if(k.step==='tech_summary'){
     const pm = k.choices.paymentMethod
-    const collectMsg = pm==='cash' ? '💵 Collect cash from the customer.' : pm==='check' ? '✓ Get the check from the customer.' : pm==='invoice' ? '📧 No money to collect — bill them later.' : '— pick one with the customer first'
+    const cardPaid = pm==='card' && k.choices.cardStatus==='paid'
+    const collectMsg =
+      pm==='cash' ? '💵 Collect cash from the customer.' :
+      pm==='check' ? '✓ Get the check from the customer.' :
+      pm==='invoice' ? '📧 No money to collect — bill them later.' :
+      cardPaid ? `✅ Card already charged ${fmt(total)} (last4 ${esc(k.choices.cardLast4||'????')}). Just confirm to close out.` :
+      '— pick one with the customer first'
     const confirmBtn =
       pm==='cash'    ? `<button onclick="_kioskFinalize('cash')"    style="width:100%;padding:18px;border-radius:var(--r);background:var(--ok);color:#fff;border:none;font-size:16px;font-weight:800;cursor:pointer;margin-bottom:8px">💵 Got Cash</button>` :
       pm==='check'   ? `<button onclick="_kioskFinalize('check')"   style="width:100%;padding:18px;border-radius:var(--r);background:var(--ok);color:#fff;border:none;font-size:16px;font-weight:800;cursor:pointer;margin-bottom:8px">✓ Got Check #____</button>` :
       pm==='invoice' ? `<button onclick="_kioskFinalize('invoice')" style="width:100%;padding:18px;border-radius:var(--r);background:var(--fire);color:#fff;border:none;font-size:16px;font-weight:800;cursor:pointer;margin-bottom:8px">📧 Send Invoice & Reports</button>` :
+      cardPaid       ? `<button onclick="_kioskFinalize('card')"    style="width:100%;padding:18px;border-radius:var(--r);background:var(--ok);color:#fff;border:none;font-size:16px;font-weight:800;cursor:pointer;margin-bottom:8px">✅ Close Job</button>` :
       ''
     return hdr + `<div class="ov-body" style="padding:24px">
       <h3 style="margin:0 0 16px">Customer is done — your turn</h3>
       <div style="background:var(--c2);border:1px solid var(--b1);border-radius:var(--r);padding:14px;margin-bottom:14px">
         <div style="font-size:11px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:var(--g2);margin-bottom:8px">Customer chose</div>
-        <div style="font-size:16px;font-weight:800;color:var(--w);margin-bottom:6px">${pm? (pm==='invoice'?'Bill me later':pm.toUpperCase()) : '(no choice yet)'}</div>
+        <div style="font-size:16px;font-weight:800;color:var(--w);margin-bottom:6px">${pm? (pm==='invoice'?'Bill me later':pm.toUpperCase()) : '(no choice yet)'}${cardPaid&&k.choices.cardSavedOnFile?' · Saved on file':''}</div>
         <div style="font-size:13px;color:var(--g1)">Total: <b style="color:var(--ok)">${fmt(total)}</b></div>
       </div>
       <div style="background:var(--infos);border:1px solid var(--info);border-radius:var(--r);padding:12px;margin-bottom:14px;font-size:14px;color:var(--w)">
@@ -5520,7 +5573,168 @@ async function _kioskSaveMissingThenNext(){
 
 function _kioskPickPayment(method){
   kioskState.choices.paymentMethod = method
+  if(method==='card'){
+    // Card flow goes: payment_method -> card_choice -> card_capture
+    kioskState.choices.cardStatus = 'idle'
+    kioskState.choices.cardError = null
+    kioskState.choices.cardLast4 = null
+    kioskState.choices.cardSavedOnFile = false
+  }
   _kioskNext()
+}
+
+// Customer chose Save-on-file? — goes to card_capture either way; flag stored.
+function _kioskPickCardSave(save){
+  kioskState.choices.cardSaveOnFile = !!save
+  _kioskNext()
+}
+
+// ── Square Web Payments SDK helpers ─────────────────────────────────
+//
+// Lazy-loaded so non-card paths don't pull the SDK. Square's web SDK is small
+// (~30KB) and lives at https://web.squarecdn.com/v1/square.js (production) or
+// https://sandbox.web.squarecdn.com/v1/square.js (sandbox).
+//
+// CONFIG REQUIRED IN VERCEL:
+//   NEXT_PUBLIC_SQUARE_APP_ID         — your Square Application ID
+//   NEXT_PUBLIC_SQUARE_LOCATION_ID    — your Square Location ID
+//   SQUARE_SANDBOX                    — 'true' to use sandbox SDK
+//
+// We expose these to the client via a tiny global object set by a separate
+// inline script tag. Until that's wired, fall back to placeholder values
+// that produce a clear error rather than a silent failure.
+// Fetched lazily from /api/square-config on first card_capture render.
+let _SQUARE_CFG = null
+let _kioskSqInstance = null  // { payments, card, attached:bool }
+
+async function _kioskFetchSquareConfig(){
+  if(_SQUARE_CFG) return _SQUARE_CFG
+  const r = await fetch('/api/square-config')
+  if(!r.ok){
+    const d = await r.json().catch(()=>({}))
+    throw new Error(d.error || ('Square config not available (HTTP '+r.status+')'))
+  }
+  _SQUARE_CFG = await r.json()
+  return _SQUARE_CFG
+}
+
+async function _kioskLoadSquareSdk(sandbox){
+  if(window.Square) return window.Square
+  const src = sandbox
+    ? 'https://sandbox.web.squarecdn.com/v1/square.js'
+    : 'https://web.squarecdn.com/v1/square.js'
+  await new Promise((resolve, reject)=>{
+    const s = document.createElement('script')
+    s.src = src
+    s.onload = resolve
+    s.onerror = ()=>reject(new Error('Could not load Square Web Payments SDK'))
+    document.head.appendChild(s)
+  })
+  return window.Square
+}
+
+async function _kioskInitCardForm(){
+  const k = kioskState
+  if(!k || k.step !== 'card_capture') return
+  try {
+    const cfg = await _kioskFetchSquareConfig()
+    const Sq = await _kioskLoadSquareSdk(cfg.sandbox)
+    const payments = Sq.payments(cfg.appId, cfg.locationId)
+    const card = await payments.card()
+    const container = document.getElementById('ki_card_container')
+    if(!container) return  // step left before init finished
+    await card.attach('#ki_card_container')
+    _kioskSqInstance = { payments, card, attached: true }
+    const loadingEl = document.getElementById('ki_card_loading')
+    if(loadingEl) loadingEl.style.display = 'none'
+    const btn = document.getElementById('ki_pay_btn')
+    if(btn){ btn.disabled = false; btn.style.background = 'var(--info)'; btn.style.color = '#fff'; btn.style.cursor = 'pointer' }
+  } catch(e) {
+    console.error('Square init error:', e)
+    kioskState.choices.cardError = 'Card form failed to load: ' + e.message
+    _kioskRefresh()
+  }
+}
+
+async function _kioskSubmitCardPayment(){
+  const k = kioskState
+  if(!_kioskSqInstance?.card){ toast('Card form not ready'); return }
+  const inv = D.invs.find(i=>i.job_id===k.j.id)
+  if(!inv){ toast('No invoice on file'); return }
+  k.choices.cardStatus = 'submitting'
+  k.choices.cardError = null
+  _kioskRefresh()
+  try {
+    const result = await _kioskSqInstance.card.tokenize()
+    if(result.status !== 'OK'){
+      const err = (result.errors||[]).map(e=>e.message).join('; ') || 'Card validation failed'
+      throw new Error(err)
+    }
+    const nonce = result.token
+
+    // Two server roundtrips when saving on file: customer-create then save-card.
+    // Then a single charge. When NOT saving, just one charge call with the nonce.
+    if(k.choices.cardSaveOnFile){
+      // 1. ensure Square customer
+      let customerId = k.ba?.square_customer_id
+      if(!customerId){
+        const r = await fetch('/api/square', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({
+            action:'create_or_find',
+            name: k.loc.contact_name || k.loc.name || k.ba?.name || 'Customer',
+            email: k.loc.contact_email || k.choices.customerInfo?.contact_email,
+            phone: k.loc.contact_phone || k.choices.customerInfo?.contact_phone,
+            billingAccountId: k.j.billing_account_id
+          })
+        })
+        const d = await r.json()
+        if(!r.ok || !d.success) throw new Error(d.error || 'Could not create Square customer')
+        customerId = d.customerId
+      }
+      // 2. save card
+      const sr = await fetch('/api/square', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ action:'save_card_with_nonce', customerId, nonce, billingAccountId: k.j.billing_account_id })
+      })
+      const sd = await sr.json()
+      if(!sr.ok || !sd.success) throw new Error(sd.error || 'Save card failed')
+      // 3. charge the saved card
+      const cr = await fetch('/api/square', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ action:'charge_card', customerId, cardId: sd.cardId, amount: inv.total, invoiceId: inv.id, invoiceNumber: inv.invoice_number })
+      })
+      const cd = await cr.json()
+      if(!cr.ok || !cd.success) throw new Error(cd.error || 'Charge failed')
+      k.choices.cardStatus = 'paid'
+      k.choices.cardLast4 = sd.last4
+    } else {
+      // One-time charge with nonce, no save
+      const r = await fetch('/api/square', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          action:'charge_with_nonce',
+          nonce, amount: inv.total,
+          invoiceId: inv.id, invoiceNumber: inv.invoice_number,
+          customerName: k.loc.name || k.ba?.name || 'Customer'
+        })
+      })
+      const d = await r.json()
+      if(!r.ok || !d.success) throw new Error(d.error || 'Charge failed')
+      k.choices.cardStatus = 'paid'
+      k.choices.cardLast4 = d.last4 || '????'
+    }
+    await load()  // pull updated invoice status
+    _kioskRefresh()
+  } catch(e) {
+    console.error('Card submit error:', e)
+    k.choices.cardStatus = 'error'
+    k.choices.cardError = e.message
+    // Re-render destroys the card-form DOM. Reset the SDK instance so
+    // _kioskInitCardForm rebuilds the form for retry.
+    _kioskSqInstance = null
+    _kioskRefresh()
+  }
 }
 
 function _kioskAttachSig(canvasId){
@@ -5589,13 +5803,19 @@ async function _kioskFinalize(method){
     status: 'completed',
     completed_at: nowIso
   }
-  if(method==='cash' || method==='check'){
+  if(method==='cash' || method==='check' || method==='card'){
+    // Card-via-SDK is also a real receipt — Square moved the money during
+    // card_capture, so payment_received_at applies the same as cash/check.
     jobUpd.payment_received_at = nowIso
   }
   await SB.from('jobs').update(jobUpd).eq('id', k.jobId)
 
+  // Stamp the invoice — but ONLY if our finalize is responsible for it.
+  //   - cash/check  → mark paid here (tech just confirmed receipt)
+  //   - invoice     → mark sent (bill-me)
+  //   - card        → /api/square already marked it paid during card_capture; skip
   const inv = D.invs.find(i=>i.job_id===k.jobId)
-  if(inv){
+  if(inv && method!=='card'){
     const invUpd = method==='invoice'
       ? { status:'sent', sent_at: nowIso }
       : { status:'paid', payment_method: method, paid_at: nowIso, payment_note: method==='check'?`Check #${checkNum}`:'Cash — paid in full' }
@@ -5623,6 +5843,7 @@ async function _kioskFinalize(method){
   OVS.forEach(s=>{const el=document.getElementById(s);if(el){el.classList.remove('kiosk-locked');delete el.dataset.kiosk}})
   document.body.classList.remove('kiosk-mode')
   kioskState = null
+  _kioskSqInstance = null  // free the Square SDK card object so next session starts fresh
   // Bug K fix: re-render the active tab so the now-completed job moves out of
   // the SCHEDULED list immediately. Without this, await load() updates D.jobs
   // but the previously-rendered list HTML stays stale until the user navigates.
@@ -5645,6 +5866,7 @@ async function _kioskCancel(){
   OVS.forEach(s=>{const el=document.getElementById(s);if(el){el.classList.remove('kiosk-locked');delete el.dataset.kiosk}})
   document.body.classList.remove('kiosk-mode')
   kioskState = null
+  _kioskSqInstance = null  // free the Square SDK card object so next session starts fresh
   toast('Exited kiosk — job left open')
 }
 
