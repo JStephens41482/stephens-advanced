@@ -14,9 +14,15 @@ const { createClient } = require('@supabase/supabase-js')
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' })
 
-  // Auth — check query param, header, or body
+  // Auth — check query param, header, or body. Same-origin requests from the
+  // in-app beacon (running inside our deployed appv2.html) skip the secret
+  // check because the browser only sends our Origin header for our own pages.
+  // External callers like the Overland iOS app still need the secret.
   const expected = process.env.LOCATION_BEACON_SECRET
-  if (expected) {
+  const origin = req.headers.origin || ''
+  const sameOrigin = /^https:\/\/(www\.)?stephensadvanced\.com$/i.test(origin)
+                  || /\.vercel\.app$/i.test(origin)
+  if (expected && !sameOrigin) {
     const querySec = req.query?.secret || new URL(req.url, 'https://x').searchParams.get('secret') || ''
     const headerSec = (req.headers.authorization || '').replace(/^Bearer\s+/i, '')
     const bodySec = req.body?.secret || ''

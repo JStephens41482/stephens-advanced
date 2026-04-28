@@ -11532,12 +11532,19 @@ function startLocationBeacon(){
     _lastWrite=now
     const{latitude:lat,longitude:lng,accuracy,heading,speed}=pos.coords
     try{
-      await fetch('/api/update-location',{
+      const r=await fetch('/api/update-location',{
         method:'POST',
         headers:{'Content-Type':'application/json'},
         body:JSON.stringify({lat,lng,accuracy:accuracy||null,heading:heading||null,speed:speed||null,source:'app'})
       })
-    }catch(e){console.warn('[beacon] write failed:',e.message)}
+      if(!r.ok){
+        // Failed POSTs (auth, network, etc.) used to fall through silently
+        // because fetch only throws on actual network failure. Surface non-2xx
+        // responses so we don't lose 8 days of GPS again.
+        const txt=await r.text().catch(()=>'')
+        console.error('[beacon] HTTP '+r.status+': '+txt.slice(0,120))
+      }
+    }catch(e){console.error('[beacon] write failed:',e.message)}
   },err=>console.warn('[beacon]',err.message),{enableHighAccuracy:true,maximumAge:30000,timeout:15000})
 }
 
