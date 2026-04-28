@@ -97,10 +97,6 @@ select{-webkit-appearance:none;appearance:none}
 .hdr-logo span{color:var(--fire)}
 .hdr-date{font-size:11px;color:var(--g1);font-weight:600}
 .nav{display:flex;border-top:1px solid var(--b1);background:var(--c1);padding:4px 0 max(env(safe-area-inset-bottom),20px);flex-shrink:0}
-/* KIOSK MODE — hide all nav/escape affordances when phone is handed to customer */
-body.kiosk-mode .nav,body.kiosk-mode .fab,body.kiosk-mode .chat-fab{display:none!important}
-body.kiosk-mode .ov{z-index:9999}
-.kiosk-locked .ov-back,.kiosk-locked .del-btn,.kiosk-locked .ov-act{display:none!important}
 .nav button{flex:1;display:flex;flex-direction:column;align-items:center;gap:1px;padding:8px 0;color:var(--g2);transition:color .15s}
 .nav button.on{color:var(--fire)}
 .ni{font-size:20px;line-height:1}
@@ -1611,7 +1607,7 @@ function jCard(j,isOv=false){
     ${isSvcReq?'<div style="background:#f59e0b;color:#000;font-size:10px;font-weight:900;padding:3px 10px;border-radius:4px;margin-bottom:6px;display:inline-block;letter-spacing:1px">SERVICE REQUEST</div>':''}
     <div class="jc-r1"><div class="jc-nm"><span style="color:var(--fire);text-decoration:underline;text-decoration-color:rgba(240,90,40,.3);text-underline-offset:2px;cursor:pointer" onclick="event.stopPropagation();openCust('${j.location_id||l.id}')">${esc(l.name||'Unknown')} ›</span></div><div class="jc-tm"><span style="cursor:pointer;color:var(--info);text-decoration:underline;text-decoration-color:rgba(99,102,241,.3);text-underline-offset:2px" onclick="event.stopPropagation();reschedJob('${j.id}')">${ds?(ds+(j.scheduled_time?' '+j.scheduled_time.slice(0,5):'')):'Unscheduled'}</span></div></div>
     <div class="jc-addr">${esc(a)||'No address'}</div>
-    <div class="jc-tags">${j.confirmed_at?'<span class="tg" style="background:#10b98122;color:#10b981;border:1px solid #10b98155;font-weight:900;letter-spacing:.5px">✓ CONFIRMED</span>':''}${sc.includes('suppression')?'<span class="tg ts">Suppression</span>':''}${sc.includes('extinguishers')?'<span class="tg te">Ext</span>':''}${sc.includes('elights')?'<span class="tg tl">E-Lights</span>':''}${sc.includes('hydro')?'<span class="tg th">Hydro</span>':''}${isOv?'<span class="tg to2">Overdue</span>':''}${l.is_brycer_jurisdiction?'<span class="tg tb">Brycer</span>':''}${j.assigned_to?(()=>{const tk2=D.techs?.find(x=>x.id===j.assigned_to);return tk2?'<span class="tg" style="background:'+tk2.color+'22;color:'+tk2.color+'">'+esc(tk2.name.split(' ')[0])+'</span>':''})():''}</div>
+    <div class="jc-tags">${sc.includes('suppression')?'<span class="tg ts">Suppression</span>':''}${sc.includes('extinguishers')?'<span class="tg te">Ext</span>':''}${sc.includes('elights')?'<span class="tg tl">E-Lights</span>':''}${sc.includes('hydro')?'<span class="tg th">Hydro</span>':''}${isOv?'<span class="tg to2">Overdue</span>':''}${l.is_brycer_jurisdiction?'<span class="tg tb">Brycer</span>':''}${j.assigned_to?(()=>{const tk2=D.techs?.find(x=>x.id===j.assigned_to);return tk2?'<span class="tg" style="background:'+tk2.color+'22;color:'+tk2.color+'">'+esc(tk2.name.split(' ')[0])+'</span>':''})():''}</div>
     <div class="jc-val">${v?fmt(v):'<span style="color:var(--g2);font-size:12px">Add equipment to estimate</span>'}</div>
     <div class="jc-btns">
       <button class="jb jb-n" onclick="event.stopPropagation();startNav('${j.id}')">🗺 Nav</button>
@@ -2094,18 +2090,17 @@ async function openJob(id){
 
   <!-- STATUS BAR -->
   <div style="background:var(--c1);border:1px solid var(--b1);border-radius:var(--r);padding:12px 14px;margin-bottom:16px">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:${D.techs?.length||isActive?'8px':'0'}">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:${D.techs?.length?'8px':'0'}">
       <div style="font-size:13px;color:var(--info);cursor:pointer;text-decoration:underline;text-decoration-color:rgba(99,102,241,.3)" onclick="reschedJob('${j.id}')">${j.scheduled_date||'Unscheduled'}${j.scheduled_time?' · '+j.scheduled_time.slice(0,5):''}</div>
       <span style="font-size:11px;font-weight:800;text-transform:uppercase;color:${statC}">${j.status}</span>
     </div>
-    ${D.techs?.length?`<div style="display:flex;align-items:center;gap:8px;margin-bottom:${isActive?'8px':'0'}">
+    ${D.techs?.length?`<div style="display:flex;align-items:center;gap:8px">
       <span style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--g2)">Assigned</span>
       <select style="flex:1;min-height:36px;font-size:12px;padding:6px 10px" onchange="assignJob('${j.id}',this.value)">
         <option value="">Unassigned</option>
         ${D.techs.filter(t2=>t2.active).map(t2=>`<option value="${t2.id}"${j.assigned_to===t2.id?' selected':''}>${esc(t2.name)}</option>`).join('')}
       </select>
     </div>`:''}
-    ${isActive?`<button id="confirm-toggle-${j.id}" onclick="toggleJobConfirmed('${j.id}')" style="width:100%;min-height:40px;border-radius:var(--r);font-size:12px;font-weight:800;letter-spacing:.5px;cursor:pointer;${j.confirmed_at?'background:#10b981;color:#fff;border:none':'background:transparent;color:#10b981;border:1.5px dashed #10b981'}">${j.confirmed_at?`✓ TIME CONFIRMED WITH CUSTOMER${j.confirmed_by?' · '+esc(j.confirmed_by):''} · TAP TO UNCONFIRM`:'☐ TAP TO MARK CONFIRMED WITH CUSTOMER'}</button>`:''}
   </div>
 
   <!-- LOCATION -->
@@ -2188,7 +2183,6 @@ async function openJob(id){
     window._activeJobLoc=l
     setTimeout(()=>updateJobChecklist(),150)
 
-    h+=`<div style="padding:0 0 8px"><button class="btn-p" style="background:var(--info);color:#fff;display:flex;align-items:center;justify-content:center;gap:8px" onclick="openKiosk('${j.id}')"><span style="font-size:20px">👤</span>Hand to Customer</button></div>`
     h+=`<div style="padding:0 0 max(env(safe-area-inset-bottom),12px)"><button class="btn-p" id="compBtn" style="background:var(--g3);color:var(--g1)" onclick="compJ('${j.id}')">✓ Complete Job — Generate Invoice</button></div>`
   }else{
     h+=`<div style="padding:12px 0"><button class="btn-dim" onclick="pop()">← Back</button></div>`
@@ -2445,25 +2439,6 @@ async function assignJob(jobId,techId){
   await load()
   const tk=D.techs?.find(t=>t.id===techId)
   toast(tk?'Assigned to '+tk.name:'Unassigned')
-}
-
-// Toggle a job's "confirmed with customer" flag.
-// When confirmed, the dispatcher in api/cron.js will fire a leave-now SMS
-// for this job at the appropriate time. When unconfirmed (NULL), it stays silent.
-async function toggleJobConfirmed(jobId){
-  const j=D.jobs.find(x=>x.id===jobId)
-  if(!j){toast('Job not found');return}
-  const isConfirmed=!!j.confirmed_at
-  const upd=isConfirmed
-    ?{confirmed_at:null,confirmed_by:null,confirmation_method:null,departure_alert_sent_at:null}
-    :{confirmed_at:new Date().toISOString(),confirmed_by:'Jon',confirmation_method:'in_person'}
-  const{error}=await SB.from('jobs').update(upd).eq('id',jobId)
-  if(error){toast('Error: '+error.message);return}
-  await load()
-  toast(isConfirmed?'Unconfirmed — no leave-now alerts':'Confirmed — Riker will text you when to leave')
-  // Re-render the open job overlay so the toggle button updates immediately.
-  const slot=stk.find(s=>{const el=document.getElementById(s);return el&&el.dataset.jobId===jobId})
-  if(slot){pop();await openJob(jobId)}
 }
 
 let sigCtx=null,sigOn=false
@@ -3125,463 +3100,6 @@ async function markUnpaid(id){
   if(error){toast('Error',false);return}
   await load();toast('Marked as unpaid')
   pop();openInvDetail(id)
-}
-
-// ═══════════════════════════════════════════════════════════════
-// KIOSK MODE — "Hand the phone to the customer" flow
-// Tech taps Hand-to-Customer on a job that's done; phone enters
-// kiosk mode locked to one job. Customer reviews, signs, picks
-// payment method, then PIN unlocks back to a tech summary panel
-// where the tech confirms physical collection.
-//
-// State machine:
-//   intro → missing_info → view_invoice → view_reports → payment_method
-//   → contract (conditional) → sign_invoice → done_handback → pin_exit
-//   → tech_summary
-//
-// PIN is a hardcoded constant — change KIOSK_EXIT_PIN to your number.
-// In v2 we move it to the techs table per-tech.
-// ═══════════════════════════════════════════════════════════════
-
-const KIOSK_EXIT_PIN = '1799'  // last 4 of (214) 994-4799 — change here
-
-let kioskState = null  // { jobId, sessionId, step, choices, missingFields, contractNeeded }
-
-function _kioskUuid(){
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{
-    const r=Math.random()*16|0,v=c==='x'?r:(r&0x3|0x8);return v.toString(16)
-  })
-}
-
-// Look at the location + billing account and return a list of fields the
-// customer should be asked to confirm/fill. We intentionally DON'T re-ask
-// for everything — only fields that are NULL/empty on the existing record.
-function _kioskMissingFields(loc, ba){
-  const ask = []
-  if(!loc?.contact_email)              ask.push({key:'contact_email',     label:'Best email for invoices?',           type:'email',  target:'location'})
-  if(!loc?.contact_phone)              ask.push({key:'contact_phone',     label:'Best phone number?',                  type:'tel',    target:'location'})
-  if(!loc?.contact_name)               ask.push({key:'contact_name',      label:'Who at this location should we ask for?', type:'text', target:'location'})
-  if(!ba?.legal_name && !loc?.name)    ask.push({key:'legal_name',        label:'Legal business name (for invoicing)?',type:'text',   target:'billing'})
-  if(!ba?.dba)                         ask.push({key:'dba',               label:'Doing-business-as name (if different)?',type:'text', target:'billing', optional:true})
-  return ask
-}
-
-// Returns true if this billing account already has an active signed contract.
-function _kioskHasSignedContract(baId){
-  if(!baId) return false
-  return (D.contracts||[]).some(c => c.billing_account_id===baId && c.signed && c.status==='active')
-}
-
-// ENTRY: tech taps "Hand to Customer" on the job detail page
-async function openKiosk(jobId){
-  await load()
-  const j = D.jobs.find(x=>x.id===jobId); if(!j){toast('Job not found');return}
-  if(j.status==='completed'){toast('Job already completed');return}
-  const l = D.locs.find(x=>x.id===(j.location_id||j.location?.id))||j.location||{}
-  const ba = D.bas.find(x=>x.id===j.billing_account_id)||{}
-
-  // The kiosk needs an invoice to display. If one doesn't exist yet, generate it
-  // from current job lines — but DO NOT mark the job complete (kiosk finalize does that).
-  // We also don't auto-reschedule here; that fires from finalize too.
-  let inv = D.invs.find(i=>i.job_id===jobId)
-  if(!inv){
-    const lines = (jobLines||[]).filter(l2=>(l2.desc||'').trim()).map(l2=>({
-      description:(l2.desc||'').trim(),
-      quantity:+(l2.qty)||1,
-      unit_price:+(l2.price)||0,
-      total:(+(l2.qty)||1)*(+(l2.price)||0)
-    }))
-    if(!lines.length){toast('Add at least one line item before handing off',false);return}
-    const travel = calcTravelCharge(l)
-    if(travel.charge>0) lines.push({description:travel.desc,quantity:1,unit_price:travel.charge,total:travel.charge})
-    const sub = lines.reduce((s,l2)=>s+l2.total,0)
-    const invNum = 'INV-'+Date.now().toString().slice(-6)
-    const{data:newInv,error} = await SB.from('invoices').insert({
-      job_id:jobId, location_id:l.id, billing_account_id:l.billing_account_id,
-      invoice_number:invNum, subtotal:sub, total:sub, status:'draft', date:td(),
-      notes:(jobNotes||'').trim()||null
-    }).select().single()
-    if(error){toast('Could not generate invoice: '+error.message,false);return}
-    if(newInv && lines.length) await SB.from('invoice_lines').insert(lines.map((ln,i2)=>({invoice_id:newInv.id,...ln,sort_order:i2})))
-    inv = newInv
-    await load()
-  }
-
-  const sessionId = _kioskUuid()
-  await SB.from('jobs').update({kiosk_session_id:sessionId}).eq('id',jobId)
-
-  kioskState = {
-    jobId, sessionId, loc, ba, j,
-    step: 'intro',
-    missingFields: _kioskMissingFields(l, ba),
-    contractNeeded: !_kioskHasSignedContract(j.billing_account_id),
-    choices: { paymentMethod:null, customerInfo:{}, signatureData:null, contractSignature:null }
-  }
-
-  push(_kioskRender(), {full:true})
-  // Lock the slot — the back gesture / nav buttons must not exit kiosk.
-  const slot = stk[stk.length-1]
-  const el = document.getElementById(slot)
-  if(el){ el.classList.add('kiosk-locked'); el.dataset.kiosk='1' }
-  document.body.classList.add('kiosk-mode')
-}
-
-// Re-render in place when state changes.
-function _kioskRefresh(){
-  const slot = stk[stk.length-1]
-  const el = document.getElementById(slot)
-  if(el) el.innerHTML = _kioskRender()
-}
-
-function _kioskStepNum(){
-  const order = ['intro','missing_info','view_invoice','view_reports','payment_method','contract','sign_invoice','done_handback','pin_exit','tech_summary']
-  let visible = order.filter(s=>{
-    if(s==='missing_info' && !kioskState.missingFields.length) return false
-    if(s==='contract' && !kioskState.contractNeeded) return false
-    if(s==='pin_exit' || s==='tech_summary') return false  // tech-side, not counted
-    return true
-  })
-  const idx = visible.indexOf(kioskState.step)
-  return idx>=0 ? `Step ${idx+1} of ${visible.length}` : ''
-}
-
-function _kioskGoto(step){ kioskState.step = step; _kioskRefresh() }
-
-// Skip ahead past steps that don't apply to this job
-function _kioskNext(){
-  const flow = ['intro','missing_info','view_invoice','view_reports','payment_method','contract','sign_invoice','done_handback','pin_exit','tech_summary']
-  let i = flow.indexOf(kioskState.step) + 1
-  while(i < flow.length){
-    const s = flow[i]
-    if(s==='missing_info' && !kioskState.missingFields.length){ i++; continue }
-    if(s==='contract' && !kioskState.contractNeeded){ i++; continue }
-    kioskState.step = s; _kioskRefresh(); return
-  }
-}
-
-// Render the current step. Each branch returns full HTML for the overlay.
-function _kioskRender(){
-  const k = kioskState, j = k.j, l = k.loc, ba = k.ba
-  const inv = D.invs.find(i=>i.job_id===j.id)
-  const reports = (D.reports||[]).filter(r=>r.job_id===j.id)
-  const total = inv?.total ?? est(j) ?? 0
-
-  // Common header — shows step counter + lock icon. NO back button.
-  const stepLabel = _kioskStepNum()
-  const hdr = `<div style="position:sticky;top:0;background:var(--c1);border-bottom:1px solid var(--b1);padding:14px 18px;display:flex;justify-content:space-between;align-items:center;z-index:10">
-    <div style="font-size:11px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:var(--g2)">${stepLabel}</div>
-    <div style="font-size:11px;color:var(--g3)">🔒 KIOSK</div>
-  </div>`
-
-  // === STEP RENDERERS ===========================================================
-
-  if(k.step==='intro') return hdr + `<div class="ov-body" style="padding:32px 24px;text-align:center">
-    <div style="font-size:48px;margin-bottom:16px">👋</div>
-    <h2 style="margin:0 0 12px;font-size:22px">Welcome.</h2>
-    <p style="font-size:15px;color:var(--g1);max-width:340px;margin:0 auto 28px;line-height:1.5">
-      We just finished work at <b>${esc(l.name||'your location')}</b>. The tech is going to hand you this phone for a minute so you can review what was done, choose how you'd like to pay, and sign off.
-    </p>
-    <p style="font-size:13px;color:var(--g2);margin-bottom:32px">Total today: <b style="color:var(--ok);font-size:18px">${fmt(total)}</b></p>
-    <button onclick="_kioskNext()" style="width:100%;max-width:320px;padding:18px;border-radius:var(--r);background:var(--fire);color:#fff;border:none;font-size:16px;font-weight:800;cursor:pointer">Get Started →</button>
-  </div>`
-
-  if(k.step==='missing_info'){
-    const inputs = k.missingFields.map((f,i)=>`
-      <div style="margin-bottom:16px">
-        <label style="display:block;font-size:13px;font-weight:700;margin-bottom:6px;color:var(--g1)">
-          ${esc(f.label)}${f.optional?' <span style="color:var(--g3);font-weight:400">(optional)</span>':''}
-        </label>
-        <input id="ki_${f.key}" type="${f.type}" value="${esc(k.choices.customerInfo[f.key]||'')}"
-          oninput="kioskState.choices.customerInfo['${f.key}']=this.value"
-          style="width:100%;min-height:52px;font-size:16px;padding:12px;border:1px solid var(--b1);border-radius:var(--r);background:var(--c2);color:var(--g0)">
-      </div>`).join('')
-    return hdr + `<div class="ov-body" style="padding:24px">
-      <h3 style="margin:0 0 8px;font-size:18px">A few quick questions</h3>
-      <p style="color:var(--g2);font-size:13px;margin:0 0 20px">We're missing a few details. Help us keep your records accurate.</p>
-      ${inputs}
-      <button onclick="_kioskSaveMissingThenNext()" style="width:100%;padding:16px;border-radius:var(--r);background:var(--fire);color:#fff;border:none;font-size:15px;font-weight:800;cursor:pointer;margin-top:12px">Save & Continue →</button>
-    </div>`
-  }
-
-  if(k.step==='view_invoice') return hdr + `<div class="ov-body" style="padding:24px;text-align:center">
-    <h3 style="margin:0 0 8px">Your invoice</h3>
-    <p style="color:var(--g2);font-size:13px;margin:0 0 20px">Here's exactly what we did and what it costs. Tap to review the full invoice.</p>
-    <button onclick="${inv?`openInvDetail('${inv.id}')`:'toast(\\'No invoice yet\\')'}"
-      style="width:100%;max-width:340px;padding:18px;border-radius:var(--r);background:var(--c2);color:var(--g0);border:1.5px solid var(--info);font-size:14px;font-weight:700;cursor:pointer;margin-bottom:12px">
-      📄 Open Invoice — ${fmt(total)}
-    </button>
-    <div style="margin:20px 0;font-size:13px;color:var(--g2)">When you're done reviewing, tap Continue.</div>
-    <button onclick="_kioskNext()" style="width:100%;max-width:340px;padding:16px;border-radius:var(--r);background:var(--fire);color:#fff;border:none;font-size:15px;font-weight:800;cursor:pointer">Continue →</button>
-  </div>`
-
-  if(k.step==='view_reports'){
-    const rptBtns = reports.length
-      ? reports.map(r=>`<button onclick="openReport('${r.id}')" style="display:block;width:100%;max-width:340px;margin:0 auto 10px;padding:16px;border-radius:var(--r);background:var(--c2);color:var(--g0);border:1.5px solid var(--info);font-size:14px;font-weight:700;cursor:pointer">📋 ${esc(r.report_type||'Report')}</button>`).join('')
-      : `<p style="color:var(--g2);font-size:13px">No inspection reports for this visit.</p>`
-    return hdr + `<div class="ov-body" style="padding:24px;text-align:center">
-      <h3 style="margin:0 0 8px">Inspection reports</h3>
-      <p style="color:var(--g2);font-size:13px;margin:0 0 20px">${reports.length?'Tap any report to review what was inspected.':'Nothing to review here — continue when ready.'}</p>
-      ${rptBtns}
-      <button onclick="_kioskNext()" style="width:100%;max-width:340px;padding:16px;border-radius:var(--r);background:var(--fire);color:#fff;border:none;font-size:15px;font-weight:800;cursor:pointer;margin-top:12px">Continue →</button>
-    </div>`
-  }
-
-  if(k.step==='payment_method') return hdr + `<div class="ov-body" style="padding:24px;text-align:center">
-    <h3 style="margin:0 0 8px">How would you like to pay?</h3>
-    <p style="color:var(--g2);font-size:13px;margin:0 0 24px">Choose one. Total: <b style="color:var(--ok)">${fmt(total)}</b></p>
-    <div style="display:flex;flex-direction:column;gap:10px;max-width:340px;margin:0 auto">
-      <button onclick="_kioskPickPayment('check')"  style="padding:18px;border-radius:var(--r);background:var(--c2);color:var(--g0);border:1.5px solid var(--ok);font-size:15px;font-weight:800;cursor:pointer">✓ Pay by Check</button>
-      <button onclick="_kioskPickPayment('cash')"   style="padding:18px;border-radius:var(--r);background:var(--c2);color:var(--g0);border:1.5px solid var(--ok);font-size:15px;font-weight:800;cursor:pointer">💵 Pay with Cash</button>
-      <button disabled                              style="padding:18px;border-radius:var(--r);background:var(--c2);color:var(--g3);border:1.5px dashed var(--g3);font-size:13px;font-weight:700;cursor:not-allowed">💳 Card (coming soon)</button>
-      <button onclick="_kioskPickPayment('invoice')" style="padding:18px;border-radius:var(--r);background:var(--c2);color:var(--g1);border:1px solid var(--b1);font-size:14px;font-weight:700;cursor:pointer">📧 Bill me later</button>
-    </div>
-  </div>`
-
-  if(k.step==='contract'){
-    const sigUi = k.choices.contractSignature
-      ? `<div style="text-align:center;margin:16px 0"><img src="${k.choices.contractSignature}" style="max-width:300px;border:1px solid var(--b1);background:#fff;border-radius:8px"><div style="font-size:12px;color:var(--ok);margin-top:6px">✓ Signed</div></div>`
-      : `<div style="background:var(--c2);border:1px dashed var(--g3);border-radius:8px;padding:14px;margin:16px 0;text-align:center">
-          <canvas id="ki_contract_sig" width="320" height="120" style="background:#fff;border-radius:6px;touch-action:none;cursor:crosshair"></canvas>
-          <div style="display:flex;gap:8px;justify-content:center;margin-top:10px">
-            <button onclick="_kioskClearSig('ki_contract_sig')" style="padding:8px 14px;font-size:12px;border-radius:6px;background:var(--c1);border:1px solid var(--b1);color:var(--g1);cursor:pointer">Clear</button>
-            <button onclick="_kioskCaptureSig('ki_contract_sig','contractSignature')" style="padding:8px 14px;font-size:12px;border-radius:6px;background:var(--fire);color:#fff;border:none;cursor:pointer;font-weight:700">Use signature</button>
-          </div>
-        </div>`
-    return hdr + `<div class="ov-body" style="padding:24px">
-      <h3 style="margin:0 0 6px">Service Agreement</h3>
-      <p style="color:var(--g2);font-size:13px;margin:0 0 14px">A one-time agreement covering future visits — so you don't have to sign every time.</p>
-      <div style="background:var(--c2);border:1px solid var(--b1);border-radius:var(--r);padding:14px;max-height:240px;overflow-y:auto;font-size:12px;line-height:1.5;color:var(--g1);margin-bottom:8px">
-        <!-- TODO Jon: drop in your actual T&Cs here -->
-        <p><b>Stephens Advanced LLC — Service Agreement</b></p>
-        <p>By signing below, the customer (<b>${esc(l.name||ba.name||'Customer')}</b>) authorizes Stephens Advanced LLC to perform fire suppression, fire extinguisher, emergency lighting, and related life-safety inspections and services at the location(s) on file. Pricing follows the published rate card; per-visit estimates are provided in advance when scope is known.</p>
-        <p>Customer agrees to pay invoices within 30 days of service unless an alternative billing arrangement is on file. Late balances accrue at 1.5% per month.</p>
-        <p>Service is automatically scheduled at the intervals required by NFPA 10, NFPA 17A, NFPA 17, NFPA 96, and NFPA 101 unless customer cancels in writing.</p>
-        <p style="color:var(--bad);font-weight:700">⚠ PLACEHOLDER TEXT — replace before going live for real customers.</p>
-      </div>
-      ${sigUi}
-      <button onclick="_kioskAfterContract()" ${k.choices.contractSignature?'':'disabled'}
-        style="width:100%;padding:16px;border-radius:var(--r);background:${k.choices.contractSignature?'var(--fire)':'var(--c2)'};color:${k.choices.contractSignature?'#fff':'var(--g3)'};border:none;font-size:15px;font-weight:800;cursor:${k.choices.contractSignature?'pointer':'not-allowed'};margin-top:12px">Agree & Continue →</button>
-    </div>`
-  }
-
-  if(k.step==='sign_invoice'){
-    const sigUi = k.choices.signatureData
-      ? `<div style="text-align:center;margin:16px 0"><img src="${k.choices.signatureData}" style="max-width:300px;border:1px solid var(--b1);background:#fff;border-radius:8px"><div style="font-size:12px;color:var(--ok);margin-top:6px">✓ Signed</div></div>`
-      : `<div style="background:var(--c2);border:1px dashed var(--g3);border-radius:8px;padding:14px;margin:16px 0;text-align:center">
-          <canvas id="ki_inv_sig" width="320" height="120" style="background:#fff;border-radius:6px;touch-action:none;cursor:crosshair"></canvas>
-          <div style="display:flex;gap:8px;justify-content:center;margin-top:10px">
-            <button onclick="_kioskClearSig('ki_inv_sig')" style="padding:8px 14px;font-size:12px;border-radius:6px;background:var(--c1);border:1px solid var(--b1);color:var(--g1);cursor:pointer">Clear</button>
-            <button onclick="_kioskCaptureSig('ki_inv_sig','signatureData')" style="padding:8px 14px;font-size:12px;border-radius:6px;background:var(--fire);color:#fff;border:none;cursor:pointer;font-weight:700">Use signature</button>
-          </div>
-        </div>`
-    return hdr + `<div class="ov-body" style="padding:24px">
-      <h3 style="margin:0 0 6px">Sign for today's work</h3>
-      <p style="color:var(--g2);font-size:13px;margin:0 0 6px">Confirms the work was completed and your invoice is correct.</p>
-      <div style="font-size:13px;margin:8px 0;color:var(--g1)">Total: <b style="color:var(--ok)">${fmt(total)}</b> · Paying by: <b>${esc(k.choices.paymentMethod||'(not set)')}</b></div>
-      ${sigUi}
-      <button onclick="_kioskNext()" ${k.choices.signatureData?'':'disabled'}
-        style="width:100%;padding:16px;border-radius:var(--r);background:${k.choices.signatureData?'var(--fire)':'var(--c2)'};color:${k.choices.signatureData?'#fff':'var(--g3)'};border:none;font-size:15px;font-weight:800;cursor:${k.choices.signatureData?'pointer':'not-allowed'};margin-top:12px">Done →</button>
-    </div>`
-  }
-
-  if(k.step==='done_handback') return hdr + `<div class="ov-body" style="padding:32px 24px;text-align:center">
-    <div style="font-size:64px;margin-bottom:18px">✓</div>
-    <h2 style="margin:0 0 12px;font-size:22px">All set, thank you.</h2>
-    <p style="font-size:15px;color:var(--g1);max-width:340px;margin:0 auto 28px;line-height:1.5">Please hand the phone back to your tech.</p>
-    <button onclick="_kioskGoto('pin_exit')" style="width:100%;max-width:320px;padding:18px;border-radius:var(--r);background:var(--fire);color:#fff;border:none;font-size:15px;font-weight:800;cursor:pointer">Tech: Tap here</button>
-  </div>`
-
-  if(k.step==='pin_exit'){
-    const dots = (k.choices._pin||'').padEnd(4,'·').split('').map(c=>c==='·'?'<span style="color:var(--g3)">·</span>':'•').join('')
-    const num=(d)=>`<button onclick="_kioskPinPress('${d}')" style="padding:18px;border-radius:var(--r);background:var(--c2);color:var(--g0);border:1px solid var(--b1);font-size:22px;font-weight:800;cursor:pointer">${d}</button>`
-    return hdr + `<div class="ov-body" style="padding:24px;text-align:center">
-      <h3 style="margin:0 0 6px">Tech PIN to unlock</h3>
-      <p style="color:var(--g2);font-size:12px;margin:0 0 20px">4-digit PIN exits kiosk and shows the summary.</p>
-      <div style="font-size:34px;letter-spacing:14px;margin:18px 0">${dots}</div>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-width:280px;margin:0 auto">
-        ${num('1')}${num('2')}${num('3')}${num('4')}${num('5')}${num('6')}${num('7')}${num('8')}${num('9')}
-        <button onclick="kioskState.choices._pin='';_kioskRefresh()" style="padding:18px;border-radius:var(--r);background:var(--c2);color:var(--g2);border:1px solid var(--b1);font-size:13px;cursor:pointer">Clear</button>
-        ${num('0')}
-        <button onclick="_kioskPinBack()" style="padding:18px;border-radius:var(--r);background:var(--c2);color:var(--g2);border:1px solid var(--b1);font-size:13px;cursor:pointer">←</button>
-      </div>
-    </div>`
-  }
-
-  if(k.step==='tech_summary'){
-    const pm = k.choices.paymentMethod
-    const collectMsg = pm==='cash' ? '💵 Collect cash from the customer.' : pm==='check' ? '✓ Get the check from the customer.' : pm==='invoice' ? '📧 No money to collect — bill them later.' : '— pick one with the customer first'
-    const confirmBtn =
-      pm==='cash'    ? `<button onclick="_kioskFinalize('cash')"    style="width:100%;padding:18px;border-radius:var(--r);background:var(--ok);color:#fff;border:none;font-size:16px;font-weight:800;cursor:pointer;margin-bottom:8px">💵 Got Cash</button>` :
-      pm==='check'   ? `<button onclick="_kioskFinalize('check')"   style="width:100%;padding:18px;border-radius:var(--r);background:var(--ok);color:#fff;border:none;font-size:16px;font-weight:800;cursor:pointer;margin-bottom:8px">✓ Got Check #____</button>` :
-      pm==='invoice' ? `<button onclick="_kioskFinalize('invoice')" style="width:100%;padding:18px;border-radius:var(--r);background:var(--fire);color:#fff;border:none;font-size:16px;font-weight:800;cursor:pointer;margin-bottom:8px">📧 Send Invoice & Reports</button>` :
-      ''
-    return hdr + `<div class="ov-body" style="padding:24px">
-      <h3 style="margin:0 0 16px">Customer is done — your turn</h3>
-      <div style="background:var(--c2);border:1px solid var(--b1);border-radius:var(--r);padding:14px;margin-bottom:14px">
-        <div style="font-size:11px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:var(--g2);margin-bottom:8px">Customer chose</div>
-        <div style="font-size:16px;font-weight:800;color:var(--g0);margin-bottom:6px">${pm? (pm==='invoice'?'Bill me later':pm.toUpperCase()) : '(no choice yet)'}</div>
-        <div style="font-size:13px;color:var(--g1)">Total: <b style="color:var(--ok)">${fmt(total)}</b></div>
-      </div>
-      <div style="background:var(--infos);border:1px solid var(--info);border-radius:var(--r);padding:12px;margin-bottom:14px;font-size:14px;color:var(--g0)">
-        ${collectMsg}
-      </div>
-      ${k.contractNeeded?`<div style="font-size:12px;color:var(--ok);margin-bottom:8px">✓ Service Agreement signed</div>`:''}
-      <div style="font-size:12px;color:var(--ok);margin-bottom:14px">✓ Invoice signed by customer</div>
-      ${confirmBtn}
-      <button onclick="_kioskCancel()" style="width:100%;padding:12px;border-radius:var(--r);background:var(--c2);color:var(--g2);border:1px solid var(--b1);font-size:12px;cursor:pointer">Exit without finalizing</button>
-    </div>`
-  }
-
-  return hdr + `<div class="ov-body" style="padding:24px">Unknown step: ${esc(k.step)}</div>`
-}
-
-// === STEP HELPERS ============================================================
-
-async function _kioskSaveMissingThenNext(){
-  const k = kioskState
-  const locUpd = {}, baUpd = {}
-  k.missingFields.forEach(f=>{
-    const v = k.choices.customerInfo[f.key]
-    if(!v) return
-    if(f.target==='location') locUpd[f.key] = v
-    if(f.target==='billing')  baUpd[f.key]  = v
-  })
-  if(Object.keys(locUpd).length) await SB.from('locations').update(locUpd).eq('id', k.loc.id)
-  if(Object.keys(baUpd).length && k.j.billing_account_id) await SB.from('billing_accounts').update(baUpd).eq('id', k.j.billing_account_id)
-  _kioskNext()
-}
-
-function _kioskPickPayment(method){
-  kioskState.choices.paymentMethod = method
-  _kioskNext()  // -> contract or sign_invoice
-}
-
-function _kioskAfterContract(){ _kioskNext() }
-
-// Signature pad — minimal canvas drawing for in-app capture
-function _kioskAttachSig(canvasId){
-  const c = document.getElementById(canvasId); if(!c||c.dataset.attached) return
-  c.dataset.attached='1'
-  const ctx = c.getContext('2d'); ctx.lineWidth=2; ctx.lineCap='round'; ctx.strokeStyle='#000'
-  let drawing=false, last=null
-  const pos=(e)=>{ const r=c.getBoundingClientRect(); const t=e.touches?.[0]||e; return [t.clientX-r.left, t.clientY-r.top] }
-  const start=(e)=>{ drawing=true; last=pos(e); e.preventDefault() }
-  const move=(e)=>{ if(!drawing)return; const [x,y]=pos(e); ctx.beginPath(); ctx.moveTo(...last); ctx.lineTo(x,y); ctx.stroke(); last=[x,y]; e.preventDefault() }
-  const end=()=>{ drawing=false }
-  c.addEventListener('mousedown',start); c.addEventListener('mousemove',move); window.addEventListener('mouseup',end)
-  c.addEventListener('touchstart',start); c.addEventListener('touchmove',move); c.addEventListener('touchend',end)
-}
-function _kioskClearSig(canvasId){
-  const c=document.getElementById(canvasId); if(!c)return
-  c.getContext('2d').clearRect(0,0,c.width,c.height)
-}
-function _kioskCaptureSig(canvasId, target){
-  const c=document.getElementById(canvasId); if(!c)return
-  // simple emptiness check: count non-white pixels
-  const ctx=c.getContext('2d'); const data=ctx.getImageData(0,0,c.width,c.height).data
-  let dark=0; for(let i=0;i<data.length;i+=4){ if(data[i]<200) dark++ }
-  if(dark<200){ toast('Please sign first'); return }
-  kioskState.choices[target] = c.toDataURL('image/png')
-  _kioskRefresh()
-}
-
-// Attach signature pad after each render (canvases get recreated on _kioskRefresh)
-const _origKioskRefresh = _kioskRefresh
-_kioskRefresh = function(){
-  _origKioskRefresh()
-  setTimeout(()=>{
-    if(document.getElementById('ki_contract_sig')) _kioskAttachSig('ki_contract_sig')
-    if(document.getElementById('ki_inv_sig'))      _kioskAttachSig('ki_inv_sig')
-  }, 30)
-}
-
-// PIN entry
-function _kioskPinPress(d){
-  const cur = kioskState.choices._pin || ''
-  if(cur.length>=4)return
-  kioskState.choices._pin = cur + d
-  _kioskRefresh()
-  if(kioskState.choices._pin.length===4){
-    if(kioskState.choices._pin === KIOSK_EXIT_PIN){
-      kioskState.choices._pin = ''
-      _kioskGoto('tech_summary')
-    } else {
-      toast('Wrong PIN')
-      kioskState.choices._pin = ''
-      setTimeout(_kioskRefresh, 500)
-    }
-  }
-}
-function _kioskPinBack(){
-  kioskState.choices._pin = (kioskState.choices._pin||'').slice(0,-1); _kioskRefresh()
-}
-
-// Tech finalizes — writes signatures, marks paid (cash/check) or sends (invoice)
-async function _kioskFinalize(method){
-  const k = kioskState
-  let checkNum = null
-  if(method==='check'){
-    checkNum = prompt('Enter check number:')
-    if(!checkNum)return
-  }
-  const nowIso = new Date().toISOString()
-
-  // 1. Stamp the job: signature, payment_received_at, status, kiosk session cleared
-  const jobUpd = {
-    signature_data: k.choices.signatureData,
-    payment_received_at: nowIso,
-    kiosk_session_id: null,
-    status: 'completed',
-    completed_at: nowIso
-  }
-  await SB.from('jobs').update(jobUpd).eq('id', k.jobId)
-
-  // 2. Stamp the invoice: paid (cash/check) or sent (invoice)
-  const inv = D.invs.find(i=>i.job_id===k.jobId)
-  if(inv){
-    const invUpd = method==='invoice'
-      ? { status:'sent', sent_at: nowIso }
-      : { status:'paid', payment_method: method, paid_at: nowIso, payment_note: method==='check'?`Check #${checkNum}`:'Cash — paid in full' }
-    await SB.from('invoices').update(invUpd).eq('id', inv.id)
-  }
-
-  // 3. If contract was signed, persist it
-  if(k.contractNeeded && k.choices.contractSignature){
-    await SB.from('contracts').insert({
-      location_id: k.loc.id,
-      billing_account_id: k.j.billing_account_id,
-      type:'recurring', status:'active',
-      signed: true, signed_at: nowIso,
-      signature_data: k.choices.contractSignature,
-      signer_name: k.loc.contact_name || k.loc.name || 'Customer',
-      notes:'Captured via in-person kiosk handoff'
-    })
-  }
-
-  // 4. Send invoice + reports email (best-effort; non-fatal if it fails)
-  if(inv && k.loc.contact_email){
-    try { await sendInvoiceEmailFromDetail(inv.id, k.loc.name||'Customer', inv.invoice_number) } catch(e){ console.error('kiosk email send:', e) }
-  }
-
-  await load()
-  popAll()
-  document.body.classList.remove('kiosk-mode')
-  kioskState = null
-  toast(method==='invoice' ? 'Invoice sent ✓' : 'Payment recorded ✓')
-}
-
-// Soft-cancel (no payment recorded) — clears kiosk session but leaves the job alone.
-async function _kioskCancel(){
-  if(!confirm('Exit without finalizing? Customer signatures will be saved but no payment will be recorded.'))return
-  const k = kioskState
-  const upd = { kiosk_session_id: null }
-  if(k.choices.signatureData) upd.signature_data = k.choices.signatureData
-  await SB.from('jobs').update(upd).eq('id', k.jobId)
-  await load()
-  popAll()
-  document.body.classList.remove('kiosk-mode')
-  kioskState = null
-  toast('Exited kiosk — job left open')
 }
 
 // MAZON FACTORING FLOW
