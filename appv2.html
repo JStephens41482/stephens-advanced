@@ -5351,7 +5351,7 @@ function _kioskRender(){
   if(k.step==='view_invoice') return hdr + `<div class="ov-body" style="padding:24px;text-align:center">
     <h3 style="margin:0 0 8px">Your invoice</h3>
     <p style="color:var(--g2);font-size:13px;margin:0 0 20px">Here's exactly what we did and what it costs. Tap to review the full invoice.</p>
-    <button onclick="${inv?`openInvDetail('${inv.id}')`:'toast(\\'No invoice yet\\')'}"
+    <button onclick="${inv?`openInvDetail('${inv.id}')`:`toast('No invoice yet')`}"
       style="width:100%;max-width:340px;padding:18px;border-radius:var(--r);background:var(--c2);color:var(--w);border:1.5px solid var(--info);font-size:14px;font-weight:700;cursor:pointer;margin-bottom:12px">
       📄 Open Invoice — ${fmt(total)}
     </button>
