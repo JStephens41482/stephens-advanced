@@ -2971,14 +2971,26 @@ const reschedule_job = {
     const { error } = await ctx.supabase.from('jobs').update(patch).eq('id', input.job_id)
     if (error) return { error: error.message }
 
-    // Write to audit_log
+    // Write to audit_log. Two bugs fixed here that have been silently breaking
+    // every reschedule_job call since at least 2026-04-28:
+    //   1. .insert(...).catch(...) doesn't work — Supabase's query builder
+    //      isn't a promise until awaited, so .catch on it throws
+    //      "catch is not a function" and aborts the WHOLE handler. The
+    //      database UPDATE on line above DID succeed; the audit-log JS error
+    //      then made Riker report failure to Jon, who'd retry repeatedly.
+    //   2. Columns `changes` and `summary` don't exist on audit_log — the
+    //      only writable JSON-shaped column is `details`. Folding the old
+    //      structured fields into details preserves all the info.
     const summary = `Job rescheduled from ${job.scheduled_date} to ${input.new_date}` + (input.reason ? ' — ' + input.reason : '')
-    await ctx.supabase.from('audit_log').insert({
-      action: 'rescheduled', entity_type: 'job', entity_id: input.job_id,
-      actor: 'ai_chat',
-      changes: { old_date: job.scheduled_date, new_date: input.new_date, new_time: input.new_time || null, reason: input.reason || null },
-      summary
-    }).catch(() => {})
+    try {
+      await ctx.supabase.from('audit_log').insert({
+        action: 'rescheduled', entity_type: 'job', entity_id: input.job_id,
+        actor: 'ai_chat',
+        details: { summary, old_date: job.scheduled_date, new_date: input.new_date, new_time: input.new_time || null, reason: input.reason || null }
+      })
+    } catch (e) {
+      console.warn('[reschedule_job] audit_log insert failed:', e.message)
+    }
 
     let notified = false
     if (input.notify_customer && job.location?.contact_phone) {
@@ -3304,11 +3316,17 @@ const assign_job_to_tech = {
     const techId = input.tech_id || null
     const { error } = await ctx.supabase.from('jobs').update({ assigned_to: techId }).eq('id', input.job_id)
     if (error) return { error: error.message }
-    await ctx.supabase.from('audit_log').insert({
-      action: 'assigned', entity_type: 'job', entity_id: input.job_id,
-      actor: 'ai_chat', changes: { assigned_to: techId },
-      summary: techId ? `Job assigned to tech ${techId}` : 'Job unassigned'
-    }).catch(() => {})
+    // Same fix as reschedule_job above — .insert().catch() throws and the
+    // audit_log schema only accepts `details` (not `changes` / `summary`).
+    try {
+      await ctx.supabase.from('audit_log').insert({
+        action: 'assigned', entity_type: 'job', entity_id: input.job_id,
+        actor: 'ai_chat',
+        details: { assigned_to: techId, summary: techId ? `Job assigned to tech ${techId}` : 'Job unassigned' }
+      })
+    } catch (e) {
+      console.warn('[assign_job] audit_log insert failed:', e.message)
+    }
     return { ok: true, job_id: input.job_id, assigned_to: techId }
   }
 }
@@ -3534,12 +3552,21 @@ const send_contract = {
       return { error: 'Email send failed: ' + e.message }
     }
 
+    // Same .catch-on-builder fix as reschedule_job + audit_log column fix.
     const now = new Date().toISOString()
-    await ctx.supabase.from('contracts').update({ status: 'sent', sent_at: now, sent_to: customerEmail }).eq('id', input.contract_id).catch(() => {})
-    await ctx.supabase.from('audit_log').insert({
-      action: 'sent', entity_type: 'contract', entity_id: input.contract_id,
-      actor: 'ai_chat', summary: `Contract sent to ${customerEmail}`
-    }).catch(() => {})
+    try {
+      await ctx.supabase.from('contracts').update({ status: 'sent', sent_at: now, sent_to: customerEmail }).eq('id', input.contract_id)
+    } catch (e) {
+      console.warn('[send_contract] contracts update failed:', e.message)
+    }
+    try {
+      await ctx.supabase.from('audit_log').insert({
+        action: 'sent', entity_type: 'contract', entity_id: input.contract_id,
+        actor: 'ai_chat', details: { summary: `Contract sent to ${customerEmail}` }
+      })
+    } catch (e) {
+      console.warn('[send_contract] audit_log insert failed:', e.message)
+    }
 
     return { ok: true, contract_id: input.contract_id, sent_to_email: customerEmail, sent_at: now }
   }
