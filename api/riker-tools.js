@@ -5043,6 +5043,195 @@ const request_card_save = {
   }
 }
 
+// ─── complete_job_with_invoice ───────────────────────────────────
+const complete_job_with_invoice = {
+  schema: {
+    name: 'complete_job_with_invoice',
+    description: "Mark a job as completed AND generate the invoice from its work-order lines (or from explicitly-passed lines). The standard end-of-day flow when Jon's done with a job. If `lines` is not passed, uses the job's saved work_order_lines. Refuses if neither exists, if the job is already completed, or if an invoice already exists for this job. Invoice is created in 'draft' status — pass it through send / charge / mark_paid separately.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        job_id: { type: 'string', description: 'Job UUID. Required.' },
+        lines: {
+          type: 'array',
+          description: 'Optional: explicit invoice lines. If omitted, uses job.work_order_lines. Each line: {description, quantity, unit_price}',
+          items: {
+            type: 'object',
+            properties: {
+              description: { type: 'string' },
+              quantity: { type: 'number' },
+              unit_price: { type: 'number' }
+            },
+            required: ['description', 'unit_price']
+          }
+        },
+        notes: { type: 'string', description: 'Tech notes / deficiencies for the invoice.' }
+      },
+      required: ['job_id']
+    }
+  },
+  async handler(input, ctx) {
+    if (!input.job_id) return { error: 'job_id required' }
+
+    const { data: job } = await ctx.supabase.from('jobs').select('id,location_id,billing_account_id,work_order_lines,status,job_number').eq('id', input.job_id).maybeSingle()
+    if (!job) return { error: 'Job not found' }
+    if (job.status === 'completed') return { error: 'Job already completed' }
+
+    // Refuse to create a duplicate invoice for the same job
+    const { data: existing } = await ctx.supabase.from('invoices').select('id,invoice_number').eq('job_id', job.id).is('deleted_at', null).maybeSingle()
+    if (existing) return { error: `Invoice already exists for this job: ${existing.invoice_number} (${existing.id}). Use mark_invoice_paid or update_invoice instead.` }
+
+    const lines = (input.lines && input.lines.length) ? input.lines : (Array.isArray(job.work_order_lines) ? job.work_order_lines.map(l => ({
+      description: l.desc || l.description,
+      quantity: +(l.qty || l.quantity || 1),
+      unit_price: +(l.price || l.unit_price || 0)
+    })) : [])
+
+    if (!lines.length) return { error: 'No lines on job and none provided. Pass `lines` or save work_order_lines first.' }
+
+    const total = lines.reduce((s, l) => s + (+l.quantity || 1) * (+l.unit_price || 0), 0)
+    if (total < 0) return { error: 'Invoice total is negative — refusing to create' }
+
+    const today = new Date().toISOString().split('T')[0]
+    const due = new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0]
+    const invNum = 'INV-' + Math.floor(100000 + Math.random() * 900000)
+
+    const { data: invRow, error: invErr } = await ctx.supabase.from('invoices').insert({
+      invoice_number: invNum,
+      job_id: job.id,
+      location_id: job.location_id,
+      billing_account_id: job.billing_account_id,
+      total,
+      status: 'draft',
+      date: today,
+      due_date: due,
+      notes: input.notes || null
+    }).select('id,invoice_number').single()
+    if (invErr) return { error: 'Invoice insert failed: ' + invErr.message }
+
+    const lineRows = lines.map((l, i) => ({
+      invoice_id: invRow.id,
+      description: l.description,
+      quantity: +(l.quantity || 1),
+      unit_price: +(l.unit_price || 0),
+      total: +(l.quantity || 1) * +(l.unit_price || 0),
+      sort_order: i
+    }))
+    const { error: lineErr } = await ctx.supabase.from('invoice_lines').insert(lineRows)
+    if (lineErr) {
+      // Rollback the invoice we just inserted so we don't leave an orphan with no lines.
+      await ctx.supabase.from('invoices').delete().eq('id', invRow.id)
+      return { error: 'Invoice lines insert failed (invoice rolled back): ' + lineErr.message }
+    }
+
+    const { error: jobErr } = await ctx.supabase.from('jobs').update({
+      status: 'completed',
+      completed_at: new Date().toISOString()
+    }).eq('id', job.id)
+    if (jobErr) return { error: 'Job status update failed (invoice still created): ' + jobErr.message }
+
+    try {
+      await ctx.supabase.from('audit_log').insert([
+        {
+          action: 'completed', entity_type: 'job', entity_id: job.id,
+          actor: 'ai_chat',
+          details: { invoice_id: invRow.id, invoice_number: invRow.invoice_number, total, summary: `Job completed and invoice ${invRow.invoice_number} generated for $${total.toFixed(2)} (Riker)` }
+        },
+        {
+          action: 'created', entity_type: 'invoice', entity_id: invRow.id,
+          actor: 'ai_chat',
+          details: { job_id: job.id, total, line_count: lines.length, summary: `Invoice ${invRow.invoice_number} created from job (Riker)` }
+        }
+      ])
+    } catch (e) { console.warn('[complete_job_with_invoice] audit insert failed:', e.message) }
+
+    return { ok: true, job_id: job.id, invoice_id: invRow.id, invoice_number: invRow.invoice_number, total, line_count: lines.length }
+  }
+}
+
+// ─── create_inspection_report ────────────────────────────────────
+const create_inspection_report = {
+  schema: {
+    name: 'create_inspection_report',
+    description: "Create an inspection report attached to a job. Pass the report_type and the full report_data object. Shape of report_data depends on type:\n\n- extinguisher: { units: [{ id, location, type, manufacturer, model, mfg_date, last_hydro, last_six_year, next_hydro, next_six_year, status, notes }, ...] }\n- kitchen_suppression: { sysId, sysLocation, sysType, tankCount, nozzleCount, fusibleLinkCount, semiAnnual: {...checks}, deficiencies, technician_notes }\n- dry_chemical: similar shape to kitchen_suppression but for dry-chem / paint-booth systems\n- clean_agent: similar shape but for clean-agent systems (FM-200, Novec, CO2, halon)\n\nReturns the new report_id so you can call update_inspection_report later if details change.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        job_id: { type: 'string', description: 'Job UUID. Required.' },
+        report_type: { type: 'string', enum: ['extinguisher', 'kitchen_suppression', 'dry_chemical', 'clean_agent'] },
+        report_data: { type: 'object', description: 'Type-specific report data. See description for the per-type shape.' }
+      },
+      required: ['job_id', 'report_type', 'report_data']
+    }
+  },
+  async handler(input, ctx) {
+    if (!input.job_id || !input.report_type || !input.report_data) {
+      return { error: 'job_id, report_type, and report_data required' }
+    }
+
+    const validTypes = ['extinguisher', 'kitchen_suppression', 'dry_chemical', 'clean_agent']
+    if (!validTypes.includes(input.report_type)) {
+      return { error: `Invalid report_type. Must be one of: ${validTypes.join(', ')}` }
+    }
+
+    const { data: job } = await ctx.supabase.from('jobs').select('location_id').eq('id', input.job_id).maybeSingle()
+    if (!job) return { error: 'Job not found' }
+
+    const { data: report, error } = await ctx.supabase.from('reports').insert({
+      job_id: input.job_id,
+      location_id: job.location_id,
+      report_type: input.report_type,
+      report_data: input.report_data
+    }).select('id').single()
+    if (error) return { error: 'Report insert failed: ' + error.message }
+
+    try {
+      await ctx.supabase.from('audit_log').insert({
+        action: 'report_created', entity_type: 'job', entity_id: input.job_id,
+        actor: 'ai_chat',
+        details: {
+          report_id: report.id,
+          report_type: input.report_type,
+          summary: `${input.report_type.replace(/_/g, ' ')} report created (Riker)`
+        }
+      })
+    } catch (e) { console.warn('[create_inspection_report] audit insert failed:', e.message) }
+
+    return { ok: true, report_id: report.id, report_type: input.report_type }
+  }
+}
+
+// ─── update_inspection_report ────────────────────────────────────
+const update_inspection_report = {
+  schema: {
+    name: 'update_inspection_report',
+    description: "Update an existing inspection report's data. Pass the full new report_data — it REPLACES the existing JSON (not a partial merge). Use after create_inspection_report when the customer asks for changes, when more detail is added later, or when an extinguisher unit's status flips (pass → fail, etc.).",
+    input_schema: {
+      type: 'object',
+      properties: {
+        report_id: { type: 'string' },
+        report_data: { type: 'object', description: 'Full replacement report_data JSON.' }
+      },
+      required: ['report_id', 'report_data']
+    }
+  },
+  async handler(input, ctx) {
+    if (!input.report_id || !input.report_data) return { error: 'report_id and report_data required' }
+    const { data: existing } = await ctx.supabase.from('reports').select('id,job_id,report_type').eq('id', input.report_id).maybeSingle()
+    if (!existing) return { error: 'Report not found' }
+    const { error } = await ctx.supabase.from('reports').update({ report_data: input.report_data }).eq('id', input.report_id)
+    if (error) return { error: error.message }
+    try {
+      await ctx.supabase.from('audit_log').insert({
+        action: 'report_updated', entity_type: 'job', entity_id: existing.job_id,
+        actor: 'ai_chat',
+        details: { report_id: existing.id, report_type: existing.report_type, summary: `${existing.report_type.replace(/_/g, ' ')} report updated (Riker)` }
+      })
+    } catch (e) { console.warn('[update_inspection_report] audit insert failed:', e.message) }
+    return { ok: true, report_id: existing.id }
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════
 // REGISTRY (placed after every tool const so all references resolve)
 // ═══════════════════════════════════════════════════════════════
@@ -5088,6 +5277,8 @@ const ALL_TOOLS = {
   bulk_assign_jobs_to_tech,
   add_job_photo,
   request_remote_signature,
+  complete_job_with_invoice,
+  create_inspection_report, update_inspection_report,
 }
 
 // null = all tools. Keeps Jon contexts unrestricted; trims customer contexts.
