@@ -3520,6 +3520,7 @@ async function openJob(id){
       const labelStyle = isTent
         ? 'color:#10b981;opacity:.85'
         : 'color:rgba(255,255,255,.85)'
+      const notToday = j.scheduled_date !== td()
       return `<div style="border-radius:var(--rs);padding:14px 16px;${pillStyle}">
         <div style="font-size:11px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;${labelStyle};margin-bottom:6px">${isTent?'⏱ Tentative · proposed by route':'✓ Scheduled'}</div>
         <div style="font-size:22px;font-weight:800;line-height:1.2">${dateBig}</div>
@@ -3530,17 +3531,16 @@ async function openJob(id){
             ? `<button onclick="confirmTentativeTime('${j.id}')" style="flex:1;min-height:44px;border-radius:var(--rs);background:#10b981;color:#fff;border:none;font-size:12px;font-weight:800;letter-spacing:.5px;cursor:pointer">✓ CONFIRM TIME</button>`
             : `<button onclick="markJobTentative('${j.id}')" style="flex:1;min-height:44px;border-radius:var(--rs);background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.4);color:#fff;font-size:12px;font-weight:800;letter-spacing:.5px;cursor:pointer">⤴ UNCONFIRM</button>`}
         </div>
+        ${notToday?`<button onclick="addToTodaySchedule('${j.id}')" style="width:100%;min-height:44px;margin-top:8px;border-radius:var(--rs);${isTent?'background:transparent;border:1.5px dashed #10b981;color:#10b981':'background:rgba(255,255,255,.1);border:1.5px dashed rgba(255,255,255,.5);color:#fff'};font-size:12px;font-weight:800;letter-spacing:.4px;cursor:pointer">📅 Add to Today's Schedule</button>`:`<div style="font-size:11px;font-weight:800;letter-spacing:.4px;${labelStyle};margin-top:10px;text-align:center;text-transform:uppercase">✓ On today's schedule</div>`}
       </div>`
     })()}
-    ${D.techs?.length?`<div style="display:flex;align-items:center;gap:8px;margin-top:10px">
-      <span style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--g2)">Assigned</span>
-      <select style="flex:1;min-height:36px;font-size:12px;padding:6px 10px" onchange="assignJob('${j.id}',this.value)">
-        <option value="">Unassigned</option>
-        ${D.techs.filter(t2=>t2.active).map(t2=>`<option value="${t2.id}"${j.assigned_to===t2.id?' selected':''}>${esc(t2.name)}</option>`).join('')}
+    ${D.techs?.length?`<div style="display:flex;align-items:center;gap:10px;margin-top:12px;padding:10px 12px;border-radius:var(--rs);background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.35)">
+      <span style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#10b981">Assigned</span>
+      <select style="flex:1;min-height:48px;font-size:14px;font-weight:700;padding:10px 12px;border-radius:var(--rs);background:rgba(16,185,129,.12);color:#10b981;border:1.5px solid rgba(16,185,129,.5)" onchange="assignJob('${j.id}',this.value)">
+        <option value="" style="color:#000">Unassigned</option>
+        ${D.techs.filter(t2=>t2.active).map(t2=>`<option value="${t2.id}"${j.assigned_to===t2.id?' selected':''} style="color:#000">${esc(t2.name)}</option>`).join('')}
       </select>
     </div>`:''}
-    ${j.status==='completed'?'':(j.scheduled_date&&j.scheduled_date!==td()?`<button style="width:100%;padding:10px;margin-top:10px;border-radius:var(--rs);background:transparent;border:1.5px solid var(--fire);color:var(--fire);font-size:12px;font-weight:800;cursor:pointer;min-height:44px" onclick="addToTodaySchedule('${j.id}')">📅 Add to Today's Schedule</button>`:(j.scheduled_date===td()?'<div style="font-size:11px;color:var(--ok);font-weight:700;margin-top:10px;text-align:center">✓ On today\'s schedule</div>':''))}
-    ${j.status==='completed'?'':`<button id="confirm-toggle-${j.id}" onclick="toggleJobConfirmed('${j.id}')" style="width:100%;min-height:44px;margin-top:8px;border-radius:var(--rs);font-size:11px;font-weight:800;letter-spacing:.5px;cursor:pointer;transition:all .15s;${j.confirmed_at?'background:rgba(16,185,129,.15);color:#10b981;border:1px solid rgba(16,185,129,.4)':'background:transparent;color:var(--g2);border:1px dashed var(--b1)'}">${j.confirmed_at?`✓ CUSTOMER CONFIRMED${j.confirmed_by?' · '+esc(j.confirmed_by):''}`:'☐ MARK CUSTOMER CONFIRMED'}</button>`}
   </div>
 
   <!-- LOCATION -->
@@ -4420,10 +4420,20 @@ function setSt(btn,eid,st){
 
 async function addToTodaySchedule(jobId){
   const today=td()
-  await SB.from('jobs').update({scheduled_date:today}).eq('id',jobId)
-  audit('rescheduled','job',jobId,'jon',{new_date:today},'Added to today\'s schedule')
+  // Use route logic: ask getAvailableSlots for the first open window today,
+  // drop the job into that slot's start, and flag it tentative so the pill
+  // stays dashed-green until Jon taps Confirm. (Per Jon 2026-04-30: "make
+  // sure it uses route logic" — i.e. don't just slam scheduled_date=today
+  // and keep whatever stale time was there.)
+  const slots=getAvailableSlots(today)
+  const upd={scheduled_date:today,tentative:true}
+  if(slots.length){
+    upd.scheduled_time=slots[0].start
+  }
+  await SB.from('jobs').update(upd).eq('id',jobId)
+  audit('rescheduled','job',jobId,'jon',{new_date:today,new_time:upd.scheduled_time||null,via:'route_logic'},'Added to today\'s schedule (route-slotted)')
   await load()
-  toast('Added to today\'s schedule')
+  toast(upd.scheduled_time?`Added to today @ ${fmtTime12(upd.scheduled_time)} (tentative)`:'Added to today (no open slot — pick a time)')
   pop();openJob(jobId)
 }
 
