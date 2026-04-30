@@ -70,7 +70,33 @@ module.exports = async function handler(req, res) {
       // Touch last_accessed_at
       await supabase.from('portal_tokens').update({ last_accessed_at: new Date().toISOString() }).eq('token', token)
     } else if (context === 'app') {
-      identity.tech_id = body.auth?.tech_id || null
+      // SECURITY: previously this context accepted any caller without auth
+      // — `body.auth?.tech_id || null` was happily used even when null.
+      // CONTEXT_TOOLS.app === null means full tool access (charge_card_on_file,
+      // delete_invoice, send_sms to anyone, etc.), so an unauthenticated POST
+      // could move money. Require a tech_id that resolves to an ACTIVE row
+      // in the techs table. Optionally tighten further with a shared
+      // RIKER_APP_AUTH_TOKEN env var if one is set on the deployment.
+      const techId = body.auth?.tech_id
+      if (!techId || typeof techId !== 'string') {
+        return res.status(401).json({ error: 'app context requires auth.tech_id' })
+      }
+      const { data: techRow } = await supabase
+        .from('techs')
+        .select('id, active')
+        .eq('id', techId)
+        .maybeSingle()
+      if (!techRow || techRow.active !== true) {
+        return res.status(401).json({ error: 'invalid or inactive tech_id' })
+      }
+      // Optional shared-secret tightening — if the deployment sets the env
+      // var, require it. Recommended for prod even though Jon's app is the
+      // only legitimate caller; closes opportunistic-scanner attacks.
+      const sharedSecret = process.env.RIKER_APP_AUTH_TOKEN
+      if (sharedSecret && body.auth?.token !== sharedSecret) {
+        return res.status(401).json({ error: 'app token mismatch' })
+      }
+      identity.tech_id = techId
       // Accept client_context fields as identity hints
       if (body.client_context?.active_location_id) identity.location_id = body.client_context.active_location_id
     }
