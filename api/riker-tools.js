@@ -4668,6 +4668,382 @@ const reply_all = {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// CAPABILITY-PARITY BATCH: tools added to close the gap between what
+// Jon can do in the app and what Riker can do via chat. Goal — the
+// "green dot" UX never lies. If the dot pulses on an action Jon took,
+// Riker must actually be able to do that same action.
+// ═══════════════════════════════════════════════════════════════
+
+// ─── mark_job_confirmed ──────────────────────────────────────────
+const mark_job_confirmed = {
+  schema: {
+    name: 'mark_job_confirmed',
+    description: "Toggle the CONFIRMED-with-customer chip on a job — use when the customer has explicitly confirmed they will be available at the scheduled time. Records who confirmed and how (sms / call / email / in_person). Setting this enables the departure-alert cron to fire.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        job_id: { type: 'string', description: 'Job UUID. Required.' },
+        confirmed_by: { type: 'string', description: 'Name of the person at the customer who confirmed (e.g. "Maria the manager"). Optional but useful for the activity log.' },
+        confirmation_method: { type: 'string', enum: ['sms', 'call', 'email', 'in_person', 'auto'], description: 'How the confirmation was received. Default "sms".' }
+      },
+      required: ['job_id']
+    }
+  },
+  async handler(input, ctx) {
+    if (!input.job_id) return { error: 'job_id required' }
+    const method = input.confirmation_method || 'sms'
+    const by = input.confirmed_by || null
+    const nowIso = new Date().toISOString()
+    const { error } = await ctx.supabase.from('jobs').update({
+      confirmed_at: nowIso,
+      confirmed_by: by,
+      confirmation_method: method
+    }).eq('id', input.job_id)
+    if (error) return { error: error.message }
+    try {
+      await ctx.supabase.from('audit_log').insert({
+        action: 'confirmed', entity_type: 'job', entity_id: input.job_id,
+        actor: 'ai_chat',
+        details: { confirmed_by: by, confirmation_method: method, summary: by ? `Confirmed with ${by} via ${method} (Riker)` : `Confirmed via ${method} (Riker)` }
+      })
+    } catch (e) { console.warn('[mark_job_confirmed] audit insert failed:', e.message) }
+    return { ok: true, job_id: input.job_id, confirmed_at: nowIso, confirmed_by: by, confirmation_method: method }
+  }
+}
+
+// ─── unmark_job_confirmed ────────────────────────────────────────
+const unmark_job_confirmed = {
+  schema: {
+    name: 'unmark_job_confirmed',
+    description: "Remove the CONFIRMED chip from a job (clears confirmed_at, confirmed_by, confirmation_method). Use when a customer un-confirms or the confirmation was made in error. Re-arms the departure-alert cron.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        job_id: { type: 'string', description: 'Job UUID. Required.' },
+        reason: { type: 'string', description: 'Why the confirmation is being removed (for activity log).' }
+      },
+      required: ['job_id']
+    }
+  },
+  async handler(input, ctx) {
+    if (!input.job_id) return { error: 'job_id required' }
+    const { error } = await ctx.supabase.from('jobs').update({
+      confirmed_at: null,
+      confirmed_by: null,
+      confirmation_method: null,
+      departure_alert_sent_at: null
+    }).eq('id', input.job_id)
+    if (error) return { error: error.message }
+    try {
+      await ctx.supabase.from('audit_log').insert({
+        action: 'unconfirmed', entity_type: 'job', entity_id: input.job_id,
+        actor: 'ai_chat',
+        details: { reason: input.reason || null, summary: 'Confirmation removed' + (input.reason ? ': ' + input.reason : '') + ' (Riker)' }
+      })
+    } catch (e) { console.warn('[unmark_job_confirmed] audit insert failed:', e.message) }
+    return { ok: true, job_id: input.job_id }
+  }
+}
+
+// ─── charge_card_on_file ─────────────────────────────────────────
+const charge_card_on_file = {
+  schema: {
+    name: 'charge_card_on_file',
+    description: "Run a Square charge against the customer's saved card-on-file. Marks the invoice paid on success. Returns the Square payment ID and receipt URL. Will fail with a clear error if no card is on file or Square is misconfigured. Mirrors the app's chargeCardOnFile button.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        invoice_id: { type: 'string' },
+        invoice_number: { type: 'string', description: 'Alternative to invoice_id.' }
+      }
+    }
+  },
+  async handler(input, ctx) {
+    let invoiceId = input.invoice_id
+    if (!invoiceId && input.invoice_number) {
+      const { data } = await ctx.supabase.from('invoices').select('id').eq('invoice_number', input.invoice_number).is('deleted_at', null).maybeSingle()
+      invoiceId = data?.id
+    }
+    if (!invoiceId) return { error: 'invoice_id or invoice_number required' }
+
+    const { data: inv } = await ctx.supabase.from('invoices').select('id,invoice_number,total,status,location_id').eq('id', invoiceId).maybeSingle()
+    if (!inv) return { error: 'Invoice not found' }
+    if (inv.status === 'paid') return { error: 'Invoice already paid' }
+    if (!(+inv.total > 0)) return { error: 'Invoice has zero or negative total' }
+
+    const { data: loc } = await ctx.supabase.from('locations').select('id,name,contact_name,contact_email,contact_phone').eq('id', inv.location_id).maybeSingle()
+    if (!loc) return { error: 'Location not found' }
+
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.stephensadvanced.com'
+
+    // Step 1 — find / create Square customer + get cards list
+    const custRes = await fetch(`${siteUrl}/api/square`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'create_or_find',
+        name: loc.contact_name || loc.name,
+        email: loc.contact_email || '',
+        phone: loc.contact_phone || '',
+        locationId: loc.id
+      })
+    })
+    const custData = await custRes.json()
+    if (!custData.success) return { error: 'Square customer lookup failed: ' + (custData.error || 'unknown') }
+    if (!custData.cards?.length) return { error: 'No card on file for this customer. Use request_card_save to send them a save-card link.' }
+
+    // Step 2 — charge the first card on file
+    const card = custData.cards[0]
+    const total = +inv.total
+    const chargeRes = await fetch(`${siteUrl}/api/square`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'charge_card',
+        customerId: custData.customerId,
+        cardId: card.id,
+        amount: total,
+        invoiceId: invoiceId,
+        invoiceNumber: inv.invoice_number
+      })
+    })
+    const chargeData = await chargeRes.json()
+    if (!chargeData.success) return { error: chargeData.error || 'Square charge failed' }
+
+    // /api/square already marked invoice paid server-side. Just write the audit row.
+    try {
+      await ctx.supabase.from('audit_log').insert({
+        action: 'paid', entity_type: 'invoice', entity_id: invoiceId,
+        actor: 'ai_chat',
+        details: {
+          method: 'card_on_file',
+          amount: total,
+          square_payment_id: chargeData.paymentId,
+          last4: card.last_4,
+          brand: card.card_brand,
+          summary: `Charged $${total.toFixed(2)} to ${card.card_brand || 'card'} ending ${card.last_4 || '????'} (Riker)`
+        }
+      })
+    } catch (e) { console.warn('[charge_card_on_file] audit insert failed:', e.message) }
+
+    return { ok: true, payment_id: chargeData.paymentId, receipt_url: chargeData.receiptUrl, amount_charged: total, card: { brand: card.card_brand, last4: card.last_4 } }
+  }
+}
+
+// ─── bulk_assign_jobs_to_tech ────────────────────────────────────
+const bulk_assign_jobs_to_tech = {
+  schema: {
+    name: 'bulk_assign_jobs_to_tech',
+    description: "Assign multiple jobs to a single technician in one call. Use for 'assign all of tomorrow's jobs to Bobby' style requests.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        job_ids: { type: 'array', items: { type: 'string' }, description: 'Array of job UUIDs.' },
+        tech_id: { type: 'string', description: 'Tech UUID. Pass empty string to bulk-unassign.' }
+      },
+      required: ['job_ids']
+    }
+  },
+  async handler(input, ctx) {
+    if (!Array.isArray(input.job_ids) || !input.job_ids.length) return { error: 'job_ids (non-empty array) required' }
+    const techId = input.tech_id || null
+    const { error } = await ctx.supabase.from('jobs').update({ assigned_to: techId }).in('id', input.job_ids)
+    if (error) return { error: error.message }
+    try {
+      const rows = input.job_ids.map(jid => ({
+        action: 'assigned', entity_type: 'job', entity_id: jid,
+        actor: 'ai_chat',
+        details: { assigned_to: techId, summary: techId ? `Bulk-assigned to tech ${techId} (Riker)` : 'Bulk-unassigned (Riker)' }
+      }))
+      await ctx.supabase.from('audit_log').insert(rows)
+    } catch (e) { console.warn('[bulk_assign_jobs_to_tech] audit insert failed:', e.message) }
+    return { ok: true, count: input.job_ids.length, tech_id: techId }
+  }
+}
+
+// ─── add_job_photo ───────────────────────────────────────────────
+const add_job_photo = {
+  schema: {
+    name: 'add_job_photo',
+    description: "Attach a photo to a job. Accepts a base64-encoded image (with or without the data:image/...; prefix). Photo is appended to jobs.photos. Use when a customer emails or texts a photo Jon should keep with a job. The same array that Jon's in-app camera button writes to.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        job_id: { type: 'string', description: 'Job UUID. Required.' },
+        photo_b64: { type: 'string', description: 'Base64-encoded image data, with or without the data:image/...; prefix.' },
+        caption: { type: 'string', description: 'Optional caption / source note (e.g. "Customer emailed 4/29").' }
+      },
+      required: ['job_id', 'photo_b64']
+    }
+  },
+  async handler(input, ctx) {
+    if (!input.job_id || !input.photo_b64) return { error: 'job_id and photo_b64 required' }
+
+    const { data: job } = await ctx.supabase.from('jobs').select('photos').eq('id', input.job_id).maybeSingle()
+    if (!job) return { error: 'Job not found' }
+
+    const photo = input.photo_b64.startsWith('data:') ? input.photo_b64 : `data:image/jpeg;base64,${input.photo_b64}`
+    const photos = Array.isArray(job.photos) ? [...job.photos, photo] : [photo]
+
+    const { error } = await ctx.supabase.from('jobs').update({ photos }).eq('id', input.job_id)
+    if (error) return { error: error.message }
+
+    try {
+      await ctx.supabase.from('audit_log').insert({
+        action: 'photo_added', entity_type: 'job', entity_id: input.job_id,
+        actor: 'ai_chat',
+        details: { caption: input.caption || null, summary: 'Photo attached' + (input.caption ? ': ' + input.caption : '') + ' (Riker)' }
+      })
+    } catch (e) { console.warn('[add_job_photo] audit insert failed:', e.message) }
+
+    return { ok: true, job_id: input.job_id, photo_count: photos.length }
+  }
+}
+
+// ─── request_remote_signature ────────────────────────────────────
+const request_remote_signature = {
+  schema: {
+    name: 'request_remote_signature',
+    description: "Send the customer a unique signing link via email + SMS. Customer can sign on their phone — covers the invoice and any inspection reports for this job. Use when a job is completed but the signature wasn't captured at site (most common case for old completed jobs missing signature_data). Link is unique per job, expires in 14 days.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        job_id: { type: 'string', description: 'Job UUID. Required.' }
+      },
+      required: ['job_id']
+    }
+  },
+  async handler(input, ctx) {
+    if (!input.job_id) return { error: 'job_id required' }
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.stephensadvanced.com'
+    const r = await fetch(`${siteUrl}/api/send-signature-request`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ job_id: input.job_id })
+    })
+    const data = await r.json()
+    if (!r.ok) return { error: data.error || 'Send failed' }
+
+    try {
+      await ctx.supabase.from('audit_log').insert({
+        action: 'signature_request_sent', entity_type: 'job', entity_id: input.job_id,
+        actor: 'ai_chat',
+        details: { email_sent: !!data.email?.sent, sms_sent: !!data.sms?.sent, summary: 'Signing link sent (Riker)' }
+      })
+    } catch (e) { console.warn('[request_remote_signature] audit insert failed:', e.message) }
+
+    const channels = []
+    if (data.email?.sent) channels.push('email')
+    if (data.sms?.sent) channels.push('text')
+    return { ok: true, sent_via: channels, expires_in_days: 14 }
+  }
+}
+
+// ─── request_card_save ───────────────────────────────────────────
+const request_card_save = {
+  schema: {
+    name: 'request_card_save',
+    description: "Send the customer a Square-hosted link to save a card on file (and optionally pay an invoice at the same time). Use when a customer has agreed to autopay or prepaid billing but hasn't entered card info yet. After they save, future charges can run via charge_card_on_file. Sends via SMS + email if both are on file.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        invoice_id: { type: 'string', description: 'Optional: invoice to charge at the same time the card is saved. If omitted, this is a save-only flow.' },
+        location_id: { type: 'string', description: 'Required if no invoice_id — which location/customer should the card be saved against.' }
+      }
+    }
+  },
+  async handler(input, ctx) {
+    let inv = null
+    if (input.invoice_id) {
+      const { data } = await ctx.supabase.from('invoices').select('id,invoice_number,total,location_id').eq('id', input.invoice_id).maybeSingle()
+      if (!data) return { error: 'Invoice not found' }
+      inv = data
+    }
+
+    const locId = inv?.location_id || input.location_id
+    if (!locId) return { error: 'invoice_id or location_id required' }
+
+    const { data: loc } = await ctx.supabase.from('locations').select('id,name,contact_name,contact_email,contact_phone,billing_account_id').eq('id', locId).maybeSingle()
+    if (!loc) return { error: 'Location not found' }
+
+    if (!loc.contact_email && !loc.contact_phone) {
+      return { error: 'No contact email or phone on file for this location. Add one first.' }
+    }
+
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.stephensadvanced.com'
+
+    // Step 1 — ensure Square customer exists
+    const custRes = await fetch(`${siteUrl}/api/square`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'create_or_find',
+        name: loc.contact_name || loc.name,
+        email: loc.contact_email || '',
+        phone: loc.contact_phone || '',
+        locationId: loc.id
+      })
+    })
+    const custData = await custRes.json()
+    if (!custData.success) return { error: 'Square customer setup failed: ' + (custData.error || 'unknown') }
+
+    // Step 2 — create the hosted-checkout link
+    const linkRes = await fetch(`${siteUrl}/api/square`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'checkout_and_save_card',
+        customerId: custData.customerId,
+        amount: inv ? +inv.total : 0,
+        invoiceNumber: inv?.invoice_number || '',
+        customerName: loc.contact_name || loc.name,
+        invoiceId: inv?.id || null,
+        email: loc.contact_email || ''
+      })
+    })
+    const linkData = await linkRes.json()
+    if (!linkData.success || !linkData.url) return { error: linkData.error || 'Could not create Square checkout link' }
+
+    // Step 3 — send the link via SMS + email
+    const sentVia = []
+    const msg = inv
+      ? `Hi from Stephens Advanced — secure payment link for invoice ${inv.invoice_number} ($${(+inv.total).toFixed(2)}). Pays the invoice and saves your card for future service: ${linkData.url}`
+      : `Hi from Stephens Advanced — secure link to save your card on file for future service. No charge today: ${linkData.url}`
+
+    if (loc.contact_phone) {
+      try {
+        const toPhone = loc.contact_phone.startsWith('+') ? loc.contact_phone : '+1' + loc.contact_phone.replace(/\D/g, '')
+        await sendSMSRaw(toPhone, msg)
+        sentVia.push('sms')
+      } catch (e) { console.warn('[request_card_save] SMS failed:', e.message) }
+    }
+
+    if (loc.contact_email) {
+      try {
+        await sendEmailRaw({
+          to: loc.contact_email,
+          subject: inv ? `Payment & save card · Invoice ${inv.invoice_number}` : 'Save your card · Stephens Advanced',
+          body: msg
+        })
+        sentVia.push('email')
+      } catch (e) { console.warn('[request_card_save] email failed:', e.message) }
+    }
+
+    if (!sentVia.length) return { error: 'Both SMS and email send failed' }
+
+    try {
+      await ctx.supabase.from('audit_log').insert({
+        action: 'card_save_link_sent', entity_type: 'location', entity_id: loc.id,
+        actor: 'ai_chat',
+        details: { invoice_id: inv?.id || null, sent_via: sentVia, summary: `Card-save link sent via ${sentVia.join(' + ')} (Riker)` }
+      })
+    } catch (e) { console.warn('[request_card_save] audit insert failed:', e.message) }
+
+    return { ok: true, sent_via: sentVia, link: linkData.url }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // REGISTRY (placed after every tool const so all references resolve)
 // ═══════════════════════════════════════════════════════════════
 
@@ -4706,6 +5082,12 @@ const ALL_TOOLS = {
   list_attachments_in_thread, read_attachment_text, save_email_attachment_to_storage, send_email_with_attachment,
   // Phase 4 — drafts + reply_all
   create_holding_draft, list_drafts, delete_draft, reply_all,
+  // Capability-parity batch — match the actions Jon takes in the app
+  mark_job_confirmed, unmark_job_confirmed,
+  charge_card_on_file, request_card_save,
+  bulk_assign_jobs_to_tech,
+  add_job_photo,
+  request_remote_signature,
 }
 
 // null = all tools. Keeps Jon contexts unrestricted; trims customer contexts.
