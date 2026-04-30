@@ -245,7 +245,7 @@ body.kiosk-mode .ov{z-index:9999}
 .ov-hdr{display:flex;align-items:center;gap:4px;padding:max(env(safe-area-inset-top),10px) 16px 10px;border-bottom:1px solid var(--b1);flex-shrink:0;background:var(--bg)}
 .ov-back{font-size:26px;color:var(--fire);line-height:1;padding:4px 8px 4px 0;min-width:44px;min-height:44px;display:flex;align-items:center}
 .ov-title{font-size:17px;font-weight:700;flex:1}
-.ov-act{font-size:13px;font-weight:700;color:var(--fire);padding:8px 0;min-height:44px;display:flex;align-items:center}
+.ov-act{font-size:13px;font-weight:700;color:var(--fire);padding:8px 12px;min-height:44px;display:flex;align-items:center}
 .ov-body{flex:1;overflow-y:auto;padding:16px 16px 160px;-webkit-overflow-scrolling:touch}
 .ov-foot{position:fixed;bottom:0;left:0;right:0;padding:12px 16px max(env(safe-area-inset-bottom),20px);background:var(--c1);border-top:1px solid var(--b1);z-index:101}
 .ds{margin-bottom:20px}
@@ -340,7 +340,7 @@ body.kiosk-mode .ov{z-index:9999}
 .qa-btn.pri{background:var(--fire);border-color:var(--fire);color:#fff}
 .qa-btn.ok2{background:var(--ok);border-color:var(--ok);color:#fff}
 .err{color:var(--bad);font-size:12px;margin-top:8px;text-align:center}
-.del-btn{font-size:13px;font-weight:700;color:var(--bad);padding:8px 0;min-height:44px;display:flex;align-items:center}
+.del-btn{font-size:13px;font-weight:700;color:var(--bad);padding:8px 10px;min-height:44px;min-width:44px;display:flex;align-items:center;justify-content:center}
 .del-confirm{background:var(--bads);border:1.5px solid var(--bad);border-radius:var(--r);padding:14px;margin-bottom:16px;display:none}
 .del-confirm.vis{display:block}
 .del-confirm-msg{font-size:13px;font-weight:600;color:var(--bad);margin-bottom:12px;line-height:1.4}
@@ -3489,7 +3489,7 @@ async function openJob(id){
     <button class="ov-back" onclick="pop()">‹</button>
     <div class="ov-title">${esc(l.name||'Job')}</div>
     <button class="ov-act" onclick="openCust('${l.id}')">Client ›</button>
-    <button class="del-btn" style="margin-left:4px" onclick="toggleDelConfirm('del-job-${j.id}')">🗑</button>
+    <button class="del-btn" style="margin-left:8px" onclick="toggleDelConfirm('del-job-${j.id}')">🗑</button>
   </div><div class="ov-body">
   <div class="del-confirm" id="del-job-${j.id}">
     <div class="del-confirm-msg">Delete this job for ${esc(l.name||'')}?</div>
