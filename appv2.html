@@ -4261,17 +4261,25 @@ async function billContractedFromJob(jobId){
     await load()
     const invNow=D.invs.find(i=>i.id===result.invId)
     if(invNow?.status!=='paid'){
-      // Charge didn't go through — chargeCardOnFile already toasted why.
-      // Pop the now-orphan job overlay so the user isn't stuck.
+      // Charge didn't go through — chargeCardOnFile already toasted why
+      // for failures, but cancellation is silent. Pop the now-orphan job
+      // overlay so the user isn't stuck, and surface a status toast so
+      // they know the invoice was created in draft.
       pop()
+      toast('Job completed · invoice in draft (payment not collected)',false)
     }
     return
   }
 
-  // Path 2 — no card: just send the invoice email (uses existing helper)
+  // Path 2 — no card: send the invoice email autonomously via kioskEmailInvoice.
+  // (Earlier draft used sendInvoiceEmailFromDetail which opens a Review-Before-
+  // Sending preview; pop() ripped that off before the user could tap Send,
+  // so no email actually went out and the toast was a lie. kioskEmailInvoice
+  // sends directly without UI — passing invId triggers the autonomous path
+  // that builds its own email context.)
   if(result.invId){
     try{
-      await sendInvoiceEmailFromDetail(result.invId,l.name||'Customer',result.invNum)
+      await kioskEmailInvoice(false, result.invId)
       await load()
       pop()
       toast('Job done · invoice emailed ✓')
@@ -6140,8 +6148,18 @@ async function _kioskFinalize(method){
     })
   }
 
-  if(inv && k.loc.contact_email){
-    try { await sendInvoiceEmailFromDetail(inv.id, k.loc.name||'Customer', inv.invoice_number) } catch(e){ console.error('kiosk email send:', e) }
+  // NOTE: receipt/invoice email already went out during the customer's pay
+  // step (kioskPayCardOnFile / kioskPayNewCard / kioskPayOffline each call
+  // kioskEmailInvoice directly). This used to call sendInvoiceEmailFromDetail
+  // here, which (a) opened a Review-Before-Sending preview that immediately
+  // got popped by _kioskTeardown so nothing went out, and (b) would have
+  // been a duplicate-email if it had actually worked. Removed.
+  // For the cash/check 'method' path the invoice was just stamped paid above,
+  // so re-fire kioskEmailInvoice with the now-paid status to get a proper
+  // PAID receipt out (since the offline-pay kioskEmailInvoice fired BEFORE
+  // the status write in some flows).
+  if(inv && k.loc.contact_email && (method==='cash'||method==='check'||method==='card_manual')){
+    try { await kioskEmailInvoice(true) } catch(e){ console.error('kiosk receipt send:', e) }
   }
 
   await load()
@@ -8702,8 +8720,49 @@ async function kioskPayOffline(method){
   }
 }
 
-async function kioskEmailInvoice(paid){
-  const d=window._kiosk;if(!d)return
+// _buildEmailContext — assemble a kiosk-shaped 'd' object from an invoice id.
+// Used by paths that need to send an invoice email autonomously but don't
+// have window._kiosk set up (billContractedFromJob, etc).
+async function _buildEmailContext(invId){
+  let inv=D.invs.find(i=>i.id===invId)
+  if(!inv){
+    const{data:freshInv}=await SB.from('invoices').select('*').eq('id',invId).maybeSingle()
+    inv=freshInv
+  }
+  if(!inv)return null
+  const loc=D.locs.find(l=>l.id===inv.location_id)||{}
+  const ba=loc.billing_account_id?D.bas.find(b=>b.id===loc.billing_account_id):null
+  const{data:lines}=await SB.from('invoice_lines').select('*').eq('invoice_id',invId).is('deleted_at',null).order('sort_order')
+  const ls=(lines||[]).map(l=>({description:l.description,quantity:+(l.quantity||1),unit_price:+(l.unit_price||0),total:+(l.total||0)}))
+  let rpts=[]
+  if(inv.job_id){
+    const{data:r}=await SB.from('reports').select('id,report_type,report_data,created_at,job_id').eq('job_id',inv.job_id).order('created_at')
+    rpts=r||[]
+  }
+  let atts=[]
+  try{ atts=await loadInvoiceAttachments(invId) }catch(e){}
+  return{
+    invId,
+    invNum:inv.invoice_number,
+    custName:loc.name||ba?.name||'Customer',
+    total:+inv.total||0,
+    loc,ba,inv,ls,rpts,atts
+  }
+}
+
+async function kioskEmailInvoice(paid,invIdOverride){
+  // Two ways in:
+  //   - kiosk flow (no override): use window._kiosk that openKiosk built up
+  //   - autonomous (e.g. billContractedFromJob): pass invIdOverride and we
+  //     build the d shape from the invoice + location chain
+  let d
+  if(invIdOverride){
+    d=await _buildEmailContext(invIdOverride)
+    if(!d)return
+  }else{
+    d=window._kiosk
+    if(!d)return
+  }
   const to=d.loc.contact_email||d.ba?.email||''
   if(!to)return
   // Re-fetch d.inv so paid_at, payment_method, payment_note reflect any
@@ -8723,7 +8782,7 @@ async function kioskEmailInvoice(paid){
         const pj=await payRes.json();if(pj.success&&pj.paymentLink)payUrl=pj.paymentLink
       }catch(e){}
     }
-    const html=buildInvoiceEmailHtml({
+    let html=buildInvoiceEmailHtml({
       invNum:d.invNum,custName:d.custName,
       addr:[d.loc.address,d.loc.city,d.loc.state,d.loc.zip].filter(Boolean).join(', '),
       // Format dates as UTC so a YYYY-MM-DD value doesn't slide back a day in CDT
@@ -8740,6 +8799,18 @@ async function kioskEmailInvoice(paid){
       paymentMethod:d.inv.payment_method,
       paymentNote:d.inv.payment_note
     })
+    // Inject site photos (if any) into the email body — this used to only
+    // happen in the _confirmSendEmail preview-send path; the kiosk-side path
+    // skipped it. Now both paths see the same body shape.
+    try{
+      const job2=d.inv.job_id?D.jobs.find(j2=>j2.id===d.inv.job_id):null
+      if(job2?.photos?.length){
+        let photoHtml='<div style="margin-top:20px;padding-top:16px;border-top:1px solid #eee"><div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#999;margin-bottom:12px">Site Photos</div>'
+        job2.photos.forEach(p=>{photoHtml+=`<img src="${p}" style="max-width:100%;border-radius:8px;margin-bottom:8px;border:1px solid #eee">`})
+        photoHtml+='</div>'
+        html=html.replace('<!--PHOTOS_AND_DISCOUNT_INJECT_HERE-->',photoHtml+'<!--PHOTOS_AND_DISCOUNT_INJECT_HERE-->')
+      }
+    }catch(photoErr){console.warn('[kioskEmailInvoice] photo inject failed:',photoErr.message)}
     // Build the invoice PDF — prefer Mazon-stamped version if present, otherwise
     // generate fresh from the same buildInvoicePdfHtml the Money-tab flow uses.
     const attachments=[]
@@ -8758,8 +8829,9 @@ async function kioskEmailInvoice(paid){
         const invPdfHtml=buildInvoicePdfHtml({
           invNum:d.invNum,custName:d.custName,
           addr:[d.loc.address,d.loc.city,d.loc.state,d.loc.zip].filter(Boolean).join(', '),
-          date:d.inv.date?new Date(d.inv.date).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):'',
-          dueDate:d.inv.due_date?new Date(d.inv.due_date).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):'',
+          // UTC formatting so a YYYY-MM-DD date doesn't slide back a day in CDT
+          date:d.inv.date?new Date(d.inv.date).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric',timeZone:'UTC'}):'',
+          dueDate:d.inv.due_date?new Date(d.inv.due_date).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric',timeZone:'UTC'}):'',
           lines:d.ls,total:d.total,poNumber:d.inv.po_number||''
         })
         // Same DOM-render pattern as the Money-tab path (iframe approach
