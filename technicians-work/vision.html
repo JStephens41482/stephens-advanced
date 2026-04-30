@@ -1,0 +1,793 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>technicians.work — vision deck</title>
+  <meta name="robots" content="noindex,nofollow">
+  <style>
+    :root {
+      /* Facilify palette */
+      --f-dark: #1074B7;
+      --f-bright: #1A9BD7;
+      --f-sky: #A0D0EE;
+      --f-skyMute: #D6EAF6;
+      /* technicians.work accent */
+      --tw-fire: #f05a28;
+      --tw-fireDeep: #c84418;
+      /* neutrals */
+      --ink: #0c1220;
+      --ink2: #2a3447;
+      --ink3: #4a5267;
+      --ink4: #7c8497;
+      --paper: #ffffff;
+      --paper2: #f5f8fb;
+      --line: #d8e0e8;
+      --ok: #10b981;
+    }
+    *, *::before, *::after { box-sizing: border-box }
+    html, body {
+      margin: 0; padding: 0;
+      background: var(--paper); color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      line-height: 1.5;
+    }
+    .wrap { max-width: 1080px; margin: 0 auto; padding: 0 32px }
+
+    /* Header bar */
+    header.top {
+      padding: 18px 0; border-bottom: 1px solid var(--line);
+      background: var(--paper);
+      position: sticky; top: 0; z-index: 10;
+    }
+    header.top .wrap {
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    header.top .brand {
+      font-family: 'Fraunces', Georgia, serif; font-weight: 900;
+      font-size: 18px; letter-spacing: -0.02em;
+    }
+    header.top .brand .dot { color: var(--ink4) }
+    header.top .brand .work { color: var(--tw-fire); font-style: italic; font-weight: 500 }
+    header.top .stamp {
+      font-size: 11px; color: var(--ink4); letter-spacing: 1px; text-transform: uppercase;
+    }
+
+    /* Hero */
+    .hero {
+      padding: 96px 0 80px;
+      background: linear-gradient(180deg, var(--paper) 0%, var(--f-skyMute) 100%);
+      border-bottom: 1px solid var(--line);
+    }
+    .eyebrow {
+      display: inline-block;
+      font-size: 11px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase;
+      color: var(--f-dark); background: var(--paper);
+      padding: 7px 14px; border-radius: 999px;
+      border: 1px solid var(--f-sky);
+      margin-bottom: 24px;
+    }
+    h1.hero-title {
+      font-family: 'Fraunces', Georgia, serif;
+      font-size: clamp(40px, 6vw, 68px); line-height: 1.05;
+      letter-spacing: -0.03em; font-weight: 900;
+      margin: 0 0 20px;
+      max-width: 820px;
+    }
+    h1.hero-title .accent { color: var(--tw-fire); font-style: italic; font-weight: 500 }
+    .hero-lede {
+      font-size: 19px; line-height: 1.55; color: var(--ink2);
+      max-width: 680px; margin: 0;
+    }
+    .hero-lede b { color: var(--ink) }
+
+    /* Section base */
+    section {
+      padding: 96px 0;
+      border-bottom: 1px solid var(--line);
+    }
+    section.alt { background: var(--paper2) }
+    section.dark {
+      background: var(--ink); color: #e8edf5; border-bottom: none;
+    }
+    section.dark h2, section.dark h3 { color: #fff }
+    section.dark .section-eyebrow { color: var(--f-sky) }
+    section.dark p { color: #c5cfe0 }
+
+    .section-eyebrow {
+      font-size: 11px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase;
+      color: var(--f-dark);
+      margin-bottom: 14px;
+    }
+    h2 {
+      font-family: 'Fraunces', Georgia, serif;
+      font-size: clamp(30px, 4vw, 44px); line-height: 1.1;
+      letter-spacing: -0.02em; font-weight: 900;
+      margin: 0 0 18px;
+    }
+    h3 {
+      font-size: 20px; font-weight: 800; margin: 0 0 8px;
+      letter-spacing: -0.01em;
+    }
+    .lede {
+      font-size: 18px; color: var(--ink2); line-height: 1.55;
+      max-width: 720px; margin: 0 0 48px;
+    }
+
+    /* Thesis card */
+    .thesis-card {
+      padding: 36px 40px;
+      background: var(--paper); border: 1.5px solid var(--f-dark);
+      border-radius: 16px;
+      box-shadow: 0 24px 48px -24px rgba(16,116,183,.25);
+    }
+    .thesis-card .quote {
+      font-family: 'Fraunces', Georgia, serif;
+      font-size: 26px; line-height: 1.35; color: var(--ink);
+      margin: 0;
+    }
+    .thesis-card .quote .em { color: var(--tw-fire); font-style: italic }
+    .thesis-card .attrib {
+      margin-top: 18px; font-size: 13px; color: var(--ink4);
+      letter-spacing: 1px; text-transform: uppercase; font-weight: 700;
+    }
+
+    /* Market pyramid */
+    .pyramid-row {
+      display: grid; grid-template-columns: 1fr; gap: 40px; align-items: center;
+    }
+    @media (min-width: 820px) { .pyramid-row { grid-template-columns: 1fr 1fr } }
+    .pyramid svg { width: 100%; height: auto; max-width: 460px; display: block; margin: 0 auto }
+    .pyramid-legend ul { list-style: none; padding: 0; margin: 0 }
+    .pyramid-legend li {
+      padding: 16px 0; border-bottom: 1px solid var(--line);
+      display: flex; gap: 14px; align-items: flex-start;
+    }
+    .pyramid-legend li:last-child { border-bottom: none }
+    .pyramid-legend .dot {
+      width: 14px; height: 14px; border-radius: 4px; margin-top: 5px; flex: 0 0 14px;
+    }
+    .pyramid-legend .label {
+      font-weight: 700; font-size: 14px; letter-spacing: 0.5px;
+      text-transform: uppercase; color: var(--ink2);
+    }
+    .pyramid-legend .desc {
+      font-size: 14px; color: var(--ink3); margin-top: 4px; line-height: 1.5;
+    }
+
+    /* Levels - the tower */
+    .levels {
+      display: grid; gap: 24px; grid-template-columns: 1fr;
+    }
+    .level {
+      background: var(--paper); border: 1px solid var(--line); border-radius: 18px;
+      padding: 32px 36px;
+      display: grid; grid-template-columns: 64px 1fr auto; gap: 28px; align-items: start;
+      transition: border-color .2s, transform .2s;
+    }
+    .level:hover { border-color: var(--f-bright); transform: translateY(-2px) }
+    @media (max-width: 720px) {
+      .level { grid-template-columns: 56px 1fr; padding: 24px 22px }
+      .level .level-meta { grid-column: 1/-1; margin-top: 12px }
+    }
+    .level-num {
+      font-family: 'Fraunces', Georgia, serif;
+      font-size: 56px; font-weight: 900; line-height: 1;
+      color: var(--f-dark); letter-spacing: -0.04em;
+    }
+    .level-body h3 { font-size: 24px; margin-bottom: 6px }
+    .level-body .level-tag {
+      display: inline-block; font-size: 11px; font-weight: 800; letter-spacing: 1.5px;
+      text-transform: uppercase; padding: 4px 10px; border-radius: 999px;
+      margin-left: 10px; vertical-align: middle;
+    }
+    .tag-free { background: rgba(16,185,129,.12); color: #047857 }
+    .tag-paid { background: rgba(240,90,40,.12); color: var(--tw-fireDeep) }
+    .tag-network { background: rgba(26,155,215,.12); color: var(--f-dark) }
+    .level-body p { margin: 8px 0 0; color: var(--ink2); font-size: 15px; line-height: 1.55 }
+    .level-body .level-bullets {
+      list-style: none; padding: 0; margin: 16px 0 0;
+    }
+    .level-body .level-bullets li {
+      padding-left: 22px; position: relative; margin-bottom: 6px;
+      font-size: 14px; color: var(--ink3);
+    }
+    .level-body .level-bullets li::before {
+      content: "→"; position: absolute; left: 0; color: var(--f-bright); font-weight: 800;
+    }
+    .level-meta {
+      text-align: right; font-size: 13px; color: var(--ink4);
+    }
+    .level-meta .price {
+      font-family: 'Fraunces', Georgia, serif;
+      font-size: 28px; font-weight: 900; color: var(--ink);
+      line-height: 1; margin-bottom: 4px;
+    }
+    .level-meta .price-sub {
+      font-size: 11px; color: var(--ink4); letter-spacing: 1px; text-transform: uppercase;
+    }
+
+    /* Why-this-works grid */
+    .why-grid {
+      display: grid; grid-template-columns: 1fr; gap: 20px;
+    }
+    @media (min-width: 720px) { .why-grid { grid-template-columns: 1fr 1fr } }
+    .why-card {
+      background: var(--paper); border: 1px solid var(--line); border-radius: 14px;
+      padding: 28px 30px;
+    }
+    .why-card .why-num {
+      font-family: 'Fraunces', Georgia, serif;
+      font-size: 18px; color: var(--tw-fire); font-weight: 900;
+      letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 8px;
+    }
+    .why-card h3 { font-size: 18px; margin-bottom: 8px }
+    .why-card p { margin: 0; font-size: 14px; color: var(--ink3); line-height: 1.55 }
+    .why-card p b { color: var(--ink) }
+
+    /* Phases timeline */
+    .timeline {
+      position: relative; padding-left: 40px;
+    }
+    .timeline::before {
+      content: ""; position: absolute; left: 12px; top: 8px; bottom: 8px;
+      width: 2px; background: linear-gradient(180deg, var(--f-bright), var(--tw-fire));
+    }
+    .phase {
+      position: relative; padding: 8px 0 28px;
+    }
+    .phase::before {
+      content: ""; position: absolute; left: -34px; top: 14px;
+      width: 16px; height: 16px; border-radius: 50%;
+      background: var(--paper); border: 3px solid var(--f-bright);
+    }
+    .phase.now::before { background: var(--tw-fire); border-color: var(--tw-fire) }
+    .phase-when {
+      font-size: 11px; color: var(--ink4); letter-spacing: 1.5px;
+      text-transform: uppercase; font-weight: 800; margin-bottom: 4px;
+    }
+    .phase h3 { font-size: 18px; margin-bottom: 6px }
+    .phase p { margin: 0; font-size: 14px; color: var(--ink3); line-height: 1.55 }
+
+    /* Marketplace network diagram */
+    .network-svg { width: 100%; height: auto; max-width: 600px; display: block; margin: 0 auto 36px }
+
+    /* Comparison table */
+    .compare {
+      width: 100%; border-collapse: collapse; margin-top: 32px;
+      font-size: 14px; background: var(--paper);
+      border: 1px solid var(--line); border-radius: 12px; overflow: hidden;
+    }
+    .compare th, .compare td { padding: 14px 18px; text-align: left; border-bottom: 1px solid var(--line) }
+    .compare th { background: var(--f-skyMute); color: var(--ink); font-weight: 800; letter-spacing: .5px }
+    .compare tr:last-child td { border-bottom: none }
+    .compare td.x { color: #b91c1c; font-weight: 800 }
+    .compare td.y { color: #047857; font-weight: 800 }
+    .compare td.who { font-weight: 700; color: var(--ink) }
+
+    /* Closing */
+    .closing-box {
+      padding: 56px 48px; border-radius: 22px;
+      background: linear-gradient(135deg, var(--f-dark), var(--ink));
+      color: #fff; text-align: center;
+    }
+    .closing-box h2 { color: #fff; margin-bottom: 14px }
+    .closing-box p {
+      color: #c5cfe0; font-size: 17px; max-width: 560px; margin: 0 auto;
+    }
+    .closing-box .accent { color: var(--tw-fire); font-style: italic; font-family: 'Fraunces', Georgia, serif; font-weight: 500 }
+
+    /* Footer */
+    footer.bot {
+      padding: 36px 0; text-align: center; font-size: 12px; color: var(--ink4);
+    }
+  </style>
+</head>
+<body>
+
+<style>
+  /* AUTH GATE */
+  body > header, body > section, body > footer { display: none }
+  body.unlocked > header, body.unlocked > section, body.unlocked > footer { display: block }
+  #_auth-overlay { position: fixed; inset: 0; background: linear-gradient(135deg, #ffffff 0%, #D6EAF6 100%); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 24px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; }
+  body.unlocked #_auth-overlay { display: none }
+  #_auth-form { background: #fff; padding: 36px 32px; border-radius: 16px; border: 1px solid #d8e0e8; box-shadow: 0 24px 48px -16px rgba(16,116,183,0.18); max-width: 360px; width: 100%; display: flex; flex-direction: column; gap: 14px; }
+  #_auth-form h2 { margin: 0; font-family: 'Fraunces', Georgia, serif; font-size: 24px; font-weight: 900; color: #0c1220; letter-spacing: -0.02em; }
+  #_auth-form p { margin: 0; font-size: 14px; color: #4a5267; line-height: 1.5; }
+  #_auth-input { padding: 14px 14px; font-size: 15px; border: 1px solid #d8e0e8; border-radius: 8px; font-family: inherit; outline: none; transition: border-color 0.15s; }
+  #_auth-input:focus { border-color: #1A9BD7; }
+  #_auth-btn { padding: 13px 16px; font-size: 14px; font-weight: 800; letter-spacing: 0.5px; background: #f05a28; color: #fff; border: none; border-radius: 8px; cursor: pointer; transition: background-color 0.15s; font-family: inherit; }
+  #_auth-btn:hover { background: #c84418; }
+  #_auth-error { font-size: 13px; color: #b91c1c; margin: 0; }
+</style>
+<div id="_auth-overlay">
+  <form id="_auth-form" autocomplete="off">
+    <h2>Private document</h2>
+    <p>Enter the password to view this draft.</p>
+    <input id="_auth-input" type="password" autocomplete="off" autofocus>
+    <button id="_auth-btn" type="submit">Unlock</button>
+    <p id="_auth-error" hidden>Wrong password.</p>
+  </form>
+</div>
+<script>
+(async () => {
+  const HASH = '29ba9d9cef5a66461116a24938bb9307e005c35aa1bb909f16aa5e85bd767480';
+  const KEY = 'tw_auth_v1';
+  async function sha256(s) {
+    const buf = new TextEncoder().encode(s);
+    const h = await crypto.subtle.digest('SHA-256', buf);
+    return [...new Uint8Array(h)].map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+  if (sessionStorage.getItem(KEY) === HASH) {
+    document.body.classList.add('unlocked');
+    return;
+  }
+  const ready = (fn) => document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', fn) : fn();
+  ready(() => {
+    const form = document.getElementById('_auth-form');
+    const input = document.getElementById('_auth-input');
+    const err = document.getElementById('_auth-error');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const hash = await sha256(input.value);
+      if (hash === HASH) {
+        sessionStorage.setItem(KEY, hash);
+        document.body.classList.add('unlocked');
+      } else {
+        err.hidden = false;
+        input.value = '';
+        input.focus();
+      }
+    });
+  });
+})();
+</script>
+
+<header class="top">
+  <div class="wrap">
+    <div class="brand">technicians<span class="dot">.</span><span class="work">work</span></div>
+    <div class="stamp">Vision Deck · v1 · 2026</div>
+  </div>
+</header>
+
+<!-- ===== HERO ===== -->
+<section class="hero">
+  <div class="wrap">
+    <div class="eyebrow">A Proposal · By a Working Technician</div>
+    <h1 class="hero-title">
+      Big software built for big shops.<br>
+      We build for <span class="accent">the guy in the truck.</span>
+    </h1>
+    <p class="hero-lede">
+      Every fire-protection software vendor today sells to companies with office staff. <b>The biggest, most underserved part of the market is the solo tech and 1–3-person shop</b> — and per-seat SaaS economics literally cannot follow them downmarket. This is the plan to own that segment.
+    </p>
+  </div>
+</section>
+
+<!-- ===== THE THESIS ===== -->
+<section>
+  <div class="wrap">
+    <div class="section-eyebrow">The Thesis</div>
+    <h2 style="margin-bottom: 36px;">One sentence.</h2>
+    <div class="thesis-card">
+      <p class="quote">
+        Make the field app so good it wins on its own merits, give it away forever, then sell <span class="em">an AI assistant that does the back-office work while you drive</span> — for less than a part-time receptionist costs.
+      </p>
+      <div class="attrib">— technicians.work, 2026</div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== THE MARKET ===== -->
+<section class="alt">
+  <div class="wrap">
+    <div class="section-eyebrow">The Market</div>
+    <h2>Everyone is fighting over the small triangle.</h2>
+    <p class="lede">
+      The fire-protection software industry sells exclusively to mid-market shops with office staff who can absorb back-office work. The bottom of the pyramid — solo and very small operators — is structurally ignored. <b>Not because there's no demand. Because their unit economics break below 5 seats.</b>
+    </p>
+
+    <div class="pyramid-row">
+      <div class="pyramid">
+        <svg viewBox="0 0 400 320" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="topgrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#1074B7"/>
+              <stop offset="100%" stop-color="#1A9BD7"/>
+            </linearGradient>
+            <linearGradient id="botgrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#f05a28"/>
+              <stop offset="100%" stop-color="#c84418"/>
+            </linearGradient>
+          </defs>
+          <!-- Top: mid-market (small) -->
+          <polygon points="160,20 240,20 220,90 180,90" fill="url(#topgrad)"/>
+          <text x="200" y="58" text-anchor="middle" fill="#fff" font-family="-apple-system, sans-serif" font-size="11" font-weight="800" letter-spacing="1">5+ TECH SHOPS</text>
+          <text x="200" y="74" text-anchor="middle" fill="#cfe6f5" font-family="-apple-system, sans-serif" font-size="9">~20% of market</text>
+          <!-- Middle: small shops -->
+          <polygon points="180,90 220,90 250,170 150,170" fill="#A0D0EE" opacity="0.7"/>
+          <text x="200" y="135" text-anchor="middle" fill="#1074B7" font-family="-apple-system, sans-serif" font-size="11" font-weight="800" letter-spacing="1">2–4 TECH SHOPS</text>
+          <text x="200" y="151" text-anchor="middle" fill="#1074B7" font-family="-apple-system, sans-serif" font-size="9">~30% of market</text>
+          <!-- Bottom: solo (large, orange) -->
+          <polygon points="150,170 250,170 320,300 80,300" fill="url(#botgrad)"/>
+          <text x="200" y="235" text-anchor="middle" fill="#fff" font-family="-apple-system, sans-serif" font-size="14" font-weight="900" letter-spacing="1.5">SOLO + 1-TECH</text>
+          <text x="200" y="255" text-anchor="middle" fill="#ffe4d6" font-family="-apple-system, sans-serif" font-size="11" font-weight="700">~50% of the market</text>
+          <text x="200" y="275" text-anchor="middle" fill="#ffe4d6" font-family="-apple-system, sans-serif" font-size="10">Zero competition. All the pain.</text>
+        </svg>
+      </div>
+      <div class="pyramid-legend">
+        <ul>
+          <li>
+            <div class="dot" style="background: var(--f-dark)"></div>
+            <div>
+              <div class="label">Top — Mid-market shops</div>
+              <div class="desc">fireNspec, Brycer, Inspect Point, Building Reports. They charge $50/seat/month and need 5+ seats to justify a sales call. <b>Saturated. Defended.</b></div>
+            </div>
+          </li>
+          <li>
+            <div class="dot" style="background: var(--f-sky)"></div>
+            <div>
+              <div class="label">Middle — Small shops</div>
+              <div class="desc">2–4 techs with one office person. Some use the mid-market tools, most use spreadsheets and QuickBooks. Soft target.</div>
+            </div>
+          </li>
+          <li>
+            <div class="dot" style="background: var(--tw-fire)"></div>
+            <div>
+              <div class="label">Bottom — Solo + 1-tech</div>
+              <div class="desc">The ignored majority. Doing real work, billing real money, on a clipboard. <b>This is technicians.work.</b></div>
+            </div>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== THE LEVELS ===== -->
+<section>
+  <div class="wrap">
+    <div class="section-eyebrow">The Build · 4 Levels</div>
+    <h2>Each level unlocks the next.</h2>
+    <p class="lede">
+      We don't try to do everything at once. The product builds in 4 distinct layers, each one good enough to stand alone, each one making the next one inevitable.
+    </p>
+
+    <div class="levels">
+
+      <!-- LEVEL 1 -->
+      <div class="level">
+        <div class="level-num">1</div>
+        <div class="level-body">
+          <h3>The Field App <span class="level-tag tag-free">Free Forever</span></h3>
+          <p>The best mobile tool a working tech has ever used. Replaces the clipboard, the QuickBooks invoice, the paper work order. Genuinely better than what any solo tech is using today.</p>
+          <ul class="level-bullets">
+            <li>Schedule, route, and run jobs from your phone</li>
+            <li>In-person customer handoff (kiosk) — sign, pay, leave</li>
+            <li>Card on file, auto-charge, Square integrated</li>
+            <li>PDF reports + invoices auto-generated</li>
+            <li>Customer portal for follow-up & re-booking</li>
+          </ul>
+        </div>
+        <div class="level-meta">
+          <div class="price">$0</div>
+          <div class="price-sub">Free, forever</div>
+        </div>
+      </div>
+
+      <!-- LEVEL 2 -->
+      <div class="level">
+        <div class="level-num">2</div>
+        <div class="level-body">
+          <h3>The Tutorial <span class="level-tag tag-free">Built In</span></h3>
+          <p>The onboarding that no one else has. We walk a brand-new solo tech from "I want to go out on my own" to <b>first paid invoice</b> — every step explained, every link provided.</p>
+          <ul class="level-bullets">
+            <li>Register your LLC (link to your state's SoS)</li>
+            <li>Get GL + commercial auto insurance (with vendor recommendations)</li>
+            <li>Get NICET I + state low-voltage license</li>
+            <li>Open Square + a business bank account</li>
+            <li>Your first 5 customers — script + how to price</li>
+          </ul>
+        </div>
+        <div class="level-meta">
+          <div class="price">$0</div>
+          <div class="price-sub">Free, forever</div>
+        </div>
+      </div>
+
+      <!-- LEVEL 3 -->
+      <div class="level">
+        <div class="level-num">3</div>
+        <div class="level-body">
+          <h3>Riker — AI Assistant <span class="level-tag tag-paid">Paid Add-On</span></h3>
+          <p>Riker is your back office. He texts customers, schedules jobs, charges cards, follows up on signatures, prepares reports — <b>all while you're driving</b>. Hire him through the app like you'd hire a part-time receptionist. He works 24/7. He doesn't take days off.</p>
+          <ul class="level-bullets">
+            <li>"Schedule Tom Hardware Tuesday at 10" — done</li>
+            <li>Auto-texts customer after every job ("Want me to email the invoice?")</li>
+            <li>Auto-charges card-on-file the moment a job completes</li>
+            <li>Books recurring inspections without you opening the app</li>
+            <li><b>Free users see a green dot every time Riker could've done what they just did</b></li>
+          </ul>
+        </div>
+        <div class="level-meta">
+          <div class="price">$800<span style="font-size:13px; color:var(--ink4); font-weight:600">/mo</span></div>
+          <div class="price-sub">Receptionist costs $800/wk</div>
+        </div>
+      </div>
+
+      <!-- LEVEL 4 -->
+      <div class="level">
+        <div class="level-num">4</div>
+        <div class="level-body">
+          <h3>The Marketplace <span class="level-tag tag-network">The Moat</span></h3>
+          <p>The endgame. A network of independent fire-protection contractors who route their own work through the platform. <b>You have a job in Azle. Another tech has a job in Euless. The platform proposes the trade.</b> Both save 30 miles. Both close more jobs.</p>
+          <ul class="level-bullets">
+            <li>Phase 1: Referrals — post a job, another tech accepts, you get 15%</li>
+            <li>Phase 2: Swaps — true peer-to-peer trades with credit ledger</li>
+            <li>Phase 3: Riker auto-matches — proposes swaps before either of you drives</li>
+            <li>License-type matching (TX SCR scopes enforced at the gate)</li>
+            <li>Subcontract model: prime contractor's name + license stays on the customer-facing paperwork</li>
+          </ul>
+        </div>
+        <div class="level-meta">
+          <div class="price">15%</div>
+          <div class="price-sub">Per matched job</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ===== WHY THIS WORKS ===== -->
+<section class="alt">
+  <div class="wrap">
+    <div class="section-eyebrow">Why This Works</div>
+    <h2>Four mechanics. Each one is a textbook.</h2>
+    <p class="lede">
+      None of these are speculative. Each one has been proven in another industry. The novelty is putting them together for the first time in field service.
+    </p>
+
+    <div class="why-grid">
+      <div class="why-card">
+        <div class="why-num">01 / Christensen</div>
+        <h3>Low-end disruption</h3>
+        <p>Mid-market incumbents <b>cannot follow downmarket profitably</b> — their cost structure, sales motion, and per-seat pricing all break below 5 seats. We enter the segment they've abandoned. By the time they notice, we've moved up the pyramid.</p>
+      </div>
+      <div class="why-card">
+        <div class="why-num">02 / Freemium</div>
+        <h3>Trust before money</h3>
+        <p>Free tier is genuinely <b>excellent and stays free forever</b>. Building trust + credibility with a working tech is what earns the Riker conversion later. The free app is not a trial — it's the relationship.</p>
+      </div>
+      <div class="why-card">
+        <div class="why-num">03 / Anchoring</div>
+        <h3>Receptionist math</h3>
+        <p>$800/mo looks expensive next to other software. Next to a $800/<b>week</b> part-time receptionist, it's a quarter of the price for someone who works 24/7 and never quits. <b>The anchor sells itself.</b></p>
+      </div>
+      <div class="why-card">
+        <div class="why-num">04 / Network effects</div>
+        <h3>The marketplace moat</h3>
+        <p>Software can be cloned. A network of 5,000 connected solo techs trading work cannot. <b>The marketplace is what locks the company in</b> — once a tech has a referral history on the platform, leaving means losing the network.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== THE GREEN DOT ===== -->
+<section class="dark">
+  <div class="wrap">
+    <div class="section-eyebrow">The Conversion Mechanic</div>
+    <h2>The product <em style="color:var(--tw-fire); font-style: italic">is</em> the funnel.</h2>
+    <p class="lede" style="color:#c5cfe0">
+      Most SaaS spends $5–$50 in customer-acquisition cost per signup on Google and Meta ads. Our marketing budget is zero. Here's why.
+    </p>
+
+    <div style="display: grid; gap: 32px; grid-template-columns: 1fr; align-items: start;">
+
+      <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; padding: 36px;">
+        <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 18px;">
+          <div style="width: 14px; height: 14px; border-radius: 50%; background: #10b981; box-shadow: 0 0 16px #10b981;"></div>
+          <div style="font-size: 11px; color: #10b981; letter-spacing: 2px; text-transform: uppercase; font-weight: 800;">The Green Dot</div>
+        </div>
+        <h3 style="color:#fff; font-size: 22px; margin-bottom: 14px;">The first time a free user opens the app, we tell them once:</h3>
+        <p style="color:#e8edf5; font-size: 18px; line-height: 1.55; margin: 0; padding: 24px; background: rgba(0,0,0,0.3); border-left: 3px solid #10b981; border-radius: 0 8px 8px 0;">
+          <em>"See this green dot? Every time it lights up, it means you just did something the long way. Riker could've done it for you while you were driving. Riker is a paid add-on — first 30 days free."</em>
+        </p>
+        <p style="color:#c5cfe0; margin-top: 24px; font-size: 15px;">
+          From that moment on, <b style="color:#fff">every single action a free user takes</b> — every job they create, every invoice they send, every payment they log — pulses the dot for one second. Action by action, the user generates their own upsell pitch. <b style="color:#fff">No salesperson. No email funnel. No retargeting ads.</b>
+        </p>
+        <p style="color:#c5cfe0; margin-top: 16px; font-size: 15px;">
+          They convert exactly when their accumulated pain crosses the $800/mo math. Some convert in week 2. Some convert in year 2. Either way, they convert because <b style="color:#fff">they sold themselves</b>.
+        </p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ===== COMPETITIVE LANDSCAPE ===== -->
+<section>
+  <div class="wrap">
+    <div class="section-eyebrow">Competitive Landscape</div>
+    <h2>What we have that they don't.</h2>
+    <p class="lede">
+      fireNspec, Brycer, Inspect Point and Building Reports are paperwork tools sold to dispatchers. We are an operating system sold to working techs. They're not even in our market.
+    </p>
+
+    <table class="compare">
+      <thead>
+        <tr>
+          <th style="width:38%">Capability</th>
+          <th style="width:22%; text-align:center">technicians.work</th>
+          <th style="width:22%; text-align:center">fireNspec / Brycer</th>
+          <th style="width:18%; text-align:center">Pen + clipboard</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="who">Built for the guy in the truck</td>             <td class="y" style="text-align:center">YES</td><td class="x" style="text-align:center">No</td><td class="y" style="text-align:center">YES</td></tr>
+        <tr><td class="who">In-person card-on-file payment (kiosk)</td>      <td class="y" style="text-align:center">YES</td><td class="x" style="text-align:center">No</td><td class="x" style="text-align:center">No</td></tr>
+        <tr><td class="who">AI assistant (Riker) — texts, schedules, charges</td><td class="y" style="text-align:center">YES</td><td class="x" style="text-align:center">No</td><td class="x" style="text-align:center">No</td></tr>
+        <tr><td class="who">Tutorial: how to start a fire-protection company</td><td class="y" style="text-align:center">YES</td><td class="x" style="text-align:center">No</td><td class="x" style="text-align:center">No</td></tr>
+        <tr><td class="who">Live GPS + customer ETA texts</td>                 <td class="y" style="text-align:center">YES</td><td class="x" style="text-align:center">No</td><td class="x" style="text-align:center">No</td></tr>
+        <tr><td class="who">SMS-based customer portal (no password)</td>      <td class="y" style="text-align:center">YES</td><td class="x" style="text-align:center">No</td><td class="x" style="text-align:center">No</td></tr>
+        <tr><td class="who">Peer-to-peer job marketplace (Level 4)</td>       <td class="y" style="text-align:center">YES</td><td class="x" style="text-align:center">No</td><td class="x" style="text-align:center">No</td></tr>
+        <tr><td class="who">Per-seat pricing</td>                              <td class="x" style="text-align:center">No</td><td class="y" style="text-align:center">YES</td><td class="x" style="text-align:center">N/A</td></tr>
+        <tr><td class="who">Free tier you actually run a business on</td>     <td class="y" style="text-align:center">YES</td><td class="x" style="text-align:center">No</td><td class="y" style="text-align:center">YES</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ===== THE MARKETPLACE DIAGRAM ===== -->
+<section class="alt">
+  <div class="wrap">
+    <div class="section-eyebrow">Level 4 — The Endgame</div>
+    <h2>The marketplace is what makes this a company.</h2>
+    <p class="lede">
+      The field app is a tool. Riker is a service. The marketplace is a <b>network</b>. It can't be cloned. Once it has 5,000 contractors trading work, it's the only place a solo fire-protection tech in North America wants to be.
+    </p>
+
+    <svg class="network-svg" viewBox="0 0 600 360" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <radialGradient id="netGrad" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#1A9BD7" stop-opacity="0.3"/>
+          <stop offset="100%" stop-color="#1A9BD7" stop-opacity="0"/>
+        </radialGradient>
+      </defs>
+      <!-- background glow -->
+      <circle cx="300" cy="180" r="170" fill="url(#netGrad)"/>
+
+      <!-- connection lines -->
+      <g stroke="#1074B7" stroke-width="1.5" stroke-opacity="0.35">
+        <line x1="120" y1="80" x2="300" y2="180"/>
+        <line x1="480" y1="80" x2="300" y2="180"/>
+        <line x1="80" y1="240" x2="300" y2="180"/>
+        <line x1="520" y1="240" x2="300" y2="180"/>
+        <line x1="200" y1="320" x2="300" y2="180"/>
+        <line x1="400" y1="320" x2="300" y2="180"/>
+        <line x1="120" y1="80" x2="80" y2="240"/>
+        <line x1="480" y1="80" x2="520" y2="240"/>
+        <line x1="200" y1="320" x2="120" y2="80"/>
+        <line x1="400" y1="320" x2="480" y2="80"/>
+      </g>
+
+      <!-- the trade arrow -->
+      <g>
+        <path d="M 120 80 Q 300 30 480 80" fill="none" stroke="#f05a28" stroke-width="2.5" stroke-dasharray="6,4"/>
+        <text x="300" y="48" text-anchor="middle" fill="#f05a28" font-family="-apple-system, sans-serif" font-size="11" font-weight="800" letter-spacing="1">SWAP</text>
+      </g>
+
+      <!-- center node = the platform -->
+      <circle cx="300" cy="180" r="42" fill="#1074B7"/>
+      <text x="300" y="178" text-anchor="middle" fill="#fff" font-family="-apple-system, sans-serif" font-size="11" font-weight="800" letter-spacing="0.5">technicians</text>
+      <text x="300" y="192" text-anchor="middle" fill="#A0D0EE" font-family="-apple-system, sans-serif" font-size="10" font-style="italic">.work</text>
+
+      <!-- contractor nodes -->
+      <g font-family="-apple-system, sans-serif" font-size="10" font-weight="700" text-anchor="middle">
+        <circle cx="120" cy="80" r="22" fill="#fff" stroke="#f05a28" stroke-width="2.5"/>
+        <text x="120" y="84" fill="#c84418">AZLE</text>
+
+        <circle cx="480" cy="80" r="22" fill="#fff" stroke="#f05a28" stroke-width="2.5"/>
+        <text x="480" y="84" fill="#c84418">EULESS</text>
+
+        <circle cx="80" cy="240" r="20" fill="#fff" stroke="#1074B7" stroke-width="2"/>
+        <text x="80" y="244" fill="#1074B7">FW</text>
+
+        <circle cx="520" cy="240" r="20" fill="#fff" stroke="#1074B7" stroke-width="2"/>
+        <text x="520" y="244" fill="#1074B7">DAL</text>
+
+        <circle cx="200" cy="320" r="18" fill="#fff" stroke="#1074B7" stroke-width="2"/>
+        <text x="200" y="324" fill="#1074B7">ARL</text>
+
+        <circle cx="400" cy="320" r="18" fill="#fff" stroke="#1074B7" stroke-width="2"/>
+        <text x="400" y="324" fill="#1074B7">PLN</text>
+      </g>
+
+      <!-- Caption -->
+      <text x="300" y="350" text-anchor="middle" fill="#4a5267" font-family="-apple-system, sans-serif" font-size="11" font-style="italic">Tech in Azle has a job in Euless. Tech in Euless has a job in Azle. Platform proposes the trade.</text>
+    </svg>
+
+    <div class="why-grid" style="margin-top: 24px;">
+      <div class="why-card">
+        <div class="why-num">Why It Locks In</div>
+        <h3>Network = switching cost</h3>
+        <p>A tech with 100 completed trades on the platform has a <b>verified reputation</b> that doesn't transfer anywhere else. Leaving means starting over with strangers. The longer they stay, the more they can't leave.</p>
+      </div>
+      <div class="why-card">
+        <div class="why-num">Why fireNspec Can't Build It</div>
+        <h3>Wrong customer</h3>
+        <p>fireNspec sells to one shop at a time. They have <b>zero incentive to connect their customers to each other</b> — that's just helping competitors share work. We sell to thousands of solo guys who individually benefit from being connected.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== PHASING ===== -->
+<section>
+  <div class="wrap">
+    <div class="section-eyebrow">Build Order</div>
+    <h2>What gets built when.</h2>
+    <p class="lede">
+      We're already at the end of Level 1 — the field app exists, runs in production, and serves Stephens Advanced LLC daily. <b>Everything from here forward stacks on top.</b>
+    </p>
+
+    <div class="timeline">
+      <div class="phase">
+        <div class="phase-when">2024 → Today · DONE</div>
+        <h3>Level 1 — Field App in production</h3>
+        <p>appv2.html is live, serves Jon's daily field work as system of record. Replaces QuickBooks for invoicing, scheduling, customer management, and in-person card capture. Iteratively hardened over a year of real use.</p>
+      </div>
+      <div class="phase now">
+        <div class="phase-when">Now · IN PROGRESS</div>
+        <h3>Level 3 — Riker (the AI assistant)</h3>
+        <p>Already partially built and deployed. Tools registry, conversation context, SMS interface, and email triage all live. Remaining work: polish, gating, the green-dot conversion mechanic, the 30-day trial flow.</p>
+      </div>
+      <div class="phase">
+        <div class="phase-when">Next · 30–60 days</div>
+        <h3>Public launch on technicians.work</h3>
+        <p>Domain is live. Strip the field app of Stephens-Advanced-specific config, build a real signup flow, ship the green-dot intro screen. First 100 free users.</p>
+      </div>
+      <div class="phase">
+        <div class="phase-when">Next · 60–120 days</div>
+        <h3>Level 2 — Tutorial as onboarding</h3>
+        <p>Build the "from zero to first invoice" checklist. Each step links out OR unlocks an in-app feature. This is what makes the product spread by word of mouth — every new tech who launches a business through it tells five friends.</p>
+      </div>
+      <div class="phase">
+        <div class="phase-when">~6 months</div>
+        <h3>Level 4 Phase 1 — Referrals</h3>
+        <p>Post a job, another verified tech accepts, originator earns 15%. Single-direction handoffs only. Models the trust system without marketplace complexity. License-type gating from day one.</p>
+      </div>
+      <div class="phase">
+        <div class="phase-when">~12 months</div>
+        <h3>Level 4 Phase 2 — Swaps + credit ledger</h3>
+        <p>True peer-to-peer trades once we have density and reputation data. Trade-credit ledger handles unequal-value matches without 1099 mess.</p>
+      </div>
+      <div class="phase">
+        <div class="phase-when">~18 months</div>
+        <h3>Level 4 Phase 3 — Riker auto-matches</h3>
+        <p>Riker watches your schedule, sees a job in Azle, finds a partner with a Euless job, proposes the swap before either of you drives a mile. The two products fuse. The moat is dug.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== CLOSING ===== -->
+<section style="border-bottom: none">
+  <div class="wrap">
+    <div class="closing-box">
+      <h2>Big software sells to dispatchers.<br>We're building <span class="accent">for the truck.</span></h2>
+      <p>technicians.work is the field-service operating system for the people big SaaS forgot. Free where it should be free. Paid where it pays for itself. Networked where the moat lives.</p>
+    </div>
+  </div>
+</section>
+
+<footer class="bot">
+  <div class="wrap">
+    Built by a working technician · Stephens Advanced LLC · 2026<br>
+    <span style="opacity:.6">Vision Deck v1 — internal proposal</span>
+  </div>
+</footer>
+
+</body>
+</html>

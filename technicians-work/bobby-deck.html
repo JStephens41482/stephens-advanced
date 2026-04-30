@@ -1,0 +1,762 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bobby — let's run this together</title>
+  <meta name="robots" content="noindex,nofollow">
+  <style>
+    :root {
+      --f-dark: #1074B7;
+      --f-bright: #1A9BD7;
+      --f-sky: #A0D0EE;
+      --f-skyMute: #D6EAF6;
+      --tw-fire: #f05a28;
+      --tw-fireDeep: #c84418;
+      --tw-fireSoft: #fde2d6;
+      --joint: #5b6c84;
+      --joint2: #7a8aa3;
+      --ink: #0c1220;
+      --ink2: #2a3447;
+      --ink3: #4a5267;
+      --ink4: #7c8497;
+      --paper: #ffffff;
+      --paper2: #f5f8fb;
+      --line: #d8e0e8;
+      --ok: #10b981;
+    }
+    *, *::before, *::after { box-sizing: border-box }
+    html, body {
+      margin: 0; padding: 0;
+      background: var(--paper); color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      line-height: 1.5;
+    }
+    .wrap { max-width: 1080px; margin: 0 auto; padding: 0 28px }
+
+    header.top {
+      padding: 18px 0; border-bottom: 1px solid var(--line);
+      position: sticky; top: 0; background: var(--paper); z-index: 10;
+    }
+    header.top .wrap { display: flex; align-items: center; justify-content: space-between }
+    .brand {
+      font-family: 'Fraunces', Georgia, serif; font-weight: 900;
+      font-size: 18px; letter-spacing: -0.02em;
+    }
+    .brand .dot { color: var(--ink4) }
+    .brand .work { color: var(--tw-fire); font-style: italic; font-weight: 500 }
+    .stamp {
+      font-size: 11px; color: var(--ink4); letter-spacing: 1px;
+      text-transform: uppercase; font-weight: 700;
+    }
+
+    .hero {
+      padding: 80px 0 60px;
+      background: linear-gradient(180deg, var(--paper) 0%, var(--tw-fireSoft) 100%);
+      border-bottom: 1px solid var(--line);
+    }
+    .hero h1 {
+      font-family: 'Fraunces', Georgia, serif;
+      font-size: clamp(40px, 6vw, 72px); line-height: 1.05;
+      letter-spacing: -0.03em; font-weight: 900;
+      margin: 0 0 22px;
+    }
+    .hero h1 .accent { color: var(--tw-fire); font-style: italic; font-weight: 500 }
+    .hero-lede {
+      font-size: 20px; color: var(--ink2); max-width: 640px; line-height: 1.5;
+      margin: 0;
+    }
+    .hero-lede b { color: var(--ink) }
+    .from-jon {
+      margin-top: 28px; font-size: 13px; color: var(--ink4);
+      letter-spacing: 1.5px; text-transform: uppercase; font-weight: 700;
+    }
+
+    section {
+      padding: 88px 0;
+      border-bottom: 1px solid var(--line);
+    }
+    section.alt { background: var(--paper2) }
+    .page-tag {
+      display: inline-block;
+      font-family: 'Fraunces', Georgia, serif;
+      font-weight: 900; font-size: 14px;
+      color: var(--tw-fire);
+      letter-spacing: 2px; text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+    h2 {
+      font-family: 'Fraunces', Georgia, serif;
+      font-size: clamp(34px, 5vw, 52px); line-height: 1.1;
+      letter-spacing: -0.025em; font-weight: 900;
+      margin: 0 0 14px;
+    }
+    h2 .accent { color: var(--tw-fire); font-style: italic; font-weight: 500 }
+    .sub {
+      font-size: 18px; color: var(--ink3); max-width: 640px; line-height: 1.5;
+      margin: 0 0 48px;
+    }
+    .sub b { color: var(--ink) }
+
+    /* PAGE 1 — concentric + ring legend */
+    .circles-wrap {
+      display: grid; gap: 36px; grid-template-columns: 1fr;
+      align-items: center; margin-top: 32px;
+    }
+    @media (min-width: 900px) { .circles-wrap { grid-template-columns: 1.2fr 1fr } }
+    .circles-svg svg { width: 100%; height: auto; max-width: 560px; display: block }
+
+    .ring-legend { display: flex; flex-direction: column; gap: 14px }
+    .ring-row {
+      display: flex; gap: 16px; padding: 16px 18px;
+      background: var(--paper); border: 1px solid var(--line); border-radius: 12px;
+      align-items: flex-start;
+    }
+    .ring-row .swatch {
+      width: 18px; height: 18px; border-radius: 50%; flex: 0 0 18px;
+      margin-top: 4px; border: 2px solid currentColor;
+    }
+    .ring-row .label {
+      font-weight: 800; font-size: 14px; letter-spacing: 0.5px;
+      text-transform: uppercase; color: var(--ink2);
+    }
+    .ring-row .desc {
+      font-size: 13.5px; color: var(--ink3); margin-top: 4px; line-height: 1.5;
+    }
+    .ring-row.lobe { border-style: dashed; background: var(--paper2) }
+    .ring-row .owner {
+      display: inline-block; font-size: 10px; font-weight: 800;
+      letter-spacing: 1px; text-transform: uppercase;
+      padding: 2px 7px; border-radius: 4px; margin-left: 6px;
+      vertical-align: middle;
+    }
+    .o-jon { background: rgba(26,155,215,.15); color: var(--f-dark) }
+    .o-bobby { background: rgba(240,90,40,.15); color: var(--tw-fireDeep) }
+    .o-joint { background: rgba(91,108,132,.15); color: var(--joint) }
+    .o-jon-now { background: rgba(124,132,151,.15); color: var(--ink3) }
+
+    /* PAGE 2 — Bobby's Monday timeline */
+    .milestone-bar {
+      display: flex; gap: 0; align-items: stretch; margin-bottom: 36px;
+      border: 1px solid var(--line); border-radius: 12px; overflow: hidden;
+      background: var(--paper);
+    }
+    .ms {
+      flex: 1; padding: 14px 18px; text-align: center;
+      border-right: 1px solid var(--line);
+      font-size: 12px; color: var(--ink3); font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+    .ms:last-child { border-right: none }
+    .ms .ms-when {
+      display: block; font-size: 10px; color: var(--ink4);
+      letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 4px;
+    }
+    .ms.active { background: var(--tw-fireSoft); color: var(--tw-fireDeep) }
+    .ms.active .ms-when { color: var(--tw-fireDeep) }
+    .ms-arrow {
+      align-self: center; padding: 0 4px; color: var(--ink4); font-weight: 700;
+    }
+
+    .day-grid {
+      display: grid; gap: 22px; grid-template-columns: 1fr;
+    }
+    @media (min-width: 820px) { .day-grid { grid-template-columns: 1fr 1fr 1fr } }
+    .day-card {
+      background: var(--paper); border: 1px solid var(--line);
+      border-radius: 18px; padding: 28px 26px;
+      display: flex; flex-direction: column;
+    }
+    .day-card.now { border-color: var(--tw-fire); box-shadow: 0 24px 48px -24px rgba(240,90,40,.25) }
+    .day-when {
+      font-family: 'Fraunces', Georgia, serif;
+      font-size: 13px; font-weight: 900;
+      color: var(--tw-fire); letter-spacing: 2px; text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .day-headline {
+      font-size: 20px; font-weight: 800; color: var(--ink);
+      margin-bottom: 18px; letter-spacing: -0.01em;
+    }
+    .day-blocks { display: flex; flex-direction: column; gap: 14px }
+    .day-block { padding-top: 14px; border-top: 1px dashed var(--line) }
+    .day-block:first-child { border-top: none; padding-top: 0 }
+    .day-block .when {
+      font-size: 11px; font-weight: 800; color: var(--f-dark);
+      letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 6px;
+    }
+    .day-block .what {
+      font-size: 13.5px; color: var(--ink2); line-height: 1.5;
+    }
+    .day-block .what b { color: var(--ink) }
+
+    .trial-note {
+      margin-top: 32px; padding: 18px 22px;
+      background: var(--tw-fireSoft); border-left: 3px solid var(--tw-fire);
+      border-radius: 0 10px 10px 0;
+      font-size: 14px; color: var(--ink2); line-height: 1.55;
+    }
+    .trial-note b { color: var(--ink) }
+
+    /* PAGE 3 — Money flow */
+    .money-svg svg { width: 100%; height: auto; display: block; margin: 0 auto }
+    .money-note {
+      margin-top: 28px; padding: 20px 24px;
+      background: var(--f-skyMute); border-left: 3px solid var(--f-dark);
+      border-radius: 0 10px 10px 0;
+      font-size: 14.5px; color: var(--ink2); line-height: 1.55;
+    }
+    .money-note b { color: var(--ink) }
+    .money-note + .money-note { margin-top: 12px; background: var(--tw-fireSoft); border-left-color: var(--tw-fire) }
+
+    /* PAGE 4 — The Deal */
+    .deal-grid {
+      display: grid; gap: 18px; grid-template-columns: 1fr;
+    }
+    @media (min-width: 720px) { .deal-grid { grid-template-columns: 1fr 1fr } }
+    .deal-card {
+      background: var(--paper); border: 1px solid var(--line);
+      border-radius: 14px; padding: 26px 28px;
+    }
+    .deal-card .deal-icon {
+      font-family: 'Fraunces', Georgia, serif;
+      font-size: 26px; font-weight: 900;
+      color: var(--tw-fire); margin-bottom: 4px;
+      line-height: 1.05;
+    }
+    .deal-card h3 {
+      font-size: 17px; margin: 0 0 8px; letter-spacing: -0.005em;
+    }
+    .deal-card p {
+      margin: 0; font-size: 14px; color: var(--ink3); line-height: 1.55;
+    }
+    .deal-card p b { color: var(--ink) }
+    .deal-card .draft {
+      display: inline-block;
+      font-size: 10px; font-weight: 800; letter-spacing: 1.5px;
+      color: var(--ink4); background: var(--paper2);
+      padding: 3px 8px; border-radius: 4px; margin-left: 8px;
+      vertical-align: middle;
+    }
+    .deal-card .tbd {
+      display: inline-block;
+      font-size: 10px; font-weight: 800; letter-spacing: 1.5px;
+      color: var(--tw-fireDeep); background: var(--tw-fireSoft);
+      padding: 3px 8px; border-radius: 4px; margin-left: 8px;
+      vertical-align: middle;
+    }
+
+    .closing {
+      padding: 52px 44px; border-radius: 22px;
+      background: linear-gradient(135deg, var(--tw-fire), var(--tw-fireDeep));
+      color: #fff; text-align: center;
+    }
+    .closing h2 { color: #fff; margin-bottom: 14px }
+    .closing p {
+      color: #ffe4d6; font-size: 17px; max-width: 540px; margin: 0 auto;
+    }
+    .closing .sig {
+      margin-top: 24px;
+      font-family: 'Fraunces', Georgia, serif;
+      font-style: italic; font-weight: 500; font-size: 18px; color: #fff;
+    }
+
+    footer.bot {
+      padding: 36px 0; text-align: center; font-size: 12px; color: var(--ink4);
+    }
+  </style>
+</head>
+<body>
+
+<style>
+  /* AUTH GATE */
+  body > header, body > section, body > footer { display: none }
+  body.unlocked > header, body.unlocked > section, body.unlocked > footer { display: block }
+  #_auth-overlay { position: fixed; inset: 0; background: linear-gradient(135deg, #ffffff 0%, #fde2d6 100%); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 24px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; }
+  body.unlocked #_auth-overlay { display: none }
+  #_auth-form { background: #fff; padding: 36px 32px; border-radius: 16px; border: 1px solid #d8e0e8; box-shadow: 0 24px 48px -16px rgba(240,90,40,0.2); max-width: 360px; width: 100%; display: flex; flex-direction: column; gap: 14px; }
+  #_auth-form h2 { margin: 0; font-family: 'Fraunces', Georgia, serif; font-size: 24px; font-weight: 900; color: #0c1220; letter-spacing: -0.02em; }
+  #_auth-form p { margin: 0; font-size: 14px; color: #4a5267; line-height: 1.5; }
+  #_auth-input { padding: 14px 14px; font-size: 15px; border: 1px solid #d8e0e8; border-radius: 8px; font-family: inherit; outline: none; transition: border-color 0.15s; }
+  #_auth-input:focus { border-color: #f05a28; }
+  #_auth-btn { padding: 13px 16px; font-size: 14px; font-weight: 800; letter-spacing: 0.5px; background: #f05a28; color: #fff; border: none; border-radius: 8px; cursor: pointer; transition: background-color 0.15s; font-family: inherit; }
+  #_auth-btn:hover { background: #c84418; }
+  #_auth-error { font-size: 13px; color: #b91c1c; margin: 0; }
+</style>
+<div id="_auth-overlay">
+  <form id="_auth-form" autocomplete="off">
+    <h2>Hey Bobby.</h2>
+    <p>Enter the password Jon gave you.</p>
+    <input id="_auth-input" type="password" autocomplete="off" autofocus>
+    <button id="_auth-btn" type="submit">Unlock</button>
+    <p id="_auth-error" hidden>Wrong password.</p>
+  </form>
+</div>
+<script>
+(async () => {
+  const HASH = '29ba9d9cef5a66461116a24938bb9307e005c35aa1bb909f16aa5e85bd767480';
+  const KEY = 'tw_auth_v1';
+  async function sha256(s) {
+    const buf = new TextEncoder().encode(s);
+    const h = await crypto.subtle.digest('SHA-256', buf);
+    return [...new Uint8Array(h)].map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+  if (sessionStorage.getItem(KEY) === HASH) {
+    document.body.classList.add('unlocked');
+    return;
+  }
+  const ready = (fn) => document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', fn) : fn();
+  ready(() => {
+    const form = document.getElementById('_auth-form');
+    const input = document.getElementById('_auth-input');
+    const err = document.getElementById('_auth-error');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const hash = await sha256(input.value);
+      if (hash === HASH) {
+        sessionStorage.setItem(KEY, hash);
+        document.body.classList.add('unlocked');
+      } else {
+        err.hidden = false;
+        input.value = '';
+        input.focus();
+      }
+    });
+  });
+})();
+</script>
+
+<header class="top">
+  <div class="wrap">
+    <div class="brand">technicians<span class="dot">.</span><span class="work">work</span></div>
+    <div class="stamp">For Bobby · Draft v2 · 2026</div>
+  </div>
+</header>
+
+<!-- ========== HERO ========== -->
+<section class="hero">
+  <div class="wrap">
+    <h1>Hey Bobby.<br>Let's run <span class="accent">this together.</span></h1>
+    <p class="hero-lede">
+      Four pages. No bullshit. Here's <b>what we're building</b>, what your day looks like, where the money comes from, and the deal I'm proposing. Read it once. Sit on it. Tell me yes, no, or let's talk.
+    </p>
+    <div class="from-jon">— Jon</div>
+  </div>
+</section>
+
+<!-- ========== PAGE 1 — THE PICTURE ========== -->
+<section>
+  <div class="wrap">
+    <div class="page-tag">Page 1 of 4 · The Picture</div>
+    <h2>Four rings. <span class="accent">Three companies.</span></h2>
+    <p class="sub">
+      The center is what we already do — fire-protection work for real customers. <b>Each ring outward grows the one inside it.</b> Three companies own the rings. You own one, I own one, we own one together.
+    </p>
+
+    <div class="circles-wrap">
+      <div class="circles-svg">
+        <svg viewBox="0 0 600 540" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <radialGradient id="coreGrad" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#7a8aa3"/>
+              <stop offset="100%" stop-color="#5b6c84"/>
+            </radialGradient>
+            <radialGradient id="netGrad" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#f5a17a"/>
+              <stop offset="100%" stop-color="#f05a28"/>
+            </radialGradient>
+          </defs>
+
+          <!-- Ring 4: Free app (outermost, sky blue, dashed border) -->
+          <circle cx="300" cy="270" r="250" fill="#A0D0EE" opacity="0.4" stroke="#7c8497" stroke-width="1.5" stroke-dasharray="6,4"/>
+          <text x="300" y="50" text-anchor="middle" fill="#1074B7" font-family="-apple-system, sans-serif" font-size="14" font-weight="900" letter-spacing="2">FREE APP</text>
+          <text x="300" y="68" text-anchor="middle" fill="#1074B7" font-family="-apple-system, sans-serif" font-size="11" opacity="0.75">every fire-protection tech in the country</text>
+
+          <!-- Ring 3: Paid platform = Jon's Software Co -->
+          <circle cx="300" cy="280" r="180" fill="#1074B7" opacity="0.85"/>
+          <text x="300" y="125" text-anchor="middle" fill="#fff" font-family="-apple-system, sans-serif" font-size="13" font-weight="900" letter-spacing="1.5">PAID PLATFORM</text>
+          <text x="300" y="142" text-anchor="middle" fill="#A0D0EE" font-family="-apple-system, sans-serif" font-size="10">Riker + multi-tenant software · Jon's Software Co</text>
+
+          <!-- Ring 2: Contractor Network = Bobby's Network Co -->
+          <circle cx="300" cy="290" r="120" fill="url(#netGrad)"/>
+          <text x="300" y="200" text-anchor="middle" fill="#fff" font-family="-apple-system, sans-serif" font-size="13" font-weight="900" letter-spacing="1.5">CONTRACTOR NETWORK</text>
+          <text x="300" y="216" text-anchor="middle" fill="#ffe4d6" font-family="-apple-system, sans-serif" font-size="10">verified solo techs · Bobby's Network Co</text>
+
+          <!-- Ring 1: In-house service = Joint Service Co -->
+          <circle cx="300" cy="300" r="65" fill="url(#coreGrad)" stroke="#fff" stroke-width="3"/>
+          <text x="300" y="293" text-anchor="middle" fill="#fff" font-family="-apple-system, sans-serif" font-size="11" font-weight="900" letter-spacing="1">IN-HOUSE</text>
+          <text x="300" y="307" text-anchor="middle" fill="#fff" font-family="-apple-system, sans-serif" font-size="11" font-weight="900" letter-spacing="1">SERVICE CO</text>
+          <text x="300" y="325" text-anchor="middle" fill="#dde3ed" font-family="'Fraunces', Georgia, serif" font-size="10" font-style="italic">50/50 · Jon + Bobby</text>
+
+          <!-- Off-app contractor lobe -->
+          <ellipse cx="510" cy="380" rx="78" ry="48" fill="none" stroke="#7c8497" stroke-width="2" stroke-dasharray="6,4"/>
+          <text x="510" y="378" text-anchor="middle" fill="#4a5267" font-family="-apple-system, sans-serif" font-size="10" font-weight="800" letter-spacing="0.5">OFF-APP</text>
+          <text x="510" y="392" text-anchor="middle" fill="#4a5267" font-family="-apple-system, sans-serif" font-size="10" font-weight="800" letter-spacing="0.5">CONTRACTORS</text>
+          <text x="510" y="410" text-anchor="middle" fill="#7c8497" font-family="-apple-system, sans-serif" font-size="9" font-style="italic">Bobby's call</text>
+          <path d="M 432 380 Q 410 350 380 320" fill="none" stroke="#7c8497" stroke-width="1.5" stroke-dasharray="4,3"/>
+        </svg>
+      </div>
+
+      <div class="ring-legend">
+        <div class="ring-row" style="color: var(--joint)">
+          <div class="swatch" style="background: var(--joint); border-color: var(--joint)"></div>
+          <div>
+            <div class="label">1 — In-House Service Co (the core) <span class="owner o-joint">50/50</span></div>
+            <div class="desc">Our actual fire-protection work + online ext sales + tech training. <b>You run ops. I run admin.</b> Stephens Advanced folds in here once my licenses cycle (~2027).</div>
+          </div>
+        </div>
+        <div class="ring-row" style="color: var(--tw-fireDeep)">
+          <div class="swatch" style="background: var(--tw-fire); border-color: var(--tw-fire)"></div>
+          <div>
+            <div class="label">2 — Contractor Network <span class="owner o-bobby">100% Bobby</span></div>
+            <div class="desc">Verified solo techs across DFW (then Texas, then beyond) trading jobs through the platform. <b>Your company, top to bottom.</b> Earns 15% on every matched job.</div>
+          </div>
+        </div>
+        <div class="ring-row" style="color: var(--f-dark)">
+          <div class="swatch" style="background: var(--f-dark); border-color: var(--f-dark)"></div>
+          <div>
+            <div class="label">3 — Paid Platform (Riker + multi-tenant app) <span class="owner o-jon">100% Jon</span></div>
+            <div class="desc">The software that makes ring 1 and 2 work. Riker = AI assistant @ $800/mo. <b>My company.</b> You get your own white-labeled version of the field app — your DB, your logo, your customers.</div>
+          </div>
+        </div>
+        <div class="ring-row" style="color: var(--ink3)">
+          <div class="swatch" style="background: var(--f-sky); border-color: var(--ink4); border-style: dashed"></div>
+          <div>
+            <div class="label">4 — Free App (the universe) <span class="owner o-jon-now">Jon now · TBD later</span></div>
+            <div class="desc">Every solo fire-protection tech in the country. Free, forever. The funnel that fills ring 2 and ring 3. <b>I own it now because it's still being built. Joint-era ownership = a problem to solve when relevant.</b></div>
+          </div>
+        </div>
+        <div class="ring-row lobe" style="color: var(--ink3)">
+          <div class="swatch" style="background: transparent; border-color: var(--ink3); border-style: dashed"></div>
+          <div>
+            <div class="label">+ Off-app contractors</div>
+            <div class="desc">Some guys in your network won't use the app — joined by you, working through your relationships, plugged in by phone or SMS. <b>How that works is your call.</b></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== PAGE 2 — BOBBY'S MONDAY ========== -->
+<section class="alt">
+  <div class="wrap">
+    <div class="page-tag">Page 2 of 4 · Your Monday</div>
+    <h2>What your week <span class="accent">actually looks like.</span></h2>
+    <p class="sub">
+      Three Mondays. Month 1, month 6, month 18. <b>Same guy. Bigger circle each time.</b>
+    </p>
+
+    <!-- Trigger-event milestone bar -->
+    <div class="milestone-bar">
+      <div class="ms active">
+        <span class="ms-when">Months 1–6</span>
+        Trial — use the app, see if Riker works
+      </div>
+      <div class="ms-arrow">→</div>
+      <div class="ms">
+        <span class="ms-when">~Month 6</span>
+        Both still want it → sign LOI
+      </div>
+      <div class="ms-arrow">→</div>
+      <div class="ms">
+        <span class="ms-when">Month 7+</span>
+        Co-founder · Network Co lights up
+      </div>
+    </div>
+
+    <div class="day-grid">
+
+      <div class="day-card now">
+        <div class="day-when">Month 1 · TRIAL</div>
+        <div class="day-headline">Riding with me, learning the app</div>
+        <div class="day-blocks">
+          <div class="day-block">
+            <div class="when">Morning</div>
+            <div class="what">Show up to my truck. Coffee. We hit <b>two hydrant inspections in Bedford</b>. You watch how I run the kiosk + sign customer + get paid on the spot.</div>
+          </div>
+          <div class="day-block">
+            <div class="when">Lunch</div>
+            <div class="what">Whataburger. We talk about what worked and what didn't.</div>
+          </div>
+          <div class="day-block">
+            <div class="when">Afternoon</div>
+            <div class="what">You drive your own truck to <b>your first solo job</b>. I'm on text. The app walks you through it — running on your own white-labeled instance, your customers, your branding.</div>
+          </div>
+          <div class="day-block">
+            <div class="when">Evening</div>
+            <div class="what">App auto-generates your day's invoices. You hit send. Done. No paperwork at home.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="day-card">
+        <div class="day-when">Month 6 · LOI SIGNED</div>
+        <div class="day-headline">Riker on payroll, network turning on</div>
+        <div class="day-blocks">
+          <div class="day-block">
+            <div class="when">Morning</div>
+            <div class="what">Riker has already <b>texted today's customers</b> with arrival windows. You roll up to the first job — they're expecting you.</div>
+          </div>
+          <div class="day-block">
+            <div class="when">Lunch</div>
+            <div class="what">A new tech you're apprenticing rides with you. Same way I rode with you. He'll be your second tenant on the platform soon.</div>
+          </div>
+          <div class="day-block">
+            <div class="when">Afternoon</div>
+            <div class="what">Riker pings you: <b>"You've got an Azle job tomorrow. Tech in Azle has a Euless job. Want to swap?"</b> You hit yes. Both calendars update. Network earns 15% on the swap.</div>
+          </div>
+          <div class="day-block">
+            <div class="when">Evening</div>
+            <div class="what">Cards on file auto-charged. Bank deposit hits before dinner.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="day-card">
+        <div class="day-when">Month 18 · CO-FOUNDER</div>
+        <div class="day-headline">Orchestrating a network of 20</div>
+        <div class="day-blocks">
+          <div class="day-block">
+            <div class="when">Morning</div>
+            <div class="what">Coffee at your shop. <b>20 contractors in your network</b> — each one on their own white-labeled instance. Three of them you trained personally. Riker has matched 8 swaps overnight.</div>
+          </div>
+          <div class="day-block">
+            <div class="when">Lunch</div>
+            <div class="what">Two new applicants stop by. You decide which ones get verified into the network.</div>
+          </div>
+          <div class="day-block">
+            <div class="when">Afternoon</div>
+            <div class="what">You go run <b>one big inspection you wanted to do yourself</b>. Riker is dispatching everyone else.</div>
+          </div>
+          <div class="day-block">
+            <div class="when">Evening</div>
+            <div class="what">Marketplace cuts + Riker subs hit. <b>You're making more from the network than from your own jobs.</b></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="trial-note">
+      <b>Why six months for the trial:</b> short enough to keep momentum, long enough that Riker has actually shown what he can do — the reschedules he saved, the customers he texted, the swaps he proposed. <b>End of month 6, both of us still want this — we sign the LOI. Until then, no commitment either way.</b> You're not jumping into anything blind.
+    </div>
+  </div>
+</section>
+
+<!-- ========== PAGE 3 — MONEY FLOW ========== -->
+<section>
+  <div class="wrap">
+    <div class="page-tag">Page 3 of 4 · The Money</div>
+    <h2>Five streams in. <span class="accent">Three pots out.</span></h2>
+    <p class="sub">
+      Money flows where it naturally lives — Riker subs to the software side, marketplace cuts to the network side, in-house jobs + ext sales + training to the joint side. <b>When one side helps the other, we trade equity at fair value.</b>
+    </p>
+
+    <div class="money-svg">
+      <svg viewBox="0 0 920 560" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="potJon" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#1A9BD7"/>
+            <stop offset="100%" stop-color="#1074B7"/>
+          </linearGradient>
+          <linearGradient id="potBobby" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#f5a17a"/>
+            <stop offset="100%" stop-color="#f05a28"/>
+          </linearGradient>
+          <linearGradient id="potJoint" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#7a8aa3"/>
+            <stop offset="100%" stop-color="#5b6c84"/>
+          </linearGradient>
+        </defs>
+
+        <!-- Top row: 5 revenue boxes -->
+        <g font-family="-apple-system, sans-serif">
+          <g>
+            <rect x="20" y="30" width="160" height="78" rx="11" fill="#fff" stroke="#5b6c84" stroke-width="2"/>
+            <text x="100" y="58" text-anchor="middle" fill="#5b6c84" font-size="11" font-weight="800" letter-spacing="1">FIELD JOBS</text>
+            <text x="100" y="76" text-anchor="middle" fill="#2a3447" font-size="11">In-house service work</text>
+            <text x="100" y="92" text-anchor="middle" fill="#7c8497" font-size="10">Jon's + Bobby's calls</text>
+          </g>
+          <g>
+            <rect x="200" y="30" width="160" height="78" rx="11" fill="#fff" stroke="#5b6c84" stroke-width="2"/>
+            <text x="280" y="58" text-anchor="middle" fill="#5b6c84" font-size="11" font-weight="800" letter-spacing="1">EXT SALES</text>
+            <text x="280" y="76" text-anchor="middle" fill="#2a3447" font-size="11">Cheapest online</text>
+            <text x="280" y="92" text-anchor="middle" fill="#7c8497" font-size="10">Bobby runs fulfillment</text>
+          </g>
+          <g>
+            <rect x="380" y="30" width="160" height="78" rx="11" fill="#fff" stroke="#5b6c84" stroke-width="2"/>
+            <text x="460" y="58" text-anchor="middle" fill="#5b6c84" font-size="11" font-weight="800" letter-spacing="1">TRAINING</text>
+            <text x="460" y="76" text-anchor="middle" fill="#2a3447" font-size="11">Captive-Aire + tests</text>
+            <text x="460" y="92" text-anchor="middle" fill="#7c8497" font-size="10">Jon teaches</text>
+          </g>
+          <g>
+            <rect x="560" y="30" width="160" height="78" rx="11" fill="#fff" stroke="#1A9BD7" stroke-width="2"/>
+            <text x="640" y="58" text-anchor="middle" fill="#1074B7" font-size="11" font-weight="800" letter-spacing="1">RIKER SUBS</text>
+            <text x="640" y="76" text-anchor="middle" fill="#2a3447" font-size="11">$800/mo · per tenant</text>
+            <text x="640" y="92" text-anchor="middle" fill="#7c8497" font-size="10">Every contractor pays</text>
+          </g>
+          <g>
+            <rect x="740" y="30" width="160" height="78" rx="11" fill="#fff" stroke="#f05a28" stroke-width="2"/>
+            <text x="820" y="58" text-anchor="middle" fill="#c84418" font-size="11" font-weight="800" letter-spacing="1">MARKETPLACE</text>
+            <text x="820" y="76" text-anchor="middle" fill="#2a3447" font-size="11">15% per matched job</text>
+            <text x="820" y="92" text-anchor="middle" fill="#7c8497" font-size="10">Referrals + swaps</text>
+          </g>
+        </g>
+
+        <!-- Arrows from revenue -> pots -->
+        <g stroke="#7c8497" stroke-width="2" fill="none" stroke-dasharray="4,4">
+          <!-- Field, Ext, Training -> Joint pot -->
+          <path d="M 100 108 L 200 220"/>
+          <path d="M 280 108 L 230 220"/>
+          <path d="M 460 108 L 280 220"/>
+          <!-- Riker -> Jon pot -->
+          <path d="M 640 108 L 580 220"/>
+          <!-- Marketplace -> Bobby pot -->
+          <path d="M 820 108 L 800 220"/>
+        </g>
+
+        <!-- Three pots -->
+        <g font-family="-apple-system, sans-serif">
+          <!-- Joint Service Co -->
+          <g>
+            <rect x="60" y="220" width="340" height="100" rx="14" fill="url(#potJoint)" stroke="#0c1220" stroke-width="2"/>
+            <text x="230" y="252" text-anchor="middle" fill="#fff" font-family="'Fraunces', Georgia, serif" font-size="18" font-weight="900" letter-spacing="-0.5">Joint Service Co</text>
+            <text x="230" y="274" text-anchor="middle" fill="#dde3ed" font-size="12" font-style="italic">50% Jon · 50% Bobby</text>
+            <text x="230" y="296" text-anchor="middle" fill="#fff" font-size="11" font-weight="700">Bobby = ops · Jon = admin</text>
+          </g>
+          <!-- Jon's Software Co -->
+          <g>
+            <rect x="430" y="220" width="220" height="100" rx="14" fill="url(#potJon)" stroke="#0c1220" stroke-width="2"/>
+            <text x="540" y="252" text-anchor="middle" fill="#fff" font-family="'Fraunces', Georgia, serif" font-size="16" font-weight="900" letter-spacing="-0.5">Jon's Software Co</text>
+            <text x="540" y="274" text-anchor="middle" fill="#A0D0EE" font-size="12" font-style="italic">100% Jon</text>
+            <text x="540" y="296" text-anchor="middle" fill="#fff" font-size="11" font-weight="700">Riker · platform · IP</text>
+          </g>
+          <!-- Bobby's Network Co -->
+          <g>
+            <rect x="680" y="220" width="220" height="100" rx="14" fill="url(#potBobby)" stroke="#0c1220" stroke-width="2"/>
+            <text x="790" y="252" text-anchor="middle" fill="#fff" font-family="'Fraunces', Georgia, serif" font-size="16" font-weight="900" letter-spacing="-0.5">Bobby's Network Co</text>
+            <text x="790" y="274" text-anchor="middle" fill="#ffe4d6" font-size="12" font-style="italic">100% Bobby</text>
+            <text x="790" y="296" text-anchor="middle" fill="#fff" font-size="11" font-weight="700">Marketplace · contractors</text>
+          </g>
+        </g>
+
+        <!-- Equity-swap arrow between Jon's Software Co and Bobby's Network Co -->
+        <g>
+          <path d="M 650 360 Q 695 410 740 360" fill="none" stroke="#0c1220" stroke-width="2" stroke-dasharray="6,4" marker-end="url(#arr)"/>
+          <path d="M 740 380 Q 695 430 650 380" fill="none" stroke="#0c1220" stroke-width="2" stroke-dasharray="6,4" marker-end="url(#arr)"/>
+          <text x="695" y="465" text-anchor="middle" fill="#0c1220" font-family="-apple-system, sans-serif" font-size="11" font-weight="800" letter-spacing="0.5">EQUITY SWAPS AT FAIR VALUE</text>
+          <text x="695" y="482" text-anchor="middle" fill="#7c8497" font-family="-apple-system, sans-serif" font-size="10" font-style="italic">when one side creates value the other side captures</text>
+        </g>
+        <defs>
+          <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#0c1220"/>
+          </marker>
+        </defs>
+
+        <!-- Bottom note: profits to founders -->
+        <g font-family="-apple-system, sans-serif">
+          <rect x="60" y="500" width="340" height="44" rx="10" fill="#f5f8fb" stroke="#d8e0e8" stroke-width="1"/>
+          <text x="230" y="528" text-anchor="middle" fill="#2a3447" font-size="12" font-weight="700">Profits split 50/50 between Jon + Bobby</text>
+          <rect x="430" y="500" width="220" height="44" rx="10" fill="#f5f8fb" stroke="#d8e0e8" stroke-width="1"/>
+          <text x="540" y="528" text-anchor="middle" fill="#2a3447" font-size="12" font-weight="700">All profit to Jon</text>
+          <rect x="680" y="500" width="220" height="44" rx="10" fill="#f5f8fb" stroke="#d8e0e8" stroke-width="1"/>
+          <text x="790" y="528" text-anchor="middle" fill="#2a3447" font-size="12" font-weight="700">All profit to Bobby</text>
+        </g>
+      </svg>
+    </div>
+
+    <div class="money-note">
+      <b>The recursive flywheel</b> — Riker isn't just back-office automation. <b>Riker pushes hot jobs from the network to its subscribers before anyone else sees them.</b> More contractors on the free network → more jobs on the marketplace board → more hot-job alerts → more reason to pay $800/mo for Riker → more revenue → better Riker → better alerts → more contractors. <b>Riker pays for itself in new revenue, not just labor savings.</b>
+    </div>
+
+    <div class="money-note">
+      <b>The equity swap mechanism</b> — when you bring contractors into your network and they end up paying Jon's Software Co for Riker, that's value Bobby created. When Jon's Riker triggers a swap and Bobby's Network Co captures 15%, that's value Jon created. We trade equity stakes between the two companies at fair value to keep it honest. <b>Mechanism (annual valuation? milestone-based?) is still TBD.</b>
+    </div>
+  </div>
+</section>
+
+<!-- ========== PAGE 4 — THE DEAL ========== -->
+<section class="alt">
+  <div class="wrap">
+    <div class="page-tag">Page 4 of 4 · The Deal</div>
+    <h2>Plain English. <span class="accent">No legalese.</span></h2>
+    <p class="sub">
+      Three companies. Each with a clear owner. Each with vesting. Trial period before anything is locked. Tell me what you want different.
+    </p>
+
+    <div class="deal-grid">
+
+      <div class="deal-card">
+        <div class="deal-icon">3 Cos</div>
+        <h3>The structure <span class="draft">draft</span></h3>
+        <p><b>Jon's Software Co</b> (100% Jon) owns Riker, the platform, the IP. <b>Bobby's Network Co</b> (100% Bobby) owns the marketplace + contractor relationships. <b>Joint Service Co</b> (50/50) does in-house jobs + ext sales + training. Bobby ops, Jon admin.</p>
+      </div>
+
+      <div class="deal-card">
+        <div class="deal-icon">↔</div>
+        <h3>Equity by trade <span class="tbd">TBD</span></h3>
+        <p>Each company has its own clean owner — no fixed % cross-stakes. <b>When one side creates value the other captures, we trade equity at fair value.</b> Mechanism still to figure out (annual valuation? per-milestone?). Not the most urgent thing.</p>
+      </div>
+
+      <div class="deal-card">
+        <div class="deal-icon">4yr · 1yr</div>
+        <h3>Vesting + cliff <span class="draft">standard</span></h3>
+        <p>Both of us earn our stakes over 4 years, with a 1-year cliff on each entity. <b>If either of us bails in year 1, the other isn't stuck with a ghost partner.</b> Standard for any partnership; protects both of us, not just one.</p>
+      </div>
+
+      <div class="deal-card">
+        <div class="deal-icon">→ ←</div>
+        <h3>Decision rule <span class="draft">domain</span></h3>
+        <p><b>You have unilateral say on Network Co + sub-contracting innovation.</b> I have unilateral say on Software Co + app monetization. At Joint Service Co: you = ops, I = admin. Big stuff (hiring, big spending, M&A) needs both yes.</p>
+      </div>
+
+      <div class="deal-card">
+        <div class="deal-icon">~6 mo</div>
+        <h3>Trigger event <span class="draft">milestone</span></h3>
+        <p>Trial period: <b>~6 months of you using the app daily as your main tool.</b> By then Riker has shown himself on real reschedules. End of month 6, both of us still want this — sign the LOI. Network Co lights up. <b>Until then, no commitment either way.</b></p>
+      </div>
+
+      <div class="deal-card">
+        <div class="deal-icon">tenant</div>
+        <h3>Your own white-labeled app</h3>
+        <p>The platform is multi-tenant. <b>You get your own instance — your DB, your logo, your customers, your branding.</b> First non-Jon tenant in the system. Free for you (you're an owner, not a customer). Same for Riker once you want him.</p>
+      </div>
+
+      <div class="deal-card">
+        <div class="deal-icon">$ext</div>
+        <h3>Bridge income <span class="tbd">amount TBD</span></h3>
+        <p>Online ext sales is a <b>real e-commerce business</b> we spin up — cheapest fire extinguisher on the internet, shipping to rural + remote customers nobody else services. <b>You work fulfillment when you're not in the field.</b> Wage + equity, not a stipend. Real number to set together.</p>
+      </div>
+
+      <div class="deal-card">
+        <div class="deal-icon">2027</div>
+        <h3>Stephens Advanced sunset</h3>
+        <p>My existing licenses + insurance run through ~2027. Until then, my existing customers stay tagged with Stephens. <b>Once that runs out, Stephens folds into Joint Service Co.</b> Your existing customers stay tagged with your company too — same deal in reverse.</p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ========== CLOSING ========== -->
+<section style="border-bottom: none">
+  <div class="wrap">
+    <div class="closing">
+      <h2>That's it. Four pages.</h2>
+      <p>Read it. Sit on it. Yes, no, or let's talk. I'm not in a hurry — I want you to actually want this. <b>If you do, this is the start of something nobody else in our industry is even trying.</b></p>
+      <div class="sig">— Jon</div>
+    </div>
+  </div>
+</section>
+
+<footer class="bot">
+  <div class="wrap">
+    Stephens Advanced LLC · For Bobby · Draft v2<br>
+    <span style="opacity:.6">Numbers are proposals. Everything is negotiable.</span>
+  </div>
+</footer>
+
+</body>
+</html>
