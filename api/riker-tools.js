@@ -39,6 +39,27 @@ async function trashRecord(supabase, { tableName, recordId, recordData, deletedB
   }
 }
 
+// rikerAudit — single source of truth for Riker-driven audit_log inserts.
+// The live audit_log schema stores `details: JSONB` with `{changes, summary}`
+// nested inside — there are NO direct `changes` or `summary` columns. Several
+// tools across this file were inserting against the wrong columns; those
+// writes silently failed (unused result, no `await` error capture) so every
+// Riker-driven update / cancel / mazon-funding was missing its audit row.
+// All Riker-side audit writes should go through this helper.
+async function rikerAudit(ctx, action, entityType, entityId, summary, changes) {
+  try {
+    await ctx.supabase.from('audit_log').insert({
+      action,
+      entity_type: entityType,
+      entity_id: entityId,
+      actor: 'ai_chat',
+      details: { changes: changes || null, summary: summary || null }
+    })
+  } catch (e) {
+    console.warn(`[rikerAudit ${action} ${entityType}] insert failed:`, e.message)
+  }
+}
+
 async function sendSMSRaw(to, body) {
   const sid = process.env.TWILIO_ACCOUNT_SID
   const token = process.env.TWILIO_AUTH_TOKEN
@@ -1945,8 +1966,12 @@ const get_job_activity = {
     const limit = Math.min(200, Number(input.limit) || 30)
     const includeInv = input.include_invoice_events !== false
 
+    // audit_log stores summary + changes nested in `details` JSONB — there
+    // are NO direct `summary` or `changes` columns. The previous SELECT
+    // asked for those columns, got null back, and Riker's view of history
+    // was just bare action verbs with no context.
     const jobQ = ctx.supabase.from('audit_log')
-      .select('action, actor, summary, changes, created_at, entity_type, entity_id')
+      .select('action, actor, details, created_at, entity_type, entity_id')
       .eq('entity_type', 'job').eq('entity_id', jobId)
       .order('created_at', { ascending: false }).limit(limit)
     const invIdQ = includeInv
@@ -1961,7 +1986,7 @@ const get_job_activity = {
     const invIds = (invIdRes.data || []).map(r => r.id)
     if (includeInv && invIds.length) {
       const { data, error } = await ctx.supabase.from('audit_log')
-        .select('action, actor, summary, changes, created_at, entity_type, entity_id')
+        .select('action, actor, details, created_at, entity_type, entity_id')
         .eq('entity_type', 'invoice').in('entity_id', invIds)
         .order('created_at', { ascending: false }).limit(limit)
       if (error) return { error: error.message }
@@ -1980,7 +2005,8 @@ const get_job_activity = {
         action: e.action,
         actor: e.actor,
         on: e.entity_type,
-        summary: e.summary || null
+        summary: e.details?.summary || null,
+        changes: e.details?.changes || null
       }))
     }
   }
@@ -2062,10 +2088,7 @@ const update_job = {
     const { error } = await ctx.supabase.from('jobs').update(patch).eq('id', input.job_id)
     if (error) return { error: error.message }
     const fields = Object.keys(patch).join(', ')
-    await ctx.supabase.from('audit_log').insert({
-      action: 'updated', entity_type: 'job', entity_id: input.job_id,
-      actor: 'ai_chat', changes: patch, summary: 'Job updated: ' + fields
-    })
+    await rikerAudit(ctx, 'updated', 'job', input.job_id, 'Job updated: ' + fields, patch)
     return { ok: true, job_id: input.job_id, updated: Object.keys(patch) }
   }
 }
@@ -2094,10 +2117,7 @@ const cancel_job = {
     const { error } = await ctx.supabase.from('jobs').update({ status: 'cancelled' }).eq('id', job.id)
     if (error) return { error: error.message }
     const summary = 'Job cancelled for ' + (job.location?.name || 'client') + (input.reason ? ' — ' + input.reason : '')
-    await ctx.supabase.from('audit_log').insert({
-      action: 'cancelled', entity_type: 'job', entity_id: job.id,
-      actor: 'ai_chat', changes: { reason: input.reason || null }, summary
-    })
+    await rikerAudit(ctx, 'cancelled', 'job', job.id, summary, { reason: input.reason || null })
     return { ok: true, job_id: job.id }
   }
 }
@@ -2258,11 +2278,9 @@ const create_invoice = {
     const lineRows = lines.map((ln, i) => ({ invoice_id: inv.id, description: ln.description, quantity: ln.quantity, unit_price: ln.unit_price, total: ln.total, sort_order: i }))
     const { error: lErr } = await ctx.supabase.from('invoice_lines').insert(lineRows)
     if (lErr) return { ok: true, invoice_id: inv.id, invoice_number: invNum, total: sub, warning: 'Lines insert warning: ' + lErr.message }
-    await ctx.supabase.from('audit_log').insert({
-      action: 'created', entity_type: 'invoice', entity_id: inv.id,
-      actor: 'ai_chat', changes: { invoice_number: invNum, total: sub },
-      summary: `Invoice ${invNum} created for ${job.location?.name || 'job'} ($${sub.toFixed(2)})`
-    })
+    await rikerAudit(ctx, 'created', 'invoice', inv.id,
+      `Invoice ${invNum} created for ${job.location?.name || 'job'} ($${sub.toFixed(2)})`,
+      { invoice_number: invNum, total: sub })
     return { ok: true, invoice_id: inv.id, invoice_number: invNum, total: sub, line_count: lines.length }
   }
 }
@@ -2364,11 +2382,9 @@ const mazon_mark_funded = {
       reason: input.reason || 'Marked funded via Riker',
       metadata: { funded_amount: amt }
     })
-    await ctx.supabase.from('audit_log').insert({
-      action: 'paid', entity_type: 'invoice', entity_id: qr.invoice_id,
-      actor: 'ai_chat', changes: { amount: amt, method: 'mazon' },
-      summary: `Mazon funded — ${qr.customer_name} ($${amt.toFixed(2)})`
-    })
+    await rikerAudit(ctx, 'paid', 'invoice', qr.invoice_id,
+      `Mazon funded — ${qr.customer_name} ($${amt.toFixed(2)})`,
+      { amount: amt, method: 'mazon' })
     return { ok: true, queue_id: qId, invoice_id: qr.invoice_id, funded_amount: amt }
   }
 }
@@ -3708,8 +3724,12 @@ const get_audit_log = {
   },
   async handler(input, ctx) {
     const limit = Math.min(100, Number(input.limit) || 20)
+    // audit_log columns: id, action, entity_type, entity_id, actor, details (JSONB), created_at.
+    // The previous SELECT asked for non-existent `summary` and `changes` direct
+    // columns and got null back, so Riker's audit-log view was effectively empty
+    // beyond the action verb.
     let q = ctx.supabase.from('audit_log')
-      .select('id, action, entity_type, entity_id, actor, summary, changes, created_at')
+      .select('id, action, entity_type, entity_id, actor, details, created_at')
       .order('created_at', { ascending: false })
       .limit(limit)
     if (input.entity_type) q = q.eq('entity_type', input.entity_type)
@@ -3723,8 +3743,8 @@ const get_audit_log = {
         entity_type: e.entity_type,
         entity_id: e.entity_id,
         actor: e.actor,
-        summary: e.summary || null,
-        details: e.changes || null,
+        summary: e.details?.summary || null,
+        changes: e.details?.changes || null,
         created_at: e.created_at
       }))
     }
@@ -3958,8 +3978,17 @@ const send_on_my_way = {
 
     try {
       const sid = await sendSMSRaw(to, msg)
-      // Stamp the job with customer_notified_at
-      await ctx.supabase.from('jobs').update({ customer_notified_at: new Date().toISOString() }).eq('id', input.job_id).catch(() => {})
+      // Stamp the job with customer_notified_at. Wrap in try — Supabase
+      // builders return a thenable, NOT a real promise, so .catch() on
+      // them throws "TypeError: .catch is not a function" inside the
+      // handler. The previous .catch(()=>{}) chain caused the await to
+      // throw AFTER the SMS already went out → tool returned {error},
+      // Jon thought it failed and re-sent → customer got two texts.
+      try {
+        await ctx.supabase.from('jobs').update({ customer_notified_at: new Date().toISOString() }).eq('id', input.job_id)
+      } catch (stampErr) {
+        console.warn('[send_on_my_way] customer_notified_at stamp failed:', stampErr.message)
+      }
       return { ok: true, sent_to: to, message: msg, sid }
     } catch (e) {
       return { error: 'SMS send failed: ' + e.message }
