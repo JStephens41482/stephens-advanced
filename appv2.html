@@ -708,7 +708,7 @@ async function load(){
   // base64), photos (array of base64), ext_report_photos (jsonb of photos),
   // and reduce the embedded location to id/name/city/address — full location
   // detail is loaded separately and looked up via D.locs.find().
-  let jobsQuery=SB.from('jobs').select('id,job_number,location_id,billing_account_id,contract_id,type,scope,status,scheduled_date,scheduled_time,route_order,started_at,completed_at,technician,assigned_to,customer_notified_at,customer_arrived_at,travel_distance,travel_charge,estimated_value,notes,work_order_lines,gcal_event_id,sm8_job_number,sm8_amount,sm8_description,estimated_duration_hours,departure_alert_sent_at,created_at,updated_at,deleted_at,location:locations(id,name,city,address)').is('deleted_at',null).order('updated_at',{ascending:false})
+  let jobsQuery=SB.from('jobs').select('id,job_number,location_id,billing_account_id,contract_id,type,scope,status,scheduled_date,scheduled_time,route_order,started_at,completed_at,technician,assigned_to,customer_notified_at,customer_arrived_at,travel_distance,travel_charge,estimated_value,notes,work_order_lines,gcal_event_id,sm8_job_number,sm8_amount,sm8_description,estimated_duration_hours,departure_alert_sent_at,confirmed_at,confirmed_by,confirmation_method,created_at,updated_at,deleted_at,location:locations(id,name,city,address)').is('deleted_at',null).order('updated_at',{ascending:false})
   const orParts=[`status.neq.completed`,`scheduled_date.gte.${jobCutoff}`]
   if(unpaidJobIds.length)orParts.push(`id.in.(${unpaidJobIds.join(',')})`)
   jobsQuery=jobsQuery.or(orParts.join(','))
@@ -956,7 +956,7 @@ async function ensureLocationDetail(locId){
   if(!loc)return null
   try{
     const[jq,iq]=await Promise.all([
-      SB.from('jobs').select('id,job_number,location_id,billing_account_id,contract_id,type,scope,status,scheduled_date,scheduled_time,route_order,started_at,completed_at,technician,assigned_to,customer_notified_at,customer_arrived_at,travel_distance,travel_charge,estimated_value,notes,work_order_lines,gcal_event_id,sm8_job_number,sm8_amount,sm8_description,estimated_duration_hours,departure_alert_sent_at,created_at,updated_at,deleted_at,location:locations(id,name,city,address)').eq('location_id',locId).is('deleted_at',null).order('completed_at',{ascending:false,nullsFirst:false}),
+      SB.from('jobs').select('id,job_number,location_id,billing_account_id,contract_id,type,scope,status,scheduled_date,scheduled_time,route_order,started_at,completed_at,technician,assigned_to,customer_notified_at,customer_arrived_at,travel_distance,travel_charge,estimated_value,notes,work_order_lines,gcal_event_id,sm8_job_number,sm8_amount,sm8_description,estimated_duration_hours,departure_alert_sent_at,confirmed_at,confirmed_by,confirmation_method,created_at,updated_at,deleted_at,location:locations(id,name,city,address)').eq('location_id',locId).is('deleted_at',null).order('completed_at',{ascending:false,nullsFirst:false}),
       SB.from('invoices').select('*,invoice_lines(*)').eq('location_id',locId).is('deleted_at',null).order('date',{ascending:false})
     ])
     const jobs=jq.data||[]
@@ -3393,11 +3393,14 @@ async function openJob(id){
   // this fetch, a previously-signed job appears unsigned every time it's
   // reopened. Mutate the cached job in-place so renderers see the values.
   try{
-    const{data:jHeavy}=await SB.from('jobs').select('signature_data,photos,ext_report_photos').eq('id',id).maybeSingle()
+    const{data:jHeavy}=await SB.from('jobs').select('signature_data,photos,ext_report_photos,confirmed_at,confirmed_by,confirmation_method').eq('id',id).maybeSingle()
     if(jHeavy){
       j.signature_data=jHeavy.signature_data||null
       j.photos=jHeavy.photos||null
       j.ext_report_photos=jHeavy.ext_report_photos||null
+      j.confirmed_at=jHeavy.confirmed_at||null
+      j.confirmed_by=jHeavy.confirmed_by||null
+      j.confirmation_method=jHeavy.confirmation_method||null
     }
   }catch(e){console.error('hydrate job heavy cols:',e)}
   // Hydrate full location (extinguishers, suppression systems, e-lights) on demand
@@ -4108,13 +4111,13 @@ async function renderJobActivity(jobId){
   let jobEvents=[],invEvents=[]
   try{
     const [a,b]=await Promise.all([
-      SB.from('audit_log').select('action,actor,summary,created_at,entity_type').eq('entity_type','job').eq('entity_id',jobId).order('created_at',{ascending:false}).limit(100),
+      SB.from('audit_log').select('action,actor,details,created_at,entity_type').eq('entity_type','job').eq('entity_id',jobId).order('created_at',{ascending:false}).limit(100),
       SB.from('invoices').select('id').eq('job_id',jobId)
     ])
     jobEvents=a.data||[]
     if(b.data?.length){
       const invIds=b.data.map(i=>i.id)
-      const{data}=await SB.from('audit_log').select('action,actor,summary,created_at,entity_type').eq('entity_type','invoice').in('entity_id',invIds).order('created_at',{ascending:false}).limit(50)
+      const{data}=await SB.from('audit_log').select('action,actor,details,created_at,entity_type').eq('entity_type','invoice').in('entity_id',invIds).order('created_at',{ascending:false}).limit(50)
       invEvents=data||[]
     }
   }catch(e){console.error('activity load:',e)}
@@ -4134,7 +4137,7 @@ async function renderJobActivity(jobId){
     return`<div style="display:flex;gap:10px;padding:9px 0;border-top:1px solid rgba(42,47,62,.6)">
       <div style="width:26px;height:26px;flex-shrink:0;background:var(--c2);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px">${icon}</div>
       <div style="flex:1;min-width:0">
-        <div style="font-size:12.5px;color:var(--w);line-height:1.4;word-wrap:break-word">${esc(e.summary||e.action||'event')}</div>
+        <div style="font-size:12.5px;color:var(--w);line-height:1.4;word-wrap:break-word">${esc(e.details?.summary||e.action||'event')}</div>
         <div style="font-size:10px;color:var(--g1);margin-top:3px;font-family:'JetBrains Mono',ui-monospace,monospace;letter-spacing:.04em">${timeStr} · ${esc(actor)}${isInv?' · invoice':''}</div>
       </div>
     </div>`
@@ -4254,6 +4257,10 @@ async function openCust(id){
     <button class="qa-btn pri" onclick="newJobForLoc('${l.id}')">+ New Job</button>
   </div>`
 
+  // Hoisted: needed by the signed-contract template literal below (L4268-4269)
+  // and re-used by the parent-company / sibling-locations section further down.
+  const ba=l.billing_account_id?D.bas.find(b=>b.id===l.billing_account_id):null
+
   // Contract section
   const locContract=D.contracts?.find(c=>c.location_id===id&&c.status!=='cancelled')
   h+=`<div class="ds"><div class="ds-t" style="display:flex;justify-content:space-between;align-items:center">
@@ -4355,8 +4362,7 @@ async function openCust(id){
   }catch(e){docsHtml='<div style="color:var(--g2)">Could not load documents</div>';console.error('docs:',e)}
   h+=`<div class="ds"><div class="ds-t">Documents</div><div style="font-size:12px;padding:4px 0">${docsHtml}</div></div>`
 
-  // Parent company & sibling locations
-  const ba=l.billing_account_id?D.bas.find(b=>b.id===l.billing_account_id):null
+  // Parent company & sibling locations (ba was hoisted above the contract section)
   const siblings=ba?D.locs.filter(x=>x.billing_account_id===ba.id&&x.id!==l.id):[]
 
   h+=`<div class="ds"><div class="ds-t" style="display:flex;justify-content:space-between;align-items:center">
@@ -8008,7 +8014,11 @@ async function _confirmSendEmail(){
     })
     const data=await res.json()
     if(data.success){
-      await SB.from('invoices').update({status:'sent',sent_at:new Date().toISOString()}).eq('id',d.invId)
+      // Don't downgrade settled invoices (paid/void/record/factored) to "sent" when resending a copy.
+      // The email body already renders correctly via isPaid; the DB just needs to keep the original status.
+      const settledStatuses=['paid','void','record','factored']
+      const updPayload=settledStatuses.includes(d.inv?.status)?{sent_at:new Date().toISOString()}:{status:'sent',sent_at:new Date().toISOString()}
+      await SB.from('invoices').update(updPayload).eq('id',d.invId)
       audit('sent','invoice',d.invId,'jon',{to:d.to},'Invoice '+d.invNum+' sent to '+d.to)
       await load()
       // Bug #6 fix: refresh the status badge on any invoice detail overlay
