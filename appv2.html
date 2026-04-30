@@ -5671,9 +5671,12 @@ function _kioskRender(){
   }
 
   if(k.step==='payment_method'){
-    // Bill-me only appears when the billing account is set up for it. Otherwise
-    // the customer has to pay right now via cash / check / card. No escape route.
-    const billMeOK = _kioskCanBillLater(ba)
+    // Policy: if the customer is holding the phone, they pay right now.
+    // Cash / Check / Card. No "bill me later" escape — that's what a
+    // service contract is for. If they want recurring billing without
+    // paying every visit, they sign a contract beforehand and Jon uses
+    // the "Bill — Contracted" path back on his side instead of handing
+    // over the phone at all.
     return hdr + `<div class="ov-body" style="padding:24px;text-align:center">
       <h3 style="margin:0 0 8px">How would you like to pay?</h3>
       <p style="color:var(--g2);font-size:13px;margin:0 0 24px">Choose one. Total: <b style="color:var(--ok)">${fmt(total)}</b></p>
@@ -5681,9 +5684,8 @@ function _kioskRender(){
         <button onclick="_kioskPickPayment('check')"  style="padding:18px;border-radius:var(--r);background:var(--c2);color:var(--w);border:1.5px solid var(--ok);font-size:15px;font-weight:800;cursor:pointer">✓ Pay by Check</button>
         <button onclick="_kioskPickPayment('cash')"   style="padding:18px;border-radius:var(--r);background:var(--c2);color:var(--w);border:1.5px solid var(--ok);font-size:15px;font-weight:800;cursor:pointer">💵 Pay with Cash</button>
         <button onclick="_kioskPickPayment('card')"   style="padding:18px;border-radius:var(--r);background:var(--c2);color:var(--w);border:1.5px solid var(--info);font-size:15px;font-weight:800;cursor:pointer">💳 Pay by Card</button>
-        ${billMeOK?`<button onclick="_kioskPickPayment('invoice')" style="padding:18px;border-radius:var(--r);background:var(--c2);color:var(--g1);border:1px solid var(--b1);font-size:14px;font-weight:700;cursor:pointer">📧 Bill me later</button>`:''}
       </div>
-      ${billMeOK?'':'<p style="color:var(--g3);font-size:11px;margin-top:18px;max-width:340px;margin-left:auto;margin-right:auto;line-height:1.5">If you have an accounts payable department or alternative billing arrangement, please mention it to the tech.</p>'}
+      <p style="color:var(--g3);font-size:11px;margin-top:18px;max-width:340px;margin-left:auto;margin-right:auto;line-height:1.5">Want to skip paying every visit? Ask the tech about our service agreement — sign once, billed afterwards, no checkout step.</p>
     </div>`
   }
 
