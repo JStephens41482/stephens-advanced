@@ -708,7 +708,7 @@ async function load(){
   // base64), photos (array of base64), ext_report_photos (jsonb of photos),
   // and reduce the embedded location to id/name/city/address — full location
   // detail is loaded separately and looked up via D.locs.find().
-  let jobsQuery=SB.from('jobs').select('id,job_number,location_id,billing_account_id,contract_id,type,scope,status,scheduled_date,scheduled_time,route_order,started_at,completed_at,technician,assigned_to,customer_notified_at,customer_arrived_at,travel_distance,travel_charge,estimated_value,notes,work_order_lines,gcal_event_id,sm8_job_number,sm8_amount,sm8_description,estimated_duration_hours,departure_alert_sent_at,confirmed_at,confirmed_by,confirmation_method,created_at,updated_at,deleted_at,location:locations(id,name,city,address)').is('deleted_at',null).order('updated_at',{ascending:false})
+  let jobsQuery=SB.from('jobs').select('id,job_number,location_id,billing_account_id,contract_id,type,scope,status,scheduled_date,scheduled_time,route_order,started_at,completed_at,technician,assigned_to,customer_notified_at,customer_arrived_at,travel_distance,travel_charge,estimated_value,notes,work_order_lines,gcal_event_id,sm8_job_number,sm8_amount,sm8_description,estimated_duration_hours,departure_alert_sent_at,confirmed_at,confirmed_by,confirmation_method,tentative,created_at,updated_at,deleted_at,location:locations(id,name,city,address)').is('deleted_at',null).order('updated_at',{ascending:false})
   const orParts=[`status.neq.completed`,`scheduled_date.gte.${jobCutoff}`]
   if(unpaidJobIds.length)orParts.push(`id.in.(${unpaidJobIds.join(',')})`)
   jobsQuery=jobsQuery.or(orParts.join(','))
@@ -956,7 +956,7 @@ async function ensureLocationDetail(locId){
   if(!loc)return null
   try{
     const[jq,iq]=await Promise.all([
-      SB.from('jobs').select('id,job_number,location_id,billing_account_id,contract_id,type,scope,status,scheduled_date,scheduled_time,route_order,started_at,completed_at,technician,assigned_to,customer_notified_at,customer_arrived_at,travel_distance,travel_charge,estimated_value,notes,work_order_lines,gcal_event_id,sm8_job_number,sm8_amount,sm8_description,estimated_duration_hours,departure_alert_sent_at,confirmed_at,confirmed_by,confirmation_method,created_at,updated_at,deleted_at,location:locations(id,name,city,address)').eq('location_id',locId).is('deleted_at',null).order('completed_at',{ascending:false,nullsFirst:false}),
+      SB.from('jobs').select('id,job_number,location_id,billing_account_id,contract_id,type,scope,status,scheduled_date,scheduled_time,route_order,started_at,completed_at,technician,assigned_to,customer_notified_at,customer_arrived_at,travel_distance,travel_charge,estimated_value,notes,work_order_lines,gcal_event_id,sm8_job_number,sm8_amount,sm8_description,estimated_duration_hours,departure_alert_sent_at,confirmed_at,confirmed_by,confirmation_method,tentative,created_at,updated_at,deleted_at,location:locations(id,name,city,address)').eq('location_id',locId).is('deleted_at',null).order('completed_at',{ascending:false,nullsFirst:false}),
       SB.from('invoices').select('*,invoice_lines(*)').eq('location_id',locId).is('deleted_at',null).order('date',{ascending:false})
     ])
     const jobs=jq.data||[]
@@ -1024,6 +1024,29 @@ function primaryContactFor(entityType,entityId){
 }
 
 const td=()=>new Date().toISOString().split('T')[0]
+
+// Format YYYY-MM-DD into "January 31st, 2027" (with ordinal suffix).
+// Used by the openJob status pill so dates read like a human wrote them.
+function fmtFullDate(ymd){
+  if(!ymd) return ''
+  const m=String(ymd).match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if(!m) return ymd
+  const y=+m[1], mo=+m[2]-1, d=+m[3]
+  const months=['January','February','March','April','May','June','July','August','September','October','November','December']
+  const ord=(n)=>{const s=['th','st','nd','rd'],v=n%100;return n+(s[(v-20)%10]||s[v]||s[0])}
+  return `${months[mo]} ${ord(d)}, ${y}`
+}
+
+// Format HH:MM:SS or HH:MM as "9:00 AM" / "1:30 PM"
+function fmtTime12(hms){
+  if(!hms) return ''
+  const m=String(hms).match(/^(\d{1,2}):(\d{2})/)
+  if(!m) return hms
+  let h=+m[1]; const mn=m[2]
+  const ap=h>=12?'PM':'AM'
+  h=h%12; if(h===0)h=12
+  return `${h}:${mn} ${ap}`
+}
 
 // ═══ CALENDAR EVENT EXPANSION ═══
 const DAY_MAP={sun:0,mon:1,tue:2,wed:3,thu:4,fri:5,sat:6}
@@ -3343,7 +3366,9 @@ async function confirmResched(id){
     if(!confirm('Reschedule to '+newDateFmt+(nt?' at '+nt:'')+'?'))return
   }
   setLoad('reschedBtn',true)
-  const updates={scheduled_date:nd}
+  // Manually rescheduling implicitly confirms the date — clear the tentative
+  // flag so the openJob pill flips from dashed-green to solid-green.
+  const updates={scheduled_date:nd,tentative:false}
   if(nt)updates.scheduled_time=nt
   await SB.from('jobs').update(updates).eq('id',id)
   if(email){
@@ -3474,21 +3499,48 @@ async function openJob(id){
     </div>
   </div>
 
-  <!-- STATUS BAR -->
+  <!-- STATUS BAR — schedule pill (tentative=dashed-green / confirmed=solid-green) -->
   <div style="background:var(--c1);border:1px solid var(--b1);border-radius:var(--r);padding:12px 14px;margin-bottom:16px">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:${D.techs?.length?'8px':'0'}">
-      <div style="font-size:13px;color:var(--info);cursor:pointer;text-decoration:underline;text-decoration-color:rgba(99,102,241,.3)" onclick="reschedJob('${j.id}')">${j.scheduled_date||'Unscheduled'}${j.scheduled_time?' · '+j.scheduled_time.slice(0,5):''}</div>
-      <span style="font-size:11px;font-weight:800;text-transform:uppercase;color:${statC}">${j.status}</span>
-    </div>
-    ${D.techs?.length?`<div style="display:flex;align-items:center;gap:8px">
+    ${(()=>{
+      if(j.status==='completed'){
+        return `<div style="display:flex;justify-content:space-between;align-items:center">
+          <div style="font-size:15px;font-weight:700;color:var(--w2)">${j.scheduled_date?fmtFullDate(j.scheduled_date):'Unscheduled'}${j.scheduled_time?' · '+fmtTime12(j.scheduled_time):''}</div>
+          <span style="font-size:11px;font-weight:800;text-transform:uppercase;color:${statC}">${j.status}</span>
+        </div>`
+      }
+      if(!j.scheduled_date){
+        return `<button onclick="reschedJob('${j.id}')" style="width:100%;min-height:64px;border-radius:var(--rs);background:transparent;border:1.5px dashed var(--fire);color:var(--fire);font-size:14px;font-weight:800;cursor:pointer;letter-spacing:.3px">📅 TAP TO SCHEDULE</button>`
+      }
+      const isTent = !!j.tentative
+      const dateBig = fmtFullDate(j.scheduled_date)
+      const timeStr = j.scheduled_time?fmtTime12(j.scheduled_time):''
+      const pillStyle = isTent
+        ? 'background:transparent;border:2px dashed #10b981;color:#10b981'
+        : 'background:#10b981;border:2px solid #10b981;color:#fff;box-shadow:0 0 0 4px rgba(16,185,129,.18),0 4px 14px rgba(16,185,129,.35)'
+      const labelStyle = isTent
+        ? 'color:#10b981;opacity:.85'
+        : 'color:rgba(255,255,255,.85)'
+      return `<div style="border-radius:var(--rs);padding:14px 16px;${pillStyle}">
+        <div style="font-size:11px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;${labelStyle};margin-bottom:6px">${isTent?'⏱ Tentative · proposed by route':'✓ Scheduled'}</div>
+        <div style="font-size:22px;font-weight:800;line-height:1.2">${dateBig}</div>
+        ${timeStr?`<div style="font-size:14px;font-weight:600;margin-top:2px;opacity:.9">${timeStr}</div>`:''}
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button onclick="reschedJob('${j.id}')" style="flex:1;min-height:44px;border-radius:var(--rs);${isTent?'background:transparent;border:1.5px solid #10b981;color:#10b981':'background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.4);color:#fff'};font-size:12px;font-weight:800;letter-spacing:.5px;cursor:pointer">↔ MOVE</button>
+          ${isTent
+            ? `<button onclick="confirmTentativeTime('${j.id}')" style="flex:1;min-height:44px;border-radius:var(--rs);background:#10b981;color:#fff;border:none;font-size:12px;font-weight:800;letter-spacing:.5px;cursor:pointer">✓ CONFIRM TIME</button>`
+            : `<button onclick="markJobTentative('${j.id}')" style="flex:1;min-height:44px;border-radius:var(--rs);background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.4);color:#fff;font-size:12px;font-weight:800;letter-spacing:.5px;cursor:pointer">⤴ UNCONFIRM</button>`}
+        </div>
+      </div>`
+    })()}
+    ${D.techs?.length?`<div style="display:flex;align-items:center;gap:8px;margin-top:10px">
       <span style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--g2)">Assigned</span>
       <select style="flex:1;min-height:36px;font-size:12px;padding:6px 10px" onchange="assignJob('${j.id}',this.value)">
         <option value="">Unassigned</option>
         ${D.techs.filter(t2=>t2.active).map(t2=>`<option value="${t2.id}"${j.assigned_to===t2.id?' selected':''}>${esc(t2.name)}</option>`).join('')}
       </select>
     </div>`:''}
-    ${j.status==='completed'?'':(j.scheduled_date!==td()?`<button style="width:100%;padding:10px;margin-top:8px;border-radius:var(--rs);background:transparent;border:1.5px solid var(--fire);color:var(--fire);font-size:12px;font-weight:800;cursor:pointer;min-height:44px" onclick="addToTodaySchedule('${j.id}')">📅 Add to Today's Schedule</button>`:'<div style="font-size:11px;color:var(--ok);font-weight:700;margin-top:8px;text-align:center">✓ On today\'s schedule</div>')}
-    ${j.status==='completed'?'':`<button id="confirm-toggle-${j.id}" onclick="toggleJobConfirmed('${j.id}')" style="width:100%;min-height:48px;margin-top:8px;border-radius:var(--rs);font-size:12px;font-weight:800;letter-spacing:.5px;cursor:pointer;transition:all .15s;${j.confirmed_at?'background:#10b981;color:#fff;border:none;box-shadow:0 0 0 4px rgba(16,185,129,.25),0 4px 14px rgba(16,185,129,.4)':'background:transparent;color:#10b981;border:1.5px dashed #10b981;box-shadow:none'}">${j.confirmed_at?`✓ TIME CONFIRMED WITH CUSTOMER${j.confirmed_by?' · '+esc(j.confirmed_by):''} · TAP TO UNCONFIRM`:'☐ TAP TO MARK CONFIRMED WITH CUSTOMER'}</button>`}
+    ${j.status==='completed'?'':(j.scheduled_date&&j.scheduled_date!==td()?`<button style="width:100%;padding:10px;margin-top:10px;border-radius:var(--rs);background:transparent;border:1.5px solid var(--fire);color:var(--fire);font-size:12px;font-weight:800;cursor:pointer;min-height:44px" onclick="addToTodaySchedule('${j.id}')">📅 Add to Today's Schedule</button>`:(j.scheduled_date===td()?'<div style="font-size:11px;color:var(--ok);font-weight:700;margin-top:10px;text-align:center">✓ On today\'s schedule</div>':''))}
+    ${j.status==='completed'?'':`<button id="confirm-toggle-${j.id}" onclick="toggleJobConfirmed('${j.id}')" style="width:100%;min-height:44px;margin-top:8px;border-radius:var(--rs);font-size:11px;font-weight:800;letter-spacing:.5px;cursor:pointer;transition:all .15s;${j.confirmed_at?'background:rgba(16,185,129,.15);color:#10b981;border:1px solid rgba(16,185,129,.4)':'background:transparent;color:var(--g2);border:1px dashed var(--b1)'}">${j.confirmed_at?`✓ CUSTOMER CONFIRMED${j.confirmed_by?' · '+esc(j.confirmed_by):''}`:'☐ MARK CUSTOMER CONFIRMED'}</button>`}
   </div>
 
   <!-- LOCATION -->
@@ -3544,16 +3596,8 @@ async function openJob(id){
       <div id="jobPhotoPreview" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${jobPhotos.map((p,pi)=>`<div style="position:relative"><img src="${p.b64}" style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:1px solid var(--b1)"><button onclick="jobPhotos.splice(${pi},1);renderJobPhotos()" style="position:absolute;top:-4px;right:-4px;width:18px;height:18px;border-radius:50%;background:var(--bad);color:#fff;font-size:10px;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</button></div>`).join('')}</div>
     </div>
 
-    <!-- EXTINGUISHER REPORT PASTE -->
-    <div id="extPasteZone-${j.id}" style="margin-top:12px;background:var(--c1);border:1.5px dashed var(--b1);border-radius:var(--r);padding:16px;text-align:center" contenteditable="true" onpaste="handleExtPaste(event,'${j.id}')" onfocus="this.style.borderColor='var(--fire)'" onblur="this.style.borderColor='var(--b1)'" oninput="if(!this.querySelector('img'))this.textContent=''">
-      <div id="extReportPreview-${j.id}">${(()=>{const ep=j.ext_report_photos||[];return ep.length?ep.map((p,i)=>'<img src="'+p+'" style="width:100%;max-height:200px;object-fit:contain;border-radius:8px;margin-bottom:6px;border:1px solid var(--b1)">').join(''):'<div style="font-size:14px;color:var(--g2);padding:20px 0">Tap here and paste extinguisher report</div>'})()}</div>
-    </div>
-    <div style="display:flex;gap:8px;margin-top:6px">
-      <label style="flex:1;padding:10px;border-radius:var(--rs);background:var(--c2);border:1px solid var(--b1);color:var(--w2);font-size:12px;font-weight:700;cursor:pointer;text-align:center">📷 Or choose from photos
-        <input type="file" accept="image/*" multiple style="position:absolute;opacity:0;width:0;height:0" onchange="pasteExtReport(event,'${j.id}')">
-      </label>
-    </div>
     </div>`
+    // Ext-report paste lives on the Review & Finalize page now.
 
     // Customer signature collected at send time, not here
 
@@ -3649,52 +3693,14 @@ async function openJob(id){
     startJobAutoSave()
     setTimeout(()=>updateJobChecklist(),150)
 
-    const _invTotal=est(j)
-    const _invTotalStr=_invTotal?fmt(_invTotal):''
+    // The "How does this job end?" buttons live on the new Review & Finalize
+    // page. openJob now ends with a single tap-target that takes Jon there.
+    // updateJobChecklist() flips this button's color to green when all flags
+    // are done, so it doubles as a "ready" indicator.
     h+=`<div style="padding:0 0 max(env(safe-area-inset-bottom),12px)">
-      <div style="background:var(--c1);border:1.5px solid var(--b1);border-radius:var(--r);padding:14px;margin-bottom:10px">
-        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--b1)">
-          <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1.4px;color:var(--g2)">Invoice</div>
-          <div style="font-family:'Fraunces',Georgia,serif;font-size:22px;font-weight:500;color:var(--w);font-variant-numeric:tabular-nums" id="compInvTotal">${_invTotalStr||'—'}</div>
-        </div>
-        <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1.4px;color:var(--g2);margin-bottom:8px;text-align:center">How does this job end?</div>
-        ${(()=>{
-          const _locContract=D.contracts?.find(c=>c.location_id===l.id&&c.status!=='cancelled'&&c.signed)
-          const _locBa=l.billing_account_id?D.bas.find(b=>b.id===l.billing_account_id):null
-          const _hasCardOnFile=!!_locBa?.card_on_file
-          const _isContracted=!!_locContract
-          const _billLabel = _hasCardOnFile && _isContracted ? 'Bill \u2014 Charge Card on File'
-                           : _hasCardOnFile ? 'Bill \u2014 Charge Card'
-                           : _isContracted ? 'Send Invoice (Contracted)'
-                           : 'Send Invoice'
-          const _billSub = _hasCardOnFile && _isContracted ? `Contract on file \u00b7 charge ${esc(_locBa.card_brand||'card')} \u00b7\u00b7\u00b7\u00b7${esc(_locBa.card_last4||'????')} + receipt`
-                         : _hasCardOnFile ? `Charge ${esc(_locBa.card_brand||'card')} \u00b7\u00b7\u00b7\u00b7${esc(_locBa.card_last4||'????')} + email receipt`
-                         : _isContracted ? 'Email invoice; customer pays via portal'
-                         : 'Email invoice; customer pays online'
-          return `
-        <button class="btn-p" style="background:var(--info);color:#fff;display:flex;align-items:center;gap:12px;margin-bottom:8px;padding:14px 16px;text-align:left" onclick="openKiosk('${j.id}')">
-          <span style="font-size:22px;flex-shrink:0">\ud83d\udc64</span>
-          <div style="flex:1">
-            <div style="font-size:14px;font-weight:800;line-height:1.2">Hand to Customer</div>
-            <div style="font-size:11px;opacity:.85;margin-top:2px">In-person \u2014 they pick payment + sign here</div>
-          </div>
-        </button>
-        <button class="btn-p" style="background:#a855f7;color:#fff;display:flex;align-items:center;gap:12px;margin-bottom:8px;padding:14px 16px;text-align:left" onclick="sendForSignatureFromJob('${j.id}')">
-          <span style="font-size:22px;flex-shrink:0">\u270d\ufe0f</span>
-          <div style="flex:1">
-            <div style="font-size:14px;font-weight:800;line-height:1.2">Send for Signature</div>
-            <div style="font-size:11px;opacity:.85;margin-top:2px">Customer wasn't here \u2014 text/email a sign link</div>
-          </div>
-        </button>
-        <button class="btn-p" style="background:var(--ok);color:#fff;display:flex;align-items:center;gap:12px;padding:14px 16px;text-align:left" onclick="billContractedFromJob('${j.id}')">
-          <span style="font-size:22px;flex-shrink:0">\ud83d\udcc4</span>
-          <div style="flex:1">
-            <div style="font-size:14px;font-weight:800;line-height:1.2">${_billLabel}</div>
-            <div style="font-size:11px;opacity:.85;margin-top:2px">${_billSub}</div>
-          </div>
-        </button>`
-        })()}
-      </div>
+      <button id="reviewFinalizeBtn-${j.id}" onclick="openJobReview('${j.id}')" style="width:100%;min-height:60px;border-radius:var(--rs);background:var(--g3);color:var(--g1);border:none;font-size:14px;font-weight:800;letter-spacing:.5px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;transition:all .15s">
+        <span>Review &amp; Finalize</span><span style="font-size:18px">&rarr;</span>
+      </button>
     </div>`
   }else{
     h+=`<div style="padding:12px 0"><button class="btn-dim" onclick="pop()">← Back</button></div>`
@@ -3705,6 +3711,94 @@ async function openJob(id){
   if(isActive){
     setTimeout(()=>{renderJobLines();initSig()},80)
   }
+}
+
+// REVIEW & FINALIZE — the second screen of an active job. Contains the three
+// "how does this job end?" tap-targets, the running invoice total, and the
+// extinguisher-report paste zone. openJob shows the work checklist + line
+// items; openJobReview is where Jon decides what to do with the result.
+//
+// Per Jon's spec (2026-04-30): "build invoice + kitchen hood report stay in
+// openJob; ext report paste, total, and the 3 buttons move to a Review page."
+async function openJobReview(jobId){
+  const j=D.jobs.find(x=>x.id===jobId)
+  if(!j){toast('Job not found');return}
+  if(j.status==='completed'){toast('Job already completed');return}
+  const l=D.locs.find(x=>x.id===(j.location_id||j.location?.id))||j.location||{}
+  const _invTotal=est(j)
+  const _invTotalStr=_invTotal?fmt(_invTotal):''
+  const _locContract=D.contracts?.find(c=>c.location_id===l.id&&c.status!=='cancelled'&&c.signed)
+  const _locBa=l.billing_account_id?D.bas.find(b=>b.id===l.billing_account_id):null
+  const _hasCardOnFile=!!_locBa?.card_on_file
+  const _isContracted=!!_locContract
+  const _billLabel = _hasCardOnFile && _isContracted ? 'Bill — Charge Card on File'
+                   : _hasCardOnFile ? 'Bill — Charge Card'
+                   : _isContracted ? 'Send Invoice (Contracted)'
+                   : 'Send Invoice'
+  const _billSub = _hasCardOnFile && _isContracted ? `Contract on file · charge ${esc(_locBa.card_brand||'card')} ····${esc(_locBa.card_last4||'????')} + receipt`
+                 : _hasCardOnFile ? `Charge ${esc(_locBa.card_brand||'card')} ····${esc(_locBa.card_last4||'????')} + email receipt`
+                 : _isContracted ? 'Email invoice; customer pays via portal'
+                 : 'Email invoice; customer pays online'
+  const ep=j.ext_report_photos||[]
+
+  let h=`<div class="ov-hdr">
+    <button class="ov-back" onclick="pop()">‹</button>
+    <div class="ov-title">Review &amp; Finalize</div>
+    <div style="width:60px"></div>
+  </div><div class="ov-body">
+
+    <!-- Job context strip -->
+    <div style="background:var(--c1);border:1px solid var(--b1);border-radius:var(--r);padding:12px 14px;margin-bottom:14px">
+      <div style="font-size:14px;font-weight:700;color:var(--w)">${esc(l.name||'Job')}</div>
+      <div style="font-size:11px;color:var(--g1);margin-top:2px">${esc([l.address,l.city].filter(Boolean).join(', '))||'No address'}</div>
+      <div style="font-size:11px;color:var(--g2);margin-top:6px">${j.scheduled_date?fmtFullDate(j.scheduled_date):'Unscheduled'}${j.scheduled_time?' · '+fmtTime12(j.scheduled_time):''}</div>
+    </div>
+
+    <!-- Extinguisher report paste -->
+    <div class="ds"><div class="ds-t">Extinguisher Report</div>
+      <div id="extPasteZone-${j.id}" style="background:var(--c1);border:1.5px dashed var(--b1);border-radius:var(--r);padding:16px;text-align:center" contenteditable="true" onpaste="handleExtPaste(event,'${j.id}')" onfocus="this.style.borderColor='var(--fire)'" onblur="this.style.borderColor='var(--b1)'" oninput="if(!this.querySelector('img'))this.textContent=''">
+        <div id="extReportPreview-${j.id}">${ep.length?ep.map(p=>'<img src="'+p+'" style="width:100%;max-height:200px;object-fit:contain;border-radius:8px;margin-bottom:6px;border:1px solid var(--b1)">').join(''):'<div style="font-size:14px;color:var(--g2);padding:20px 0">Tap here and paste extinguisher report</div>'}</div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:6px">
+        <label style="flex:1;padding:10px;border-radius:var(--rs);background:var(--c2);border:1px solid var(--b1);color:var(--w2);font-size:12px;font-weight:700;cursor:pointer;text-align:center">📷 Or choose from photos
+          <input type="file" accept="image/*" multiple style="position:absolute;opacity:0;width:0;height:0" onchange="pasteExtReport(event,'${j.id}')">
+        </label>
+      </div>
+    </div>
+
+    <!-- Invoice total + how it ends -->
+    <div style="background:var(--c1);border:1.5px solid var(--b1);border-radius:var(--r);padding:14px;margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--b1)">
+        <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1.4px;color:var(--g2)">Invoice Total</div>
+        <div style="font-family:'Fraunces',Georgia,serif;font-size:26px;font-weight:500;color:var(--w);font-variant-numeric:tabular-nums">${_invTotalStr||'—'}</div>
+      </div>
+      <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1.4px;color:var(--g2);margin-bottom:8px;text-align:center">How does this job end?</div>
+      <button class="btn-p" style="background:var(--info);color:#fff;display:flex;align-items:center;gap:12px;margin-bottom:8px;padding:14px 16px;text-align:left" onclick="openKiosk('${j.id}')">
+        <span style="font-size:22px;flex-shrink:0">👤</span>
+        <div style="flex:1">
+          <div style="font-size:14px;font-weight:800;line-height:1.2">Hand to Customer</div>
+          <div style="font-size:11px;opacity:.85;margin-top:2px">In-person — they pick payment + sign here</div>
+        </div>
+      </button>
+      <button class="btn-p" style="background:#a855f7;color:#fff;display:flex;align-items:center;gap:12px;margin-bottom:8px;padding:14px 16px;text-align:left" onclick="sendForSignatureFromJob('${j.id}')">
+        <span style="font-size:22px;flex-shrink:0">✍️</span>
+        <div style="flex:1">
+          <div style="font-size:14px;font-weight:800;line-height:1.2">Send for Signature</div>
+          <div style="font-size:11px;opacity:.85;margin-top:2px">Customer wasn't here — text/email a sign link</div>
+        </div>
+      </button>
+      <button class="btn-p" style="background:var(--ok);color:#fff;display:flex;align-items:center;gap:12px;padding:14px 16px;text-align:left" onclick="billContractedFromJob('${j.id}')">
+        <span style="font-size:22px;flex-shrink:0">📄</span>
+        <div style="flex:1">
+          <div style="font-size:14px;font-weight:800;line-height:1.2">${_billLabel}</div>
+          <div style="font-size:11px;opacity:.85;margin-top:2px">${_billSub}</div>
+        </div>
+      </button>
+    </div>
+
+    <button class="btn-dim" onclick="pop()" style="width:100%;margin-bottom:max(env(safe-area-inset-bottom),12px)">← Back to Job</button>
+  </div>`
+  push(h,{jobReviewId:jobId})
 }
 
 async function handleExtPaste(ev,jobId){
@@ -3928,6 +4022,21 @@ async function updateJobChecklist(){
     compBtn.style.background=allDone?'var(--ok)':'var(--g3)'
     compBtn.style.color=allDone?'#fff':'var(--g1)'
   }
+  // The Review & Finalize button at the bottom of openJob doubles as a
+  // "ready" indicator — flip it green when every flag in the checklist is
+  // satisfied so Jon's eye is drawn to the next step.
+  const rfBtn=$('reviewFinalizeBtn-'+jid)
+  if(rfBtn){
+    if(allDone){
+      rfBtn.style.background='var(--ok)'
+      rfBtn.style.color='#fff'
+      rfBtn.style.boxShadow='0 4px 14px rgba(16,185,129,.35)'
+    } else {
+      rfBtn.style.background='var(--g3)'
+      rfBtn.style.color='var(--g1)'
+      rfBtn.style.boxShadow='none'
+    }
+  }
   wrap.innerHTML=fh
   // attach click handlers via addEventListener (more reliable than onclick attr)
   wrap.querySelectorAll('[data-flag]').forEach(el=>{
@@ -4078,7 +4187,7 @@ async function _completeJobAndCreateInvoice(jobId, opts){
     nextDate.setDate(nextDate.getDate()+Math.floor(Math.random()*31))
     const nds = nextDate.toISOString().split('T')[0]
     try{
-      await SB.from('jobs').insert({location_id:l.id,billing_account_id:l.billing_account_id||null,type:j.type||'inspection',scope:sc,scheduled_date:nds,scheduled_time:j.scheduled_time||'09:00',status:'scheduled',notes:'Auto-scheduled follow-up (semi-annual suppression)'})
+      await SB.from('jobs').insert({location_id:l.id,billing_account_id:l.billing_account_id||null,type:j.type||'inspection',scope:sc,scheduled_date:nds,scheduled_time:j.scheduled_time||'09:00',status:'scheduled',tentative:true,notes:'Auto-scheduled follow-up (semi-annual suppression)'})
       toast('Follow-up scheduled for '+new Date(nds+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}))
     }catch(e){ console.error('auto-reschedule:',e) }
   }
@@ -4167,7 +4276,7 @@ async function compJ(id){
     nextDate.setDate(nextDate.getDate()+Math.floor(Math.random()*31)) // 5–6 months window
     const nds=nextDate.toISOString().split('T')[0]
     try{
-      await SB.from('jobs').insert({location_id:l.id,billing_account_id:l.billing_account_id||null,type:j.type||'inspection',scope:sc,scheduled_date:nds,scheduled_time:j.scheduled_time||'09:00',status:'scheduled',notes:'Auto-scheduled follow-up (semi-annual suppression)'})
+      await SB.from('jobs').insert({location_id:l.id,billing_account_id:l.billing_account_id||null,type:j.type||'inspection',scope:sc,scheduled_date:nds,scheduled_time:j.scheduled_time||'09:00',status:'scheduled',tentative:true,notes:'Auto-scheduled follow-up (semi-annual suppression)'})
       toast('Follow-up scheduled for '+new Date(nds+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}))
     }catch(e){console.error('auto-reschedule:',e)}
   }
@@ -4204,6 +4313,12 @@ async function sendForSignatureFromJob(jobId){
   if(!email&&!phone){toast('No customer email or phone on file. Add one first.',false);return}
   const channels=[email&&'email',phone&&'text'].filter(Boolean).join(' + ')
   if(!confirm(`Complete this job and send a signing link to ${l.name||'the customer'}?\n\nLink delivered via: ${channels}\n\nLink is unique to this job and expires in 14 days.`))return
+  // This handler is now invoked from openJobReview, which is one overlay
+  // deeper than openJob. Drop the Review overlay up-front so the rest of the
+  // logic — and its single trailing pop() — operates from openJob's depth,
+  // matching the original behavior. (Watcher caught: single pop() left Jon
+  // staring at a stale openJob view of an already-completed job.)
+  if(stk.length>1)pop()
 
   const result=await _completeJobAndCreateInvoice(jobId,{payingNow:false})
   if(!result.ok){toast(result.error||'Could not complete job',false);return}
@@ -4247,6 +4362,10 @@ async function billContractedFromJob(jobId){
     confirmMsg=`No contract or card on file for ${l.name||'this customer'}.\n\nComplete this job anyway and email the invoice (customer pays online)?`
   }
   if(!confirm(confirmMsg))return
+  // Drop the Review overlay (this handler now runs one overlay deeper than
+  // it used to). chargeCardOnFile pops + opens invoice detail; the failure
+  // pop() and the Path-2 trailing pop() both expect to land back on openJob.
+  if(stk.length>1)pop()
 
   const result=await _completeJobAndCreateInvoice(jobId,{payingNow:hasCardOnFile})
   if(!result.ok){toast(result.error||'Could not complete job',false);return}
@@ -4412,21 +4531,43 @@ async function toggleJobConfirmed(jobId){
   if(btn && j2){
     const isC = !!j2.confirmed_at
     btn.innerHTML = isC
-      ? `✓ TIME CONFIRMED WITH CUSTOMER${j2.confirmed_by?' · '+esc(j2.confirmed_by):''} · TAP TO UNCONFIRM`
-      : '☐ TAP TO MARK CONFIRMED WITH CUSTOMER'
+      ? `✓ CUSTOMER CONFIRMED${j2.confirmed_by?' · '+esc(j2.confirmed_by):''}`
+      : '☐ MARK CUSTOMER CONFIRMED'
     if(isC){
-      btn.style.background = '#10b981'
-      btn.style.color = '#fff'
-      btn.style.border = 'none'
-      btn.style.boxShadow = '0 0 0 4px rgba(16,185,129,.25),0 4px 14px rgba(16,185,129,.4)'
+      btn.style.background = 'rgba(16,185,129,.15)'
+      btn.style.color = '#10b981'
+      btn.style.border = '1px solid rgba(16,185,129,.4)'
+      btn.style.boxShadow = 'none'
     } else {
       btn.style.background = 'transparent'
-      btn.style.color = '#10b981'
-      btn.style.border = '1.5px dashed #10b981'
+      btn.style.color = 'var(--g2)'
+      btn.style.border = '1px dashed var(--b1)'
       btn.style.boxShadow = 'none'
     }
   }
   toast(wasConfirmed?'Unconfirmed — no leave-now alerts':'✓ Confirmed — Riker will text you when to leave')
+}
+
+// Flip an auto-scheduled (tentative) job to confirmed. Used by the green
+// dashed pill in openJob — once Jon taps "Confirm time", the date stops
+// being a route-logic guess and becomes a real commitment.
+async function confirmTentativeTime(jobId){
+  const{error}=await SB.from('jobs').update({tentative:false}).eq('id',jobId)
+  if(error){toast('Error: '+error.message);return}
+  await load()
+  // Re-render the openJob overlay so the pill flips solid-green
+  pop(); await openJob(jobId)
+  toast('✓ Time confirmed')
+}
+
+// Inverse of confirmTentativeTime — drop a confirmed job back to tentative
+// (e.g., Jon realizes he wants the route logic to re-pick the date).
+async function markJobTentative(jobId){
+  const{error}=await SB.from('jobs').update({tentative:true}).eq('id',jobId)
+  if(error){toast('Error: '+error.message);return}
+  await load()
+  pop(); await openJob(jobId)
+  toast('Marked tentative')
 }
 
 let sigCtx=null,sigOn=false
