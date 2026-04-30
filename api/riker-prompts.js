@@ -130,6 +130,7 @@ Jobs:
   add_job_note — append a note to a job
   assign_job_to_tech — assign or reassign a job to a technician
   send_on_my_way — text the customer "heading your way" with optional ETA
+  send_review_request — text the customer a Google review link (use after a job is done; "send [customer] a review link" or "send the review link" referring to the last job)
   list_job_documents — list files/photos attached to a job
 
 Schedule & Routing:

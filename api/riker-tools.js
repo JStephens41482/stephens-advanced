@@ -3968,6 +3968,76 @@ const send_on_my_way = {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// TOOL: send_review_request
+// ═══════════════════════════════════════════════════════════════
+// After Jon finishes a job he can text Riker "send the customer a
+// review link" and Riker fires the canonical Google review URL to
+// the location's contact phone. Pairs with send_on_my_way (start of
+// visit) — this is the end-of-visit closer.
+const send_review_request = {
+  schema: {
+    name: 'send_review_request',
+    description: "Text the customer at a job site a Google review link. Use when Jon says 'send [customer] a review link', 'ask [customer] for a review', or 'send the review link' (referring to the most recent completed job). Looks up the location's contact_phone and sends a friendly request with Stephens Advanced's Google review short URL.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        job_id: { type: 'string', description: "Job UUID. Preferred when known — guarantees the right customer/phone. If omitted, you must pass location_id or location_name." },
+        location_id: { type: 'string', description: 'Location UUID. Use when no job_id is available.' },
+        location_name: { type: 'string', description: "Fuzzy client name, e.g. 'Bobby's Diner'. Resolves to a location automatically." }
+      }
+    }
+  },
+  async handler(input, ctx) {
+    const REVIEW_URL = 'https://g.page/r/CVoOkNkSCkSkEAI/review'
+
+    // Resolve location → contact_phone, contact_name, business name
+    let loc = null
+    if (input.job_id) {
+      const { data: job } = await ctx.supabase.from('jobs')
+        .select('id, location:locations(id, name, contact_name, contact_phone)')
+        .eq('id', input.job_id).maybeSingle()
+      if (!job) return { error: 'Job not found' }
+      loc = job.location
+    } else if (input.location_id) {
+      const { data } = await ctx.supabase.from('locations')
+        .select('id, name, contact_name, contact_phone')
+        .eq('id', input.location_id).maybeSingle()
+      loc = data
+    } else if (input.location_name) {
+      const s = String(input.location_name).trim().toLowerCase().replace(/[%_]/g, '')
+      const { data: locs } = await ctx.supabase.from('locations')
+        .select('id, name, contact_name, contact_phone')
+        .is('deleted_at', null)
+        .ilike('name', `%${s}%`)
+        .limit(5)
+      if (!locs || !locs.length) return { error: `No client found matching "${input.location_name}"` }
+      if (locs.length > 1) return { error: `Ambiguous — ${locs.length} matches for "${input.location_name}". Pass location_id explicitly.`, candidates: locs.map(l => ({ id: l.id, name: l.name })) }
+      loc = locs[0]
+    } else {
+      return { error: 'Provide job_id, location_id, or location_name.' }
+    }
+
+    if (!loc) return { error: 'Location not found' }
+    const phone = loc.contact_phone
+    if (!phone) return { error: `No contact phone on file for ${loc.name}. Update the client record first.` }
+
+    const firstName = (loc.contact_name || '').split(/\s+/)[0]
+    const greeting = firstName ? `Hi ${firstName}` : 'Hi'
+    const msg = `${greeting} — Jon with Stephens Advanced. Thanks for letting us out today! If you've got 30 seconds, we'd really appreciate a quick review on Google: ${REVIEW_URL}\n\nThank you!`
+
+    let to = String(phone).replace(/[\s\-\(\)\.]/g, '')
+    if (!to.startsWith('+')) to = '+1' + to.replace(/^1/, '')
+
+    try {
+      const sid = await sendSMSRaw(to, msg)
+      return { ok: true, sent_to: to, customer: loc.name, message: msg, sid }
+    } catch (e) {
+      return { error: 'SMS send failed: ' + e.message }
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // TOOL: search_email
 // ═══════════════════════════════════════════════════════════════
 // Searches Gmail directly with an arbitrary query. Used for reading
@@ -4629,7 +4699,7 @@ const ALL_TOOLS = {
   get_business_report, get_ar_aging, get_audit_log,
   list_service_requests, respond_to_service_request,
   list_custom_items, add_custom_item, delete_custom_item,
-  send_on_my_way,
+  send_on_my_way, send_review_request,
   // Phase 2 — inbox management
   manage_email, list_labels, create_label, forward_email,
   // Phase 3 — attachments
