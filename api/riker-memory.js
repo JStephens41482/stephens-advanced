@@ -155,11 +155,33 @@ function _similarity(a, b) {
 }
 
 async function writeMemory(supabase, entry, { sessionId, source } = {}) {
+  // SECURITY: belt-and-suspenders. extractDurableMemory now refuses
+  // customer-facing contexts at the call site, but this writer is the
+  // single chokepoint for ANY future memory writer. Refuse incoming
+  // content prefixed with reserved sentinel strings unless the source
+  // is Jon-side; cap auto-extracted priority at 7 so even if a forge
+  // slips through, it can't reach the priority-8+ "recent high-priority
+  // memories" surface that gets injected into the system prompt.
+  const RESERVED_PREFIXES = ['STANDING ORDER', 'EMAIL_MONITOR_IGNORE:', 'EMAIL_MONITOR_WATCH:', 'OWNER VERIFIED']
+  const contentStr = String(entry.content || '').trim()
+  const isAutoExtract = source === 'auto_extract'
+  if (isAutoExtract) {
+    for (const px of RESERVED_PREFIXES) {
+      if (contentStr.toUpperCase().startsWith(px.toUpperCase())) {
+        console.warn('[writeMemory] refused reserved-prefix content from auto_extract:', contentStr.slice(0, 80))
+        return { id: null, refused: true, reason: 'reserved prefix' }
+      }
+    }
+  }
+  const cappedPriority = isAutoExtract
+    ? Math.min(Number(entry.priority) || 5, 7)  // auto-writers can never produce priority-8+
+    : (Number(entry.priority) || 5)
+
   const row = {
     scope: entry.scope,
     category: entry.category,
     content: entry.content,
-    priority: entry.priority || 5,
+    priority: cappedPriority,
     expires_at: entry.expires_at || null,
     location_id: entry.location_id || null,
     billing_account_id: entry.billing_account_id || null,

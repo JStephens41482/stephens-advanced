@@ -92,9 +92,18 @@ module.exports = async function handler(req, res) {
       // Optional shared-secret tightening — if the deployment sets the env
       // var, require it. Recommended for prod even though Jon's app is the
       // only legitimate caller; closes opportunistic-scanner attacks.
+      // Use a constant-time compare so an attacker can't time-oracle the
+      // length or per-byte prefix match of the secret.
       const sharedSecret = process.env.RIKER_APP_AUTH_TOKEN
-      if (sharedSecret && body.auth?.token !== sharedSecret) {
-        return res.status(401).json({ error: 'app token mismatch' })
+      if (sharedSecret) {
+        const supplied = String(body.auth?.token || '')
+        const a = Buffer.from(supplied)
+        const b = Buffer.from(sharedSecret)
+        let ok = a.length === b.length
+        if (ok) {
+          try { ok = require('crypto').timingSafeEqual(a, b) } catch { ok = false }
+        }
+        if (!ok) return res.status(401).json({ error: 'unauthorized' })
       }
       identity.tech_id = techId
       // Accept client_context fields as identity hints

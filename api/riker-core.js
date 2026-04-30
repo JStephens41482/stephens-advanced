@@ -1040,13 +1040,27 @@ async function processMessage({
   // {type:'image', source:{type:'base64', media_type:'image/...', data:'...'}}.
   // Anything else is silently dropped before it reaches Claude.
   if (attachments && attachments.length && history.length) {
+    // Explicit allowlist instead of startsWith('image/') — Anthropic's vision
+    // API officially supports jpeg/png/gif/webp only. SVG can carry script-
+    // like text the model might read as instructions. Cap base64 data length
+    // to ~7MB (~5MB raw) so a malicious-but-authenticated client can't blow
+    // server memory before Anthropic rate-limits.
+    const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp'])
+    const MAX_IMAGE_B64 = 7 * 1024 * 1024
     const safeAttachments = attachments.filter(a => {
-      if (!a || a.type !== 'image') return false
+      if (!a || a.type !== 'image') { if (a) console.warn('[riker] dropped non-image attachment type:', a.type); return false }
       const src = a.source
       if (!src || typeof src !== 'object') return false
       if (src.type !== 'base64') return false
-      if (typeof src.media_type !== 'string' || !src.media_type.startsWith('image/')) return false
+      if (typeof src.media_type !== 'string' || !ALLOWED_IMAGE_TYPES.has(src.media_type)) {
+        console.warn('[riker] dropped attachment with unsupported media_type:', src.media_type)
+        return false
+      }
       if (typeof src.data !== 'string' || !src.data.length) return false
+      if (src.data.length > MAX_IMAGE_B64) {
+        console.warn('[riker] dropped oversized attachment:', src.data.length, 'bytes')
+        return false
+      }
       return true
     })
     if (safeAttachments.length) {

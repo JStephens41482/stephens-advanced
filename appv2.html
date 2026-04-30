@@ -4272,22 +4272,22 @@ async function billContractedFromJob(jobId){
   }
 
   // Path 2 — no card: send the invoice email autonomously via kioskEmailInvoice.
-  // (Earlier draft used sendInvoiceEmailFromDetail which opens a Review-Before-
-  // Sending preview; pop() ripped that off before the user could tap Send,
-  // so no email actually went out and the toast was a lie. kioskEmailInvoice
-  // sends directly without UI — passing invId triggers the autonomous path
-  // that builds its own email context.)
+  // It now returns {sent:true,...} or {sent:false, reason:'...'} so we can
+  // toast accurately instead of always claiming success.
   if(result.invId){
+    let sendStatus
     try{
-      await kioskEmailInvoice(false, result.invId)
-      await load()
-      pop()
-      toast('Job done · invoice emailed ✓')
+      sendStatus = await kioskEmailInvoice(false, result.invId)
     }catch(e){
       console.error('billContracted send:',e)
-      await load()
-      pop()
-      toast('Job completed but invoice email failed: '+e.message,false)
+      sendStatus = {sent:false, reason:e.message||'send failed'}
+    }
+    await load()
+    pop()
+    if(sendStatus?.sent){
+      toast('Job done · invoice emailed ✓')
+    }else{
+      toast('Job completed but invoice email failed: '+(sendStatus?.reason||'unknown'),false)
     }
   }
 }
@@ -5479,9 +5479,17 @@ function _kioskMissingFields(loc, ba){
   return ask
 }
 
-function _kioskHasSignedContract(baId){
-  if(!baId) return false
-  return (D.contracts||[]).some(c => c.billing_account_id===baId && c.signed && c.status==='active')
+function _kioskHasSignedContract(baId, locId){
+  // Match by EITHER billing_account_id (parent-level contract) OR
+  // location_id (location-only contract — customers with no parent BA).
+  // Previously only matched by baId, so location-only customers
+  // re-signed the agreement on every kiosk handoff.
+  return (D.contracts||[]).some(c => {
+    if(!(c.signed && c.status==='active')) return false
+    if(baId && c.billing_account_id===baId) return true
+    if(locId && c.location_id===locId) return true
+    return false
+  })
 }
 
 // Bill-me-later is only an option if the billing account is set up for it —
@@ -5546,7 +5554,7 @@ async function openKiosk(jobId){
     jobId, sessionId, loc:l, ba, j,
     step: 'intro',
     missingFields: _kioskMissingFields(l, ba),
-    contractNeeded: !_kioskHasSignedContract(j.billing_account_id),
+    contractNeeded: !_kioskHasSignedContract(j.billing_account_id, l.id),
     choices: { paymentMethod:null, customerInfo:{}, signatureData:null, contractSignature:null }
   }
 
@@ -5867,7 +5875,30 @@ async function _kioskSaveMissingThenNext(){
     if(f.target==='billing')  baUpd[f.key]  = v
   })
   if(Object.keys(locUpd).length) await SB.from('locations').update(locUpd).eq('id', k.loc.id)
-  if(Object.keys(baUpd).length && k.j.billing_account_id) await SB.from('billing_accounts').update(baUpd).eq('id', k.j.billing_account_id)
+  if(Object.keys(baUpd).length){
+    if(k.j.billing_account_id){
+      // Has parent BA — write into it.
+      await SB.from('billing_accounts').update(baUpd).eq('id', k.j.billing_account_id)
+    }else{
+      // No parent BA — create one on the fly so legal_name / dba aren't lost.
+      // Previous behavior silently dropped these for location-only customers.
+      try{
+        const{data:newBa, error:baErr} = await SB.from('billing_accounts').insert({
+          ...baUpd,
+          name: baUpd.legal_name || k.loc.name || 'Customer',
+          email: k.loc.contact_email || null,
+          phone: k.loc.contact_phone || null
+        }).select('id').single()
+        if(!baErr && newBa?.id){
+          // Link the new BA back to this location AND the job
+          await SB.from('locations').update({billing_account_id: newBa.id}).eq('id', k.loc.id)
+          await SB.from('jobs').update({billing_account_id: newBa.id}).eq('id', k.jobId)
+          k.j.billing_account_id = newBa.id
+          k.loc.billing_account_id = newBa.id
+        }
+      }catch(e){ console.error('[kiosk] BA on-fly create failed:', e.message) }
+    }
+  }
   _kioskNext()
 }
 
@@ -6039,10 +6070,25 @@ async function _kioskSubmitCardPayment(){
     k.choices.cardStatus = 'error'
     k.choices.cardError = e.message
     // Re-render destroys the card-form DOM. Reset the SDK instance so
-    // _kioskInitCardForm rebuilds the form for retry.
-    _kioskSqInstance = null
+    // _kioskInitCardForm rebuilds the form for retry. MUST call .destroy()
+    // first — otherwise Square keeps internal state pointing at the now-
+    // gone DOM element, and the next attach() throws "card form already
+    // attached" or silently refuses input.
+    await _kioskDestroySdk()
     _kioskRefresh()
   }
+}
+
+// Cleanly tear down the Square Web Payments SDK card instance. Always call
+// this BEFORE re-rendering or teardown — never just `_kioskSqInstance=null`,
+// because that leaves the SDK with internal state pointing at a now-gone
+// DOM element, soft-locking the next card_capture re-entry.
+async function _kioskDestroySdk(){
+  if(_kioskSqInstance?.card){
+    try{ await _kioskSqInstance.card.destroy() }
+    catch(e){ console.warn('[kiosk] Square card.destroy() failed:', e.message) }
+  }
+  _kioskSqInstance = null
 }
 
 function _kioskAttachSig(canvasId){
@@ -6067,8 +6113,15 @@ function _kioskClearSig(canvasId){
 function _kioskCaptureSig(canvasId, target){
   const c=document.getElementById(canvasId); if(!c)return
   const ctx=c.getContext('2d'); const data=ctx.getImageData(0,0,c.width,c.height).data
-  let dark=0; for(let i=0;i<data.length;i+=4){ if(data[i]<200) dark++ }
-  if(dark<200){ toast('Please sign first'); return }
+  // BUG FIX: the previous check counted pixels where R<200, but a fresh
+  // canvas has all RGBA = (0,0,0,0) → R=0 always counts as "dark", so
+  // the "did you sign?" gate NEVER fired and blank canvases passed.
+  // Customer-signed contracts and invoices may be blank PNGs in DB.
+  // Correct check: count pixels with non-zero ALPHA (anything actually
+  // drawn). A real signature on a 320x120 canvas = ~thousands of inked
+  // pixels; the 200-pixel floor catches a stray accidental tap.
+  let inked=0; for(let i=0;i<data.length;i+=4){ if(data[i+3]>0) inked++ }
+  if(inked<200){ toast('Please sign first'); return }
   kioskState.choices[target] = c.toDataURL('image/png')
   _kioskRefresh()
 }
@@ -6148,18 +6201,16 @@ async function _kioskFinalize(method){
     })
   }
 
-  // NOTE: receipt/invoice email already went out during the customer's pay
-  // step (kioskPayCardOnFile / kioskPayNewCard / kioskPayOffline each call
-  // kioskEmailInvoice directly). This used to call sendInvoiceEmailFromDetail
-  // here, which (a) opened a Review-Before-Sending preview that immediately
-  // got popped by _kioskTeardown so nothing went out, and (b) would have
-  // been a duplicate-email if it had actually worked. Removed.
-  // For the cash/check 'method' path the invoice was just stamped paid above,
-  // so re-fire kioskEmailInvoice with the now-paid status to get a proper
-  // PAID receipt out (since the offline-pay kioskEmailInvoice fired BEFORE
-  // the status write in some flows).
+  // _kioskFinalize is invoked from the openKiosk → kioskState flow, NOT
+  // the startCustomerKiosk → window._kiosk flow. So kioskEmailInvoice
+  // CANNOT use its window._kiosk path here (window._kiosk is null) —
+  // we MUST pass the invoice id so it builds context autonomously via
+  // _buildEmailContext. Earlier corrective patch missed this; the result
+  // was zero emails sent for cash/check/card_manual finalize, instead
+  // of the broken-preview-but-already-sent state. With invId, the
+  // autonomous path runs and a proper PAID receipt goes out.
   if(inv && k.loc.contact_email && (method==='cash'||method==='check'||method==='card_manual')){
-    try { await kioskEmailInvoice(true) } catch(e){ console.error('kiosk receipt send:', e) }
+    try { await kioskEmailInvoice(true, inv.id) } catch(e){ console.error('kiosk receipt send:', e) }
   }
 
   await load()
@@ -6177,7 +6228,9 @@ function _kioskTeardown(){
   OVS.forEach(s=>{const el=document.getElementById(s);if(el){el.classList.remove('kiosk-locked','open');delete el.dataset.kiosk;el.style.display='none'}})
   document.body.classList.remove('kiosk-mode')
   kioskState = null
-  _kioskSqInstance = null
+  // fire-and-forget destroy — teardown is sync but SDK destroy can be
+  // async; we don't need to await since we're already nulling the ref.
+  _kioskDestroySdk().catch(()=>{})
   // Per-job state — without this the next openJob can collide with the
   // just-finished kiosk's autosave / extinguisher results / photo list.
   window._activeJobId = null
@@ -8752,19 +8805,25 @@ async function _buildEmailContext(invId){
 
 async function kioskEmailInvoice(paid,invIdOverride){
   // Two ways in:
-  //   - kiosk flow (no override): use window._kiosk that openKiosk built up
-  //   - autonomous (e.g. billContractedFromJob): pass invIdOverride and we
-  //     build the d shape from the invoice + location chain
+  //   - autonomous (preferred when caller has invId): pass invIdOverride
+  //     and we build the d shape from the invoice + location chain via
+  //     _buildEmailContext. Used by billContractedFromJob, _kioskFinalize.
+  //   - legacy customer-handoff flow (startCustomerKiosk): use window._kiosk
+  //     populated up front. NOTE: openKiosk uses kioskState, not window._kiosk
+  //     — only startCustomerKiosk sets window._kiosk. Pass invIdOverride
+  //     from openKiosk-side callers.
+  // Returns {sent:true} on success, or {sent:false, reason:'...'} on
+  // any silent-fail path so autonomous callers can detect lying-toast.
   let d
   if(invIdOverride){
     d=await _buildEmailContext(invIdOverride)
-    if(!d)return
+    if(!d) return {sent:false, reason:'invoice context not found'}
   }else{
     d=window._kiosk
-    if(!d)return
+    if(!d) return {sent:false, reason:'no window._kiosk context'}
   }
   const to=d.loc.contact_email||d.ba?.email||''
-  if(!to)return
+  if(!to) return {sent:false, reason:'no email on file'}
   // Re-fetch d.inv so paid_at, payment_method, payment_note reflect any
   // writes that happened in the kiosk flow (card-on-file charge, offline
   // pay). Without this, the email body's PAID banner shows stale values.
@@ -8811,6 +8870,20 @@ async function kioskEmailInvoice(paid,invIdOverride){
         html=html.replace('<!--PHOTOS_AND_DISCOUNT_INJECT_HERE-->',photoHtml+'<!--PHOTOS_AND_DISCOUNT_INJECT_HERE-->')
       }
     }catch(photoErr){console.warn('[kioskEmailInvoice] photo inject failed:',photoErr.message)}
+    // Inject 10% prompt-pay discount banner for unpaid invoices ONLY (paid
+    // invoices don't need the incentive). Uses the same marker as photos.
+    try{
+      if(!paid){
+        const hasDiscountLine=(d.ls||[]).some(l=>(l.description||'').toLowerCase().includes('discount'))
+        if(!hasDiscountLine){
+          const discountHtml=`<div style="margin-top:16px;padding:14px 18px;background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;text-align:center">
+            <div style="font-size:14px;font-weight:800;color:#92400e">💰 10% Prompt Pay Discount</div>
+            <div style="font-size:12px;color:#a16207;margin-top:4px">A 10% discount is applied when payment is received within 24 hours of service completion. Use the Pay Now button above.</div>
+          </div>`
+          html=html.replace('<!--PHOTOS_AND_DISCOUNT_INJECT_HERE-->',discountHtml+'<!--PHOTOS_AND_DISCOUNT_INJECT_HERE-->')
+        }
+      }
+    }catch(discountErr){console.warn('[kioskEmailInvoice] discount inject failed:',discountErr.message)}
     // Build the invoice PDF — prefer Mazon-stamped version if present, otherwise
     // generate fresh from the same buildInvoicePdfHtml the Money-tab flow uses.
     const attachments=[]
@@ -8851,10 +8924,19 @@ async function kioskEmailInvoice(paid,invIdOverride){
         attachments.push({filename:'Stephens-Advanced-Invoice-'+d.invNum+'.pdf',content:invB64})
       }
     }catch(e){console.error('kiosk PDF gen:',e)}
-    await fetch('/api/send-email',{method:'POST',headers:{'Content-Type':'application/json'},
+    const sendRes=await fetch('/api/send-email',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({to,subject:`${paid?'Receipt':'Invoice'} ${d.invNum} — Stephens Advanced LLC`,html,invoiceNumber:d.invNum,customerName:d.custName,attachments})
     })
-  }catch(e){console.error('kiosk email:',e)}
+    if(!sendRes.ok){
+      const txt=await sendRes.text().catch(()=>'')
+      console.error('kiosk email send failed:',sendRes.status,txt)
+      return {sent:false, reason:'email API '+sendRes.status}
+    }
+    return {sent:true, to}
+  }catch(e){
+    console.error('kiosk email:',e)
+    return {sent:false, reason:e.message||'send failed'}
+  }
 }
 
 function kioskShowLoading(msg){

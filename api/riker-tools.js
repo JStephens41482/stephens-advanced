@@ -2040,18 +2040,17 @@ const add_job_note = {
     // it) so this one was VISIBLY failing on every call — Riker's notes
     // never landed. Inlined here (not via rikerAudit) so we can preserve
     // the actor-from-context distinction.
+    // PostgREST returns errors as `{error}` rather than throwing, so we
+    // destructure-and-check to actually surface FK / RLS / schema failures.
     const actor = ctx.context === 'app' || ctx.context === 'sms_jon' ? 'ai_chat' : 'system'
-    try {
-      await ctx.supabase.from('audit_log').insert({
-        action: 'note',
-        entity_type: 'job',
-        entity_id: jobId,
-        actor,
-        details: { summary: text }
-      })
-    } catch (e) {
-      return { error: 'audit_log insert failed: ' + e.message }
-    }
+    const { error } = await ctx.supabase.from('audit_log').insert({
+      action: 'note',
+      entity_type: 'job',
+      entity_id: jobId,
+      actor,
+      details: { summary: text }
+    })
+    if (error) return { error: 'audit_log insert failed: ' + error.message }
     return { ok: true, job_id: jobId }
   }
 }
