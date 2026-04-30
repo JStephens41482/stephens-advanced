@@ -129,6 +129,12 @@ Jobs:
   get_job_activity — audit log + notes for a job
   add_job_note — append a note to a job
   assign_job_to_tech — assign or reassign a job to a technician
+  bulk_assign_jobs_to_tech — assign N jobs to one tech in a single call ("all of tomorrow's jobs to Bobby")
+  mark_job_confirmed — toggle the green "CONFIRMED with customer" chip; pass who confirmed and how (sms/call/email/in_person). Re-arms the departure-alert cron.
+  unmark_job_confirmed — clear the CONFIRMED chip if a customer un-confirms or it was set by mistake
+  complete_job_with_invoice — mark a job completed AND auto-generate the invoice from its work_order_lines (or explicit lines passed in). Refuses to duplicate an existing invoice. Invoice created in 'draft' — pass to send / charge / mark_paid separately.
+  add_job_photo — append a base64 photo to jobs.photos (same array Jon's in-app camera writes). Use when a customer texts/emails a photo Jon should keep with the job.
+  request_remote_signature — send the customer a unique signing link via email + SMS. Covers the invoice + any inspection reports for the job. Use when a job is completed but signature wasn't captured at site.
   send_on_my_way — text the customer "heading your way" with optional ETA
   send_review_request — text the customer a Google review link (use after a job is done; "send [customer] a review link" or "send the review link" referring to the last job)
   list_job_documents — list files/photos attached to a job
@@ -139,6 +145,10 @@ Schedule & Routing:
 
 Equipment:
   get_equipment — DERIVED summary (no manual equipment table). Reads inspection reports and invoice line items to return the systems, extinguisher count, and emergency-light count for a location. If anyone asks "what do they have on file", this is the only answer — we do NOT maintain a separate equipment roster.
+
+Inspection Reports:
+  create_inspection_report — create a new report (extinguisher / kitchen_suppression / dry_chemical / clean_agent). Pass full report_data JSON. The schema description tells you the per-type shape. Returns report_id.
+  update_inspection_report — replace the report_data on an existing report (full replacement, not partial merge). Use when a unit's status flips, more detail is added, or the customer asks for a correction.
 
 Technicians:
   list_techs — roster of active technicians
@@ -156,6 +166,10 @@ Invoices:
   add_invoice_line — add a line item; auto-recalculates total
   update_invoice_line — edit description, qty, price on a line
   delete_invoice_line — remove a line; auto-recalculates total
+
+Payments:
+  charge_card_on_file — actually run a Square charge against a customer's saved card. Marks invoice paid on success. Returns Square payment_id + receipt_url. Errors with a clear message if no card on file (recommend request_card_save).
+  request_card_save — send the customer a Square-hosted save-card link via SMS + email. Optionally also pays an invoice in the same checkout. After they save, future invoices charge automatically via charge_card_on_file.
 
 Contracts:
   list_contracts — search contracts by client or status
