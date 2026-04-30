@@ -4460,6 +4460,7 @@ async function openCust(id){
     ${a?`<button class="qa-btn" onclick="openNavForLoc('${l.id}')">🗺 Navigate</button>`:''}
     ${l.contact_phone?`<button class="qa-btn" onclick="window.open('tel:${l.contact_phone}')">📞 Call</button>`:''}
     <button class="qa-btn pri" onclick="newJobForLoc('${l.id}')">+ New Job</button>
+    ${(D.contracts?.find(c=>c.location_id===l.id&&c.status!=='cancelled'&&c.signed))?'':`<button class="qa-btn" style="background:rgba(16,185,129,.12);color:var(--ok);border:1px solid var(--ok)" onclick="openServiceAgreementSign('${l.id}','cust_detail')">📝 Agreement</button>`}
   </div>`
 
   // Hoisted: needed by the signed-contract template literal below (L4268-4269)
@@ -5813,6 +5814,12 @@ function _kioskRender(){
       ${k.contractNeeded?`<div style="font-size:12px;color:var(--ok);margin-bottom:8px">✓ Service Agreement signed</div>`:''}
       <div style="font-size:12px;color:var(--ok);margin-bottom:14px">✓ Invoice signed by customer</div>
       ${confirmBtn}
+      ${(!k.contractNeeded && !D.contracts?.find(c=>c.location_id===k.loc.id&&c.status!=='cancelled'&&c.signed))?`
+      <div style="background:rgba(16,185,129,.08);border:1.5px solid var(--ok);border-radius:var(--r);padding:14px;margin:14px 0;color:var(--w)">
+        <div style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:800;color:var(--ok);margin-bottom:6px">🤝 Last checkout?</div>
+        <div style="font-size:12px;color:var(--w2);line-height:1.5;margin-bottom:12px">Get them on a service agreement — sign once, billed automatically after future visits. No more checkout dance every time.</div>
+        <button onclick="openServiceAgreementSign('${k.loc.id}','kiosk_upsell')" style="width:100%;padding:13px;border-radius:var(--rs);background:var(--ok);color:#fff;border:none;font-size:13px;font-weight:800;cursor:pointer">📝 Sign Agreement Now</button>
+      </div>`:''}
       <button onclick="_kioskCancel()" style="width:100%;padding:12px;border-radius:var(--r);background:var(--c2);color:var(--g2);border:1px solid var(--b1);font-size:12px;cursor:pointer">Exit without finalizing</button>
     </div>`
   }
@@ -6173,6 +6180,126 @@ async function _kioskCancel(){
   await load()
   _kioskTeardown()
   toast('Exited kiosk — job left open')
+}
+
+// ═══════════════════════════════════════════════════════════════
+// STANDALONE SERVICE-AGREEMENT SIGN
+// Opens the contract canvas + 6-point legal text outside the kiosk
+// handoff. Two entry points:
+//   - Customer-detail "+ Agreement" quick-action (cust still in front)
+//   - Kiosk tech_summary "Last checkout?" upsell card (cust still in front)
+// Does NOT replace createAndSendContract() — that's the email-it-remote
+// path. This is the in-person sign path.
+// ═══════════════════════════════════════════════════════════════
+
+async function openServiceAgreementSign(locId, sourceCtx){
+  const l = D.locs.find(x=>x.id===locId)
+  if(!l){ toast('Location not found',false); return }
+  const ba = l.billing_account_id ? D.bas.find(b=>b.id===l.billing_account_id) : null
+  const existing = D.contracts?.find(c=>c.location_id===locId && c.status!=='cancelled' && c.signed)
+  if(existing){
+    toast('This customer already has a signed service agreement on file ✓')
+    return
+  }
+  const h = `<div class="ov-hdr">
+    <button class="ov-back" onclick="pop()">‹</button>
+    <div class="ov-title">Service Agreement</div>
+  </div>
+  <div class="ov-body" style="padding:24px">
+    <h3 style="margin:0 0 6px">Sign for ${esc(l.name||ba?.name||'Customer')}</h3>
+    <p style="color:var(--g2);font-size:13px;margin:0 0 14px">Sign once. Future visits get billed automatically — no checkout step every time.</p>
+    <div style="background:var(--c2);border:1px solid var(--b1);border-radius:var(--r);padding:14px;max-height:280px;overflow-y:auto;font-size:12px;line-height:1.5;color:var(--g1);margin-bottom:8px">
+      <p><b>Stephens Advanced LLC — Service Agreement</b></p>
+      <p>The undersigned (<b>${esc(l.name||ba?.name||'Customer')}</b>) acknowledges and agrees to the following terms covering all services, parts, and equipment furnished by Stephens Advanced LLC, including any future visits at this location:</p>
+      <ol style="margin:8px 0 8px 18px;padding:0">
+        <li style="margin-bottom:6px">The purchaser agrees that the title to each item of merchandise of this purchase shall remain property of Stephens Advanced LLC until full payment as shown here and above.</li>
+        <li style="margin-bottom:6px">If full payment is not made as stated above, Stephens Advanced LLC reserves the right to take possession of each item of merchandise of this purchase, and the purchaser shall forfeit all rights thereto and interest therein.</li>
+        <li style="margin-bottom:6px">All monies therefore paid by the purchaser shall be retained by Stephens Advanced LLC as rental for use of said merchandise and as liquidated damages.</li>
+        <li style="margin-bottom:6px">For any collections fees necessary to enforce payment hereon shall be borne by the purchaser, and balances over 30 days old will be charged the maximum interest allowed by state law.</li>
+        <li style="margin-bottom:6px">Stephens Advanced LLC is authorized to perform all regularly-scheduled inspections, system services, and routine maintenance required by NFPA, state, and local code — including but not limited to: hydrostatic testing, six-year teardowns, recharges, fusible-link replacement, nozzle cleaning, internal inspections, and any other routine work the equipment standard calls for. These items will be billed at our published rate card.</li>
+        <li>For any non-routine work — repairs, replacements, or scope additions — totaling more than <b>$500</b> at a single visit, Stephens Advanced LLC will notify the customer beforehand and obtain approval before proceeding.</li>
+      </ol>
+    </div>
+    <div style="background:var(--c2);border:1px dashed var(--g3);border-radius:8px;padding:14px;margin:16px 0;text-align:center">
+      <canvas id="sa_sig" width="320" height="120" style="background:#fff;border-radius:6px;touch-action:none;cursor:crosshair"></canvas>
+      <div style="display:flex;gap:8px;justify-content:center;margin-top:10px">
+        <button onclick="_clearSACanvas()" style="padding:8px 14px;font-size:12px;border-radius:6px;background:var(--c1);border:1px solid var(--b1);color:var(--g1);cursor:pointer">Clear</button>
+      </div>
+    </div>
+    <button onclick="_saveServiceAgreement('${locId}','${esc(sourceCtx||'unknown')}')" style="width:100%;padding:16px;border-radius:var(--r);background:var(--ok);color:#fff;border:none;font-size:15px;font-weight:800;cursor:pointer;margin-top:12px">📝 Sign &amp; Save Agreement</button>
+    <button onclick="pop()" style="width:100%;padding:12px;border-radius:var(--r);background:var(--c2);color:var(--g2);border:1px solid var(--b1);font-size:13px;cursor:pointer;margin-top:8px">Maybe later</button>
+  </div>`
+  push(h)
+  setTimeout(()=>_attachSACanvas(),60)
+}
+
+function _attachSACanvas(){
+  const canvas = document.getElementById('sa_sig')
+  if(!canvas) return
+  const ctx = canvas.getContext('2d')
+  ctx.lineWidth = 2.5
+  ctx.lineCap = 'round'
+  ctx.strokeStyle = '#000'
+  let drawing = false, lastX = 0, lastY = 0
+  const getPos = (e) => {
+    const r = canvas.getBoundingClientRect()
+    const t = e.touches?.[0] || e
+    return { x: (t.clientX - r.left) * (canvas.width/r.width), y: (t.clientY - r.top) * (canvas.height/r.height) }
+  }
+  const start = (e) => { e.preventDefault(); drawing = true; const p = getPos(e); lastX = p.x; lastY = p.y }
+  const move = (e) => { if(!drawing) return; e.preventDefault(); const p = getPos(e); ctx.beginPath(); ctx.moveTo(lastX, lastY); ctx.lineTo(p.x, p.y); ctx.stroke(); lastX = p.x; lastY = p.y }
+  const end = () => { drawing = false }
+  canvas.addEventListener('mousedown', start)
+  canvas.addEventListener('mousemove', move)
+  canvas.addEventListener('mouseup', end)
+  canvas.addEventListener('mouseleave', end)
+  canvas.addEventListener('touchstart', start, { passive: false })
+  canvas.addEventListener('touchmove', move, { passive: false })
+  canvas.addEventListener('touchend', end)
+}
+
+function _clearSACanvas(){
+  const canvas = document.getElementById('sa_sig')
+  if(canvas) canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height)
+}
+
+async function _saveServiceAgreement(locId, source){
+  const canvas = document.getElementById('sa_sig')
+  if(!canvas){ toast('Signature canvas not found',false); return }
+  // Use the corrected empty-sig check: count pixels with non-zero alpha
+  // (the kiosk's old check counted transparent pixels as "dark" because R=0)
+  const ctx = canvas.getContext('2d')
+  const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data
+  let nonEmpty = 0
+  for(let i = 0; i < data.length; i += 4){ if(data[i+3] > 0) nonEmpty++ }
+  if(nonEmpty < 200){ toast('Please sign before saving',false); return }
+  const sigData = canvas.toDataURL('image/png')
+  const l = D.locs.find(x=>x.id===locId)
+  if(!l){ toast('Location not found',false); return }
+  try{
+    const{ data:c, error } = await SB.from('contracts').insert({
+      location_id: locId,
+      billing_account_id: l.billing_account_id || null,
+      type: 'recurring',
+      frequency: 'semi-annual',
+      services_included: ['suppression','extinguishers','elights'],
+      status: 'active',
+      signed: true,
+      signed_at: new Date().toISOString(),
+      signature_data: sigData,
+      signer_name: l.contact_name || l.name || 'Customer',
+      notes: 'Signed in-person via standalone agreement flow. Source: ' + source,
+      language: l.preferred_language || 'en'
+    }).select().single()
+    if(error) throw error
+    audit('contract_signed','location',locId,'jon',{contract_id:c.id,source},'Service agreement signed in-person — '+(l.name||'?'))
+    await load()
+    pop()
+    toast('Service agreement signed ✓ Future visits will auto-bill.')
+  }catch(e){
+    console.error('save service agreement:',e)
+    toast('Could not save agreement: '+(e.message||'unknown'), false)
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
