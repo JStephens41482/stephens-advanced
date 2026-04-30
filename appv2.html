@@ -5598,7 +5598,19 @@ function _kioskStepNum(){
   return idx>=0 ? `Step ${idx+1} of ${visible.length}` : ''
 }
 
-function _kioskGoto(step){ kioskState.step = step; _kioskRefresh() }
+function _kioskGoto(step){
+  // If we're LEAVING card_capture, destroy the Square SDK card instance.
+  // Otherwise re-render destroys the #ki_card_container DOM but the SDK
+  // keeps internal state pointing at it — next re-entry skips init at the
+  // !_kioskSqInstance?.attached guard and the customer sees an empty
+  // card form they can't interact with. (Watcher caught this — the
+  // helper existed but the user-cancel path didn't call it.)
+  if(kioskState?.step === 'card_capture' && step !== 'card_capture'){
+    _kioskDestroySdk().catch(()=>{})
+  }
+  kioskState.step = step
+  _kioskRefresh()
+}
 
 function _kioskNext(){
   // PIN was removed 2026-04-28 — Jon got stuck on a PIN keypad mid-job at a
@@ -5874,29 +5886,47 @@ async function _kioskSaveMissingThenNext(){
     if(f.target==='location') locUpd[f.key] = v
     if(f.target==='billing')  baUpd[f.key]  = v
   })
-  if(Object.keys(locUpd).length) await SB.from('locations').update(locUpd).eq('id', k.loc.id)
+  if(Object.keys(locUpd).length){
+    await SB.from('locations').update(locUpd).eq('id', k.loc.id)
+    // Mirror into k.loc immediately so the BA-insert below sees fresh
+    // contact_email/contact_phone if the customer just typed them in
+    // (target='location' fields). Without this the new BA was getting
+    // email:null even when the customer supplied one.
+    Object.assign(k.loc, locUpd)
+  }
   if(Object.keys(baUpd).length){
     if(k.j.billing_account_id){
       // Has parent BA — write into it.
-      await SB.from('billing_accounts').update(baUpd).eq('id', k.j.billing_account_id)
+      const{error:upErr} = await SB.from('billing_accounts').update(baUpd).eq('id', k.j.billing_account_id)
+      if(upErr){
+        toast('Could not save billing info: '+upErr.message, false)
+        return  // don't advance — the customer's data was lost
+      }
     }else{
       // No parent BA — create one on the fly so legal_name / dba aren't lost.
-      // Previous behavior silently dropped these for location-only customers.
-      try{
-        const{data:newBa, error:baErr} = await SB.from('billing_accounts').insert({
-          ...baUpd,
-          name: baUpd.legal_name || k.loc.name || 'Customer',
-          email: k.loc.contact_email || null,
-          phone: k.loc.contact_phone || null
-        }).select('id').single()
-        if(!baErr && newBa?.id){
-          // Link the new BA back to this location AND the job
-          await SB.from('locations').update({billing_account_id: newBa.id}).eq('id', k.loc.id)
-          await SB.from('jobs').update({billing_account_id: newBa.id}).eq('id', k.jobId)
-          k.j.billing_account_id = newBa.id
-          k.loc.billing_account_id = newBa.id
-        }
-      }catch(e){ console.error('[kiosk] BA on-fly create failed:', e.message) }
+      // PostgREST returns errors as `{error}` not as throws — destructure
+      // and check explicitly. (The try/catch alone only catches network
+      // throws and would silently advance on FK / RLS / schema failures.)
+      const{data:newBa, error:baErr} = await SB.from('billing_accounts').insert({
+        ...baUpd,
+        name: baUpd.legal_name || k.loc.name || 'Customer',
+        email: k.loc.contact_email || null,
+        phone: k.loc.contact_phone || null
+      }).select('id').single()
+      if(baErr || !newBa?.id){
+        console.error('[kiosk] BA on-fly create failed:', baErr?.message)
+        toast('Could not create billing account: '+(baErr?.message||'unknown'), false)
+        return  // don't advance — would silently drop the data otherwise
+      }
+      // Link the new BA back to this location AND the job
+      const{error:linkLocErr} = await SB.from('locations').update({billing_account_id: newBa.id}).eq('id', k.loc.id)
+      const{error:linkJobErr} = await SB.from('jobs').update({billing_account_id: newBa.id}).eq('id', k.jobId)
+      if(linkLocErr || linkJobErr){
+        console.warn('[kiosk] BA link warnings:', linkLocErr?.message, linkJobErr?.message)
+        // Soft-warn but advance — the BA exists, the link can be re-stitched later.
+      }
+      k.j.billing_account_id = newBa.id
+      k.loc.billing_account_id = newBa.id
     }
   }
   _kioskNext()
