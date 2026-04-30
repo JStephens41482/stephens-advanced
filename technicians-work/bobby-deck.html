@@ -349,52 +349,63 @@
 <section>
   <div class="wrap">
     <div class="page-tag">Page 1 of 4 · The Picture</div>
-    <h2>Four rings. <span class="accent">Three companies.</span></h2>
+    <h2>Two companies. <span class="accent">The overlap is ours.</span></h2>
     <p class="sub">
-      The center is what we already do — fire-protection work for real customers. <b>Each ring outward grows the one inside it.</b> Three companies own the rings. You own one, I own one, we own one together.
+      <b>Yours on the left. Mine on the right.</b> Where they overlap is what we run together — in-house service work, ext sales, training. The free app stretches over everyone, including contractors in your network who don't use the app at all.
     </p>
 
     <div class="circles-wrap">
       <div class="circles-svg">
-        <svg viewBox="0 0 600 540" xmlns="http://www.w3.org/2000/svg">
+        <svg viewBox="0 0 600 580" xmlns="http://www.w3.org/2000/svg">
           <defs>
-            <radialGradient id="coreGrad" cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stop-color="#7a8aa3"/>
-              <stop offset="100%" stop-color="#5b6c84"/>
-            </radialGradient>
-            <radialGradient id="netGrad" cx="50%" cy="50%" r="50%">
+            <radialGradient id="netGradV" cx="50%" cy="50%" r="50%">
               <stop offset="0%" stop-color="#f5a17a"/>
               <stop offset="100%" stop-color="#f05a28"/>
             </radialGradient>
+            <radialGradient id="swGradV" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#1A9BD7"/>
+              <stop offset="100%" stop-color="#1074B7"/>
+            </radialGradient>
+            <radialGradient id="lensGradV" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#7a8aa3"/>
+              <stop offset="100%" stop-color="#5b6c84"/>
+            </radialGradient>
+            <clipPath id="swClipV">
+              <circle cx="380" cy="300" r="135"/>
+            </clipPath>
           </defs>
 
-          <!-- Ring 4: Free app (outermost, sky blue, dashed border) -->
-          <circle cx="300" cy="270" r="250" fill="#A0D0EE" opacity="0.4" stroke="#7c8497" stroke-width="1.5" stroke-dasharray="6,4"/>
-          <text x="300" y="50" text-anchor="middle" fill="#1074B7" font-family="-apple-system, sans-serif" font-size="14" font-weight="900" letter-spacing="2">FREE APP</text>
-          <text x="300" y="68" text-anchor="middle" fill="#1074B7" font-family="-apple-system, sans-serif" font-size="11" opacity="0.75">every fire-protection tech in the country</text>
+          <!-- Free App ellipse (encompassing universe, sky blue dashed) -->
+          <ellipse cx="300" cy="300" rx="290" ry="220" fill="#A0D0EE" opacity="0.4" stroke="#7c8497" stroke-width="1.5" stroke-dasharray="6,4"/>
+          <text x="300" y="98" text-anchor="middle" fill="#1074B7" font-family="-apple-system, sans-serif" font-size="14" font-weight="900" letter-spacing="2">FREE APP</text>
+          <text x="300" y="116" text-anchor="middle" fill="#1074B7" font-family="-apple-system, sans-serif" font-size="11" opacity="0.75">every fire-protection tech in the country</text>
 
-          <!-- Ring 3: Paid platform = Jon's Software Co -->
-          <circle cx="300" cy="280" r="180" fill="#1074B7" opacity="0.85"/>
-          <text x="300" y="125" text-anchor="middle" fill="#fff" font-family="-apple-system, sans-serif" font-size="13" font-weight="900" letter-spacing="1.5">PAID PLATFORM</text>
-          <text x="300" y="142" text-anchor="middle" fill="#A0D0EE" font-family="-apple-system, sans-serif" font-size="10">Riker + multi-tenant software · Jon's Software Co</text>
+          <!-- Network circle (left, orange) — Bobby's -->
+          <circle cx="220" cy="300" r="135" fill="url(#netGradV)"/>
+          <text x="150" y="282" text-anchor="middle" fill="#fff" font-family="-apple-system, sans-serif" font-size="12" font-weight="900" letter-spacing="1.5">CONTRACTOR</text>
+          <text x="150" y="299" text-anchor="middle" fill="#fff" font-family="-apple-system, sans-serif" font-size="12" font-weight="900" letter-spacing="1.5">NETWORK</text>
+          <text x="150" y="319" text-anchor="middle" fill="#ffe4d6" font-family="-apple-system, sans-serif" font-size="10">Bobby's Network Co</text>
+          <text x="150" y="335" text-anchor="middle" fill="#ffe4d6" font-family="'Fraunces', Georgia, serif" font-size="10" font-style="italic">100% Bobby</text>
 
-          <!-- Ring 2: Contractor Network = Bobby's Network Co -->
-          <circle cx="300" cy="290" r="120" fill="url(#netGrad)"/>
-          <text x="300" y="200" text-anchor="middle" fill="#fff" font-family="-apple-system, sans-serif" font-size="13" font-weight="900" letter-spacing="1.5">CONTRACTOR NETWORK</text>
-          <text x="300" y="216" text-anchor="middle" fill="#ffe4d6" font-family="-apple-system, sans-serif" font-size="10">verified solo techs · Bobby's Network Co</text>
+          <!-- Software circle (right, blue) — Jon's -->
+          <circle cx="380" cy="300" r="135" fill="url(#swGradV)"/>
+          <text x="450" y="282" text-anchor="middle" fill="#fff" font-family="-apple-system, sans-serif" font-size="12" font-weight="900" letter-spacing="1.5">PAID</text>
+          <text x="450" y="299" text-anchor="middle" fill="#fff" font-family="-apple-system, sans-serif" font-size="12" font-weight="900" letter-spacing="1.5">PLATFORM</text>
+          <text x="450" y="319" text-anchor="middle" fill="#A0D0EE" font-family="-apple-system, sans-serif" font-size="10">Jon's Software Co</text>
+          <text x="450" y="335" text-anchor="middle" fill="#A0D0EE" font-family="'Fraunces', Georgia, serif" font-size="10" font-style="italic">100% Jon</text>
 
-          <!-- Ring 1: In-house service = Joint Service Co -->
-          <circle cx="300" cy="300" r="65" fill="url(#coreGrad)" stroke="#fff" stroke-width="3"/>
-          <text x="300" y="293" text-anchor="middle" fill="#fff" font-family="-apple-system, sans-serif" font-size="11" font-weight="900" letter-spacing="1">IN-HOUSE</text>
-          <text x="300" y="307" text-anchor="middle" fill="#fff" font-family="-apple-system, sans-serif" font-size="11" font-weight="900" letter-spacing="1">SERVICE CO</text>
-          <text x="300" y="325" text-anchor="middle" fill="#dde3ed" font-family="'Fraunces', Georgia, serif" font-size="10" font-style="italic">50/50 · Jon + Bobby</text>
+          <!-- Lens (intersection) — joint service co, drawn by clipping network by software -->
+          <circle cx="220" cy="300" r="135" fill="url(#lensGradV)" clip-path="url(#swClipV)"/>
+          <text x="300" y="285" text-anchor="middle" fill="#fff" font-family="-apple-system, sans-serif" font-size="11" font-weight="900" letter-spacing="1">IN-HOUSE</text>
+          <text x="300" y="301" text-anchor="middle" fill="#fff" font-family="-apple-system, sans-serif" font-size="11" font-weight="900" letter-spacing="1">SERVICE CO</text>
+          <text x="300" y="320" text-anchor="middle" fill="#dde3ed" font-family="'Fraunces', Georgia, serif" font-size="10" font-style="italic">50/50 · Jon + Bobby</text>
 
-          <!-- Off-app contractor lobe -->
-          <ellipse cx="510" cy="380" rx="78" ry="48" fill="none" stroke="#7c8497" stroke-width="2" stroke-dasharray="6,4"/>
-          <text x="510" y="378" text-anchor="middle" fill="#4a5267" font-family="-apple-system, sans-serif" font-size="10" font-weight="800" letter-spacing="0.5">OFF-APP</text>
-          <text x="510" y="392" text-anchor="middle" fill="#4a5267" font-family="-apple-system, sans-serif" font-size="10" font-weight="800" letter-spacing="0.5">CONTRACTORS</text>
-          <text x="510" y="410" text-anchor="middle" fill="#7c8497" font-family="-apple-system, sans-serif" font-size="9" font-style="italic">Bobby's call</text>
-          <path d="M 432 380 Q 410 350 380 320" fill="none" stroke="#7c8497" stroke-width="1.5" stroke-dasharray="4,3"/>
+          <!-- Off-app contractors lobe (outside Free App, attached to Network) -->
+          <ellipse cx="80" cy="510" rx="70" ry="38" fill="#f5f8fb" stroke="#7c8497" stroke-width="2" stroke-dasharray="6,4"/>
+          <text x="80" y="505" text-anchor="middle" fill="#4a5267" font-family="-apple-system, sans-serif" font-size="10" font-weight="800" letter-spacing="0.5">OFF-APP</text>
+          <text x="80" y="519" text-anchor="middle" fill="#4a5267" font-family="-apple-system, sans-serif" font-size="10" font-weight="800" letter-spacing="0.5">CONTRACTORS</text>
+          <text x="80" y="536" text-anchor="middle" fill="#7c8497" font-family="-apple-system, sans-serif" font-size="9" font-style="italic">Bobby's call</text>
+          <path d="M 130 482 Q 145 460 165 425" fill="none" stroke="#7c8497" stroke-width="1.5" stroke-dasharray="4,3"/>
         </svg>
       </div>
 
@@ -402,7 +413,7 @@
         <div class="ring-row" style="color: var(--joint)">
           <div class="swatch" style="background: var(--joint); border-color: var(--joint)"></div>
           <div>
-            <div class="label">1 — In-House Service Co (the core) <span class="owner o-joint">50/50</span></div>
+            <div class="label">1 — In-House Service Co (the overlap) <span class="owner o-joint">50/50</span></div>
             <div class="desc">Our actual fire-protection work + online ext sales + tech training. <b>You run ops. I run admin.</b> Stephens Advanced folds in here once my licenses cycle (~2027).</div>
           </div>
         </div>
