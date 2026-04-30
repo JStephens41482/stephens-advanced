@@ -1960,9 +1960,11 @@ function openFullMap(){
 
 // DASHBOARD
 async function openReports(){
-  // fetch ALL invoices (not limited to 100) and ALL jobs for full reporting
-  const{data:allInvs}=await SB.from('invoices').select('*').order('date',{ascending:false})
-  const{data:allJobs}=await SB.from('jobs').select('*,location:locations(name,city,address)').order('scheduled_date',{ascending:false})
+  // fetch ALL invoices (not limited to 100) and ALL jobs for full reporting.
+  // Filter soft-deleted rows — without these, YTD revenue, AR aging, and
+  // every monthly/yearly summary include voided/deleted invoices and jobs.
+  const{data:allInvs}=await SB.from('invoices').select('*').is('deleted_at',null).order('date',{ascending:false})
+  const{data:allJobs}=await SB.from('jobs').select('*,location:locations(name,city,address)').is('deleted_at',null).order('scheduled_date',{ascending:false})
   const invs=allInvs||[]
   const jobs=allJobs||[]
   const locs=D.locs||[]
@@ -4249,14 +4251,19 @@ async function billContractedFromJob(jobId){
   const result=await _completeJobAndCreateInvoice(jobId,{payingNow:hasCardOnFile})
   if(!result.ok){toast(result.error||'Could not complete job',false);return}
 
-  // Path 1 — card on file: charge it (chargeCardOnFile already sends receipt + reopens invoice detail)
+  // Path 1 — card on file: charge it. chargeCardOnFile pops + opens
+  // invoice detail on SUCCESS, but on failure/cancel it just toasts and
+  // leaves us on the job overlay. Without the post-load check below the
+  // user gets stuck on a completed job they can't navigate away from.
   if(hasCardOnFile&&result.invId){
-    try{
-      await chargeCardOnFile(result.invId)
-      await load()
-    }catch(e){
-      console.error('auto-charge:',e)
-      toast('Job completed, but card charge failed: '+e.message+' — invoice still in draft',false)
+    try{ await chargeCardOnFile(result.invId) }
+    catch(e){ console.error('auto-charge:',e) }
+    await load()
+    const invNow=D.invs.find(i=>i.id===result.invId)
+    if(invNow?.status!=='paid'){
+      // Charge didn't go through — chargeCardOnFile already toasted why.
+      // Pop the now-orphan job overlay so the user isn't stuck.
+      pop()
     }
     return
   }
@@ -8260,7 +8267,7 @@ async function _confirmSendEmail(){
     let photoHtml='<div style="margin-top:20px;padding-top:16px;border-top:1px solid #eee"><div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#999;margin-bottom:12px">Site Photos</div>'
     job2.photos.forEach(p=>{photoHtml+=`<img src="${p}" style="max-width:100%;border-radius:8px;margin-bottom:8px;border:1px solid #eee">`})
     photoHtml+='</div>'
-    html=html.replace('</div></div></div>',photoHtml+'</div></div></div>')
+    html=html.replace('<!--PHOTOS_AND_DISCOUNT_INJECT_HERE-->',photoHtml+'<!--PHOTOS_AND_DISCOUNT_INJECT_HERE-->')
   }
 
   // append prompt-pay discount notice to every invoice email
@@ -8270,7 +8277,7 @@ async function _confirmSendEmail(){
       <div style="font-size:14px;font-weight:800;color:#92400e">💰 10% Prompt Pay Discount</div>
       <div style="font-size:12px;color:#a16207;margin-top:4px">A 10% discount is applied when payment is received within 24 hours of service completion. Use the Pay Now button above.</div>
     </div>`
-    html=html.replace('</div></div></div>',discountHtml+'</div></div></div>')
+    html=html.replace('<!--PHOTOS_AND_DISCOUNT_INJECT_HERE-->',discountHtml+'<!--PHOTOS_AND_DISCOUNT_INJECT_HERE-->')
   }
 
   // build report PDF attachments — convert HTML to real PDFs
@@ -8699,6 +8706,13 @@ async function kioskEmailInvoice(paid){
   const d=window._kiosk;if(!d)return
   const to=d.loc.contact_email||d.ba?.email||''
   if(!to)return
+  // Re-fetch d.inv so paid_at, payment_method, payment_note reflect any
+  // writes that happened in the kiosk flow (card-on-file charge, offline
+  // pay). Without this, the email body's PAID banner shows stale values.
+  try{
+    const{data:freshInv}=await SB.from('invoices').select('*').eq('id',d.invId).maybeSingle()
+    if(freshInv)d.inv=freshInv
+  }catch(e){console.warn('[kioskEmailInvoice] re-fetch failed:',e.message)}
   try{
     let portalUrl='',payUrl=''
     try{const pTk=await getOrCreatePortalToken(d.loc.id,d.loc.billing_account_id||null);if(pTk)portalUrl='https://stephensadvanced.com/portal?t='+pTk}catch(e){}
@@ -8712,10 +8726,19 @@ async function kioskEmailInvoice(paid){
     const html=buildInvoiceEmailHtml({
       invNum:d.invNum,custName:d.custName,
       addr:[d.loc.address,d.loc.city,d.loc.state,d.loc.zip].filter(Boolean).join(', '),
-      date:d.inv.date?new Date(d.inv.date).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):'',
-      dueDate:d.inv.due_date?new Date(d.inv.due_date).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}):'',
+      // Format dates as UTC so a YYYY-MM-DD value doesn't slide back a day in CDT
+      date:d.inv.date?new Date(d.inv.date).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric',timeZone:'UTC'}):'',
+      dueDate:d.inv.due_date?new Date(d.inv.due_date).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric',timeZone:'UTC'}):'',
       lines:d.ls,total:d.total,portalUrl,payUrl:paid?'':payUrl,
-      poNumber:d.inv.po_number||'',docs:d.atts,rpts:d.rpts
+      poNumber:d.inv.po_number||'',docs:d.atts,rpts:d.rpts,
+      // Pass paid-status fields so the email body shows the green PAID banner
+      // and skips the orange "Pay Now" CTA when the kiosk just collected payment.
+      // Without these, customer just paid in person but their email body still
+      // says "Pay Now" → they may double-pay online.
+      paid,
+      paidAt:d.inv.paid_at,
+      paymentMethod:d.inv.payment_method,
+      paymentNote:d.inv.payment_note
     })
     // Build the invoice PDF — prefer Mazon-stamped version if present, otherwise
     // generate fresh from the same buildInvoicePdfHtml the Money-tab flow uses.
@@ -8904,6 +8927,7 @@ function buildInvoiceEmailHtml({invNum,custName,addr,date,dueDate,lines,total,po
         <a href="${portalUrl}" style="display:inline-block;padding:12px 28px;background:#1a1a2e;color:#fff;text-decoration:none;border-radius:8px;font-size:13px;font-weight:700;letter-spacing:.3px">View Customer Portal</a>
         <div style="font-size:11px;color:#aaa;margin-top:6px">Equipment, service history, invoices & attached documents</div>
       </div>`:''}
+      <!--PHOTOS_AND_DISCOUNT_INJECT_HERE-->
     </td></tr>
     <tr><td style="padding:18px 32px 14px;background:#fafafa;border-top:1px solid #eee">
       <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#999;margin-bottom:8px">Terms &amp; Conditions</div>
@@ -9295,9 +9319,27 @@ function addToCalendar({title,date,time,addr,notes}){
 }
 
 async function sendInvoiceEmailFromDetail(invId,custName,invNum){
-  const to=$('det-email-to')?.value?.trim()
+  // Resolve recipient: try the invoice-detail DOM input first (when called
+  // from openInvDetail), then fall back to the invoice's customer email
+  // chain. Without this fallback, callers from outside openInvDetail
+  // (the openJob bottom buttons, kiosk completion) silently bailed because
+  // the 'det-email-to' input doesn't exist on those overlays — the user
+  // got a "✓ sent" toast even though no email actually went out.
+  let to=$('det-email-to')?.value?.trim()||''
+  if(!to){
+    const inv=D.invs.find(i=>i.id===invId)
+    if(inv){
+      const loc=D.locs.find(l=>l.id===inv.location_id)
+      const ba=loc?.billing_account_id?D.bas.find(b=>b.id===loc.billing_account_id):null
+      to=loc?.contact_email||ba?.email||''
+    }
+  }
   const btn=$('det-send-btn')
-  if(!to){const st=$('det-email-status');if(st){st.textContent='Enter an email address.';st.style.color='var(--bad)'}return}
+  if(!to){
+    const st=$('det-email-status');if(st){st.textContent='No email on file.';st.style.color='var(--bad)'}
+    toast('No email on file for this customer. Add one to the location first.',false)
+    return
+  }
   if(btn){btn.innerHTML='<span class="spin"></span>';btn.style.pointerEvents='none'}
   await _showEmailPreview(invId,to,custName,invNum)
   if(btn){btn.innerHTML='✉️ Send';btn.style.pointerEvents=''}
