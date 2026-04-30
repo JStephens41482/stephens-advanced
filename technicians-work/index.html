@@ -4,174 +4,47 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>technicians.work — brainstorming</title>
-  <meta name="description" content="A field-service tools project, in the brainstorming stage. By a working technician.">
+  <meta name="description" content="A field-service tools project, in the brainstorming stage.">
   <meta property="og:title" content="technicians.work">
-  <meta property="og:description" content="A field-service tools project, in the brainstorming stage.">
+  <meta property="og:description" content="In the brainstorming stage.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://technicians.work">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%230c0c10'/%3E%3Ctext x='50' y='65' font-family='-apple-system,system-ui,sans-serif' font-size='52' font-weight='900' fill='%23f05a28' text-anchor='middle'%3E.w%3C/text%3E%3C/svg%3E">
   <style>
-    :root {
-      --bg: #0c0c10;
-      --c1: #14141a;
-      --c2: #1c1c24;
-      --b1: #2a2f3e;
-      --w: #ffffff;
-      --g1: #b3b6c4;
-      --g2: #7c8497;
-      --g3: #4a5267;
-      --fire: #f05a28;
-      --ok: #10b981;
-    }
     *, *::before, *::after { box-sizing: border-box }
-    html, body { margin: 0; padding: 0; background: var(--bg); color: var(--w);
+    html, body { margin: 0; padding: 0; background: #0c0c10; color: #ffffff;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
       -webkit-font-smoothing: antialiased; }
-    body { min-height: 100vh; display: flex; flex-direction: column }
-
-    .sticker {
-      position: fixed; top: 18px; right: 18px;
-      background: var(--fire); color: #fff; font-size: 11px; font-weight: 800;
-      letter-spacing: 1.2px; text-transform: uppercase;
-      padding: 8px 14px; border-radius: 999px;
-      box-shadow: 0 8px 24px rgba(240, 90, 40, .35);
-      transform: rotate(3deg);
+    body {
+      min-height: 100vh;
+      display: flex; align-items: center; justify-content: center;
+      padding: 24px;
     }
-
-    main {
-      flex: 1; display: flex; flex-direction: column; justify-content: center;
-      padding: 80px 24px 60px; max-width: 720px; margin: 0 auto; width: 100%;
+    .banner {
+      background: #f05a28; color: #ffffff;
+      font-size: clamp(28px, 7vw, 64px);
+      font-weight: 900;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      padding: 28px 56px;
+      border-radius: 999px;
+      box-shadow: 0 24px 64px rgba(240, 90, 40, .35);
+      transform: rotate(-2deg);
+      text-align: center;
+      line-height: 1.1;
     }
-
-    h1 {
-      font-size: clamp(48px, 12vw, 96px); font-weight: 900; line-height: 1;
-      letter-spacing: -0.04em; margin: 0 0 12px;
-      font-family: 'Fraunces', Georgia, serif;
+    .banner .gear {
+      display: inline-block;
+      margin-right: 12px;
+      animation: spin 8s linear infinite;
     }
-    h1 .dot { color: var(--g3) }
-    h1 .work { color: var(--fire); font-style: italic; font-weight: 500 }
-
-    .lede {
-      font-size: clamp(17px, 2.5vw, 21px); line-height: 1.5;
-      color: var(--g1); margin: 0 0 36px; max-width: 540px;
+    @keyframes spin {
+      from { transform: rotate(0deg) }
+      to { transform: rotate(360deg) }
     }
-    .lede b { color: var(--w); font-weight: 700 }
-
-    .panels { display: grid; grid-template-columns: 1fr; gap: 14px; margin: 0 0 32px }
-    @media (min-width: 640px) { .panels { grid-template-columns: 1fr 1fr } }
-
-    .panel {
-      background: var(--c1); border: 1px solid var(--b1); border-radius: 14px;
-      padding: 18px 20px;
-    }
-    .panel-eyebrow {
-      font-size: 10px; font-weight: 800; letter-spacing: 1.6px;
-      text-transform: uppercase; color: var(--g2); margin-bottom: 8px;
-    }
-    .panel-body {
-      font-size: 14px; line-height: 1.5; color: var(--g1);
-    }
-    .panel-body b { color: var(--w); font-weight: 700 }
-
-    .sign-card {
-      background: var(--c1); border: 1.5px dashed var(--g3);
-      border-radius: 14px; padding: 24px; margin-top: 12px;
-    }
-    .sign-title {
-      font-size: 16px; font-weight: 800; color: var(--w); margin: 0 0 6px;
-    }
-    .sign-sub {
-      font-size: 13px; color: var(--g1); margin: 0 0 18px; line-height: 1.5;
-    }
-    .signup {
-      display: flex; flex-direction: column; gap: 10px;
-    }
-    @media (min-width: 540px) { .signup { flex-direction: row } }
-
-    .signup input[type="email"] {
-      flex: 1; padding: 14px 16px; font-size: 15px;
-      background: var(--bg); color: var(--w);
-      border: 1px solid var(--b1); border-radius: 10px;
-      outline: none; transition: border-color .15s;
-      font-family: inherit;
-    }
-    .signup input[type="email"]:focus { border-color: var(--fire) }
-    .signup button {
-      padding: 14px 22px; font-size: 14px; font-weight: 800; letter-spacing: .3px;
-      background: var(--fire); color: #fff; border: none; border-radius: 10px;
-      cursor: pointer; transition: transform .1s, box-shadow .15s;
-      font-family: inherit; white-space: nowrap;
-    }
-    .signup button:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(240, 90, 40, .35) }
-    .signup button:active { transform: translateY(0) }
-
-    .ok-msg {
-      display: none; margin-top: 12px; padding: 12px 14px;
-      background: rgba(16, 185, 129, .1); border: 1px solid var(--ok);
-      border-radius: 10px; color: var(--ok); font-size: 13px;
-    }
-
-    footer {
-      padding: 28px 24px; font-size: 12px; color: var(--g3);
-      text-align: center; border-top: 1px solid var(--b1);
-    }
-    footer a { color: var(--g2); text-decoration: none }
-    footer a:hover { color: var(--g1) }
   </style>
 </head>
 <body>
-  <div class="sticker">⚙️ Brainstorming Stage</div>
-
-  <main>
-    <h1>technicians<span class="dot">.</span><span class="work">work</span></h1>
-
-    <p class="lede">
-      A field-service tools project, made by a <b>working technician</b> who got tired of software built by people who've never been in the field.
-      <br><br>
-      Right now this is just a domain and an idea. <b>What it becomes is being figured out.</b>
-    </p>
-
-    <div class="panels">
-      <div class="panel">
-        <div class="panel-eyebrow">What this might be</div>
-        <div class="panel-body">
-          A practical operations toolkit for <b>solo techs and small shops</b> — scheduling, routing, in-person customer handoff, payments, all the boring back-office stuff that bigger SaaS gets wrong.
-        </div>
-      </div>
-      <div class="panel">
-        <div class="panel-eyebrow">Who this is for</div>
-        <div class="panel-body">
-          Service techs in any trade — fire protection, HVAC, plumbing, locksmith, garage doors, anyone who shows up at a customer's location with tools and an invoice.
-        </div>
-      </div>
-    </div>
-
-    <div class="sign-card">
-      <div class="sign-title">If you do this kind of work — say hi.</div>
-      <div class="sign-sub">
-        Drop your email and I'll let you know when there's something to look at.
-        No spam. No newsletter. One email when there's something real.
-      </div>
-      <form class="signup" id="signup-form" action="mailto:jon@stephensadvanced.com" method="post" enctype="text/plain">
-        <input type="email" name="email" placeholder="you@yourshop.com" required autocomplete="email">
-        <button type="submit">Keep me posted →</button>
-      </form>
-      <div class="ok-msg" id="ok-msg">Got it. I'll be in touch when there's something worth your time.</div>
-    </div>
-  </main>
-
-  <footer>
-    Built by a working technician · <a href="https://stephensadvanced.com">stephensadvanced.com</a>
-  </footer>
-
-  <script>
-    // The form posts to mailto: which opens the user's mail client. That's
-    // good-enough for the brainstorming stage — no backend, no database, no
-    // deliverability problems. Replace with a real endpoint when there's
-    // demand worth capturing.
-    document.getElementById('signup-form').addEventListener('submit', function () {
-      setTimeout(function () { document.getElementById('ok-msg').style.display = 'block' }, 100)
-    })
-  </script>
+  <div class="banner"><span class="gear">⚙️</span>Brainstorming Stage</div>
 </body>
 </html>
