@@ -3655,17 +3655,43 @@ async function openJob(id){
           <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1.4px;color:var(--g2)">Invoice</div>
           <div style="font-family:'Fraunces',Georgia,serif;font-size:22px;font-weight:500;color:var(--w);font-variant-numeric:tabular-nums" id="compInvTotal">${_invTotalStr||'—'}</div>
         </div>
-        <label style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--c2);border:1px solid var(--b1);border-radius:var(--rs);margin-bottom:10px;cursor:pointer;font-size:13px;color:var(--w)">
-          <input type="checkbox" id="pay-at-service" style="width:20px;height:20px;accent-color:var(--fire)" onchange="document.getElementById('compBtnLabel')&&(document.getElementById('compBtnLabel').textContent=this.checked?'Complete job \u00b7 Collect payment':'Complete job \u00b7 Send invoice')">
-          <div><div style="font-weight:700">Customer paying now?</div><div style="font-size:11px;color:var(--g1);margin-top:2px">10% prompt-pay discount applied if paid within 24 hours</div></div>
-        </label>
-        <button class="btn-p" style="background:var(--info);color:#fff;display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:8px" onclick="openKiosk('${j.id}')">
-          <span style="font-size:20px">\ud83d\udc64</span>Hand to Customer
+        <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1.4px;color:var(--g2);margin-bottom:8px;text-align:center">How does this job end?</div>
+        ${(()=>{
+          const _locContract=D.contracts?.find(c=>c.location_id===l.id&&c.status!=='cancelled'&&c.signed)
+          const _locBa=l.billing_account_id?D.bas.find(b=>b.id===l.billing_account_id):null
+          const _hasCardOnFile=!!_locBa?.card_on_file
+          const _isContracted=!!_locContract
+          const _billLabel = _hasCardOnFile && _isContracted ? 'Bill \u2014 Charge Card on File'
+                           : _hasCardOnFile ? 'Bill \u2014 Charge Card'
+                           : _isContracted ? 'Send Invoice (Contracted)'
+                           : 'Send Invoice'
+          const _billSub = _hasCardOnFile && _isContracted ? `Contract on file \u00b7 charge ${esc(_locBa.card_brand||'card')} \u00b7\u00b7\u00b7\u00b7${esc(_locBa.card_last4||'????')} + receipt`
+                         : _hasCardOnFile ? `Charge ${esc(_locBa.card_brand||'card')} \u00b7\u00b7\u00b7\u00b7${esc(_locBa.card_last4||'????')} + email receipt`
+                         : _isContracted ? 'Email invoice; customer pays via portal'
+                         : 'Email invoice; customer pays online'
+          return `
+        <button class="btn-p" style="background:var(--info);color:#fff;display:flex;align-items:center;gap:12px;margin-bottom:8px;padding:14px 16px;text-align:left" onclick="openKiosk('${j.id}')">
+          <span style="font-size:22px;flex-shrink:0">\ud83d\udc64</span>
+          <div style="flex:1">
+            <div style="font-size:14px;font-weight:800;line-height:1.2">Hand to Customer</div>
+            <div style="font-size:11px;opacity:.85;margin-top:2px">In-person \u2014 they pick payment + sign here</div>
+          </div>
         </button>
-        <button class="btn-p" id="compBtn" style="background:var(--g3);color:var(--g1)" onclick="compJ('${j.id}')">
-          <span id="compBtnLabel">Complete job \u00b7 Send invoice</span>
-          <span id="compBtnAmt" style="margin-left:6px;font-variant-numeric:tabular-nums;opacity:.95">${_invTotalStr?' \u2014 '+_invTotalStr:''}</span>
+        <button class="btn-p" style="background:#a855f7;color:#fff;display:flex;align-items:center;gap:12px;margin-bottom:8px;padding:14px 16px;text-align:left" onclick="sendForSignatureFromJob('${j.id}')">
+          <span style="font-size:22px;flex-shrink:0">\u270d\ufe0f</span>
+          <div style="flex:1">
+            <div style="font-size:14px;font-weight:800;line-height:1.2">Send for Signature</div>
+            <div style="font-size:11px;opacity:.85;margin-top:2px">Customer wasn't here \u2014 text/email a sign link</div>
+          </div>
         </button>
+        <button class="btn-p" style="background:var(--ok);color:#fff;display:flex;align-items:center;gap:12px;padding:14px 16px;text-align:left" onclick="billContractedFromJob('${j.id}')">
+          <span style="font-size:22px;flex-shrink:0">\ud83d\udcc4</span>
+          <div style="flex:1">
+            <div style="font-size:14px;font-weight:800;line-height:1.2">${_billLabel}</div>
+            <div style="font-size:11px;opacity:.85;margin-top:2px">${_billSub}</div>
+          </div>
+        </button>`
+        })()}
       </div>
     </div>`
   }else{
@@ -3978,6 +4004,93 @@ function addPartLine(sel){
   updateJobChecklist()
 }
 
+// CORE COMPLETION HELPER — extracted so the three job-end buttons (Hand to
+// Customer / Send for Signature / Bill) can share the same exact completion
+// logic (travel charge, prompt-pay discount, audit, calendar, brycer queue,
+// auto-reschedule semi-annual, extinguisher results). Returns:
+//   { ok:true,  invId, invNum, lines, total, l, j } on success
+//   { ok:false, error:'...' } on validation or DB failure
+// Caller is responsible for any UI (toast, pop, navigation).
+async function _completeJobAndCreateInvoice(jobId, opts){
+  opts = opts || {}
+  const j = D.jobs.find(x=>x.id===jobId)
+  if(!j) return { ok:false, error:'Job not found' }
+  const l = D.locs.find(x=>x.id===(j.location_id||j.location?.id)) || j.location || {}
+  const sc = j.scope || []
+
+  const lines = jobLines.filter(l2=>(l2.desc||'').trim()).map(l2=>({
+    description: l2.desc.trim(),
+    quantity: +(l2.qty)||1,
+    unit_price: +(l2.price)||0,
+    total: (+(l2.qty)||1)*(+(l2.price)||0)
+  }))
+  if(!lines.length) return { ok:false, error:'Add at least one line item before completing the job' }
+  const workOrderTotal = lines.reduce((s,l2)=>s+(+l2.total||0),0)
+  if(workOrderTotal<=0) return { ok:false, error:'Work order total is $0 — check your line item prices' }
+
+  if(!l.travel_charge_exempt){
+    const travel = await calcTravelCharge(l)
+    if(travel.charge>0){
+      lines.push({description:travel.desc,quantity:1,unit_price:travel.charge,total:travel.charge})
+    }
+  }
+
+  const subBeforeRules = lines.reduce((s,l2)=>s+l2.total,0)
+  const ppRule = getPricingRule('prompt_pay_discount')
+  if(ppRule && opts.payingNow){
+    const discAmt = Math.round(subBeforeRules*ppRule.percentage/100*100)/100
+    lines.push({description:`Prompt Pay Discount (${ppRule.percentage}%)`,quantity:1,unit_price:-discAmt,total:-discAmt})
+  }
+
+  const sub = lines.reduce((s,l2)=>s+l2.total,0)
+  const notes = ($('job-notes')?.value||jobNotes||'').trim()
+  const sig = $('sigC')?.toDataURL()||null
+
+  const invNum = 'INV-'+Date.now().toString().slice(-6)
+  const { data:inv, error } = await SB.from('invoices').insert({
+    job_id:jobId, location_id:l.id, billing_account_id:l.billing_account_id,
+    invoice_number:invNum, subtotal:subBeforeRules, total:sub, status:'draft', date:td(),
+    notes: notes||null
+  }).select().single()
+  if(error) return { ok:false, error:'Could not generate invoice: '+error.message }
+  if(inv) audit('created','invoice',inv.id,'jon',{invoice_number:invNum,total:sub},'Invoice '+invNum+' created for '+(l.name||'?'))
+
+  if(inv && lines.length) await SB.from('invoice_lines').insert(lines.map((ln,i2)=>({invoice_id:inv.id,...ln,sort_order:i2})))
+
+  for(const ln of lines){ if(!(ln.description||'').startsWith('Travel —')) await saveCustomItem(ln.description, ln.unit_price) }
+
+  const jobUpd = { status:'completed', completed_at:new Date().toISOString(), notes: notes||null }
+  if(sig) jobUpd.signature_data = sig
+  await SB.from('jobs').update(jobUpd).eq('id', jobId)
+  audit('completed','job',jobId,'jon',{status:'completed'},'Job completed for '+(l.name||'?'))
+
+  try{ await SB.from('calendar_events').update({color:'#9ca3af'}).eq('job_id',jobId) }catch(e){}
+
+  for(const [eid,st] of Object.entries(extR)){
+    try{ await SB.from('extinguisher_results').insert({job_id:jobId,extinguisher_id:eid,status:st}) }catch(e){}
+  }
+
+  if(sc.includes('suppression') && l.suppression_systems && l.suppression_systems.length){
+    const nextDate = new Date()
+    nextDate.setMonth(nextDate.getMonth()+5)
+    nextDate.setDate(nextDate.getDate()+Math.floor(Math.random()*31))
+    const nds = nextDate.toISOString().split('T')[0]
+    try{
+      await SB.from('jobs').insert({location_id:l.id,billing_account_id:l.billing_account_id||null,type:j.type||'inspection',scope:sc,scheduled_date:nds,scheduled_time:j.scheduled_time||'09:00',status:'scheduled',notes:'Auto-scheduled follow-up (semi-annual suppression)'})
+      toast('Follow-up scheduled for '+new Date(nds+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}))
+    }catch(e){ console.error('auto-reschedule:',e) }
+  }
+
+  if(l.is_brycer_jurisdiction){
+    const sysTypes = (l.suppression_systems||[]).map(s=>s.system_type).filter(Boolean).join(', ')||'Suppression System'
+    try{
+      await SB.from('brycer_queue').insert({job_id:jobId,location_id:l.id,location_name:l.name||'',system_type:sysTypes,job_date:td(),report_generated:false,submitted:false})
+    }catch(e){ console.error('brycer queue:',e) }
+  }
+
+  return { ok:true, invId: inv?.id, invNum: inv?.invoice_number || invNum, lines, total: sub, l, j }
+}
+
 async function compJ(id){
   setLoad('compBtn',true)
   const j=D.jobs.find(x=>x.id===id);if(!j)return
@@ -4070,6 +4183,98 @@ async function compJ(id){
   showInv({num:inv?.invoice_number||'—',nm:l.name||'',addr:[l.address,l.city].filter(Boolean).join(', '),lines,total:sub,ro:false,iid:inv?.id,locId:l.id,jobId:id,scope:j.scope||[],syss:l.suppression_systems||[]})
 
   // AUTO-SEND DISABLED — nothing sends without explicit user tap on Send button
+}
+
+// ═══════════════════════════════════════════════════════════════
+// END-OF-JOB BUTTON HANDLERS
+// Each one fully completes the job AND triggers the path-specific followup.
+// All three share _completeJobAndCreateInvoice() so the work-order →
+// invoice math, travel charge, audit, calendar, brycer queue, and
+// auto-reschedule all behave identically across paths.
+// ═══════════════════════════════════════════════════════════════
+
+async function sendForSignatureFromJob(jobId){
+  const j=D.jobs.find(x=>x.id===jobId);if(!j){toast('Job not found',false);return}
+  const l=D.locs.find(x=>x.id===j.location_id)||{}
+  const ba=l.billing_account_id?D.bas.find(b=>b.id===l.billing_account_id):null
+  const email=l.contact_email||ba?.email||''
+  const phone=l.contact_phone||ba?.phone||''
+  if(!email&&!phone){toast('No customer email or phone on file. Add one first.',false);return}
+  const channels=[email&&'email',phone&&'text'].filter(Boolean).join(' + ')
+  if(!confirm(`Complete this job and send a signing link to ${l.name||'the customer'}?\n\nLink delivered via: ${channels}\n\nLink is unique to this job and expires in 14 days.`))return
+
+  const result=await _completeJobAndCreateInvoice(jobId,{payingNow:false})
+  if(!result.ok){toast(result.error||'Could not complete job',false);return}
+
+  try{
+    const res=await fetch('/api/send-signature-request',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({job_id:jobId})
+    })
+    const data=await res.json()
+    if(!res.ok)throw new Error(data.error||'Send failed')
+    audit('signature_request_sent','job',jobId,'jon',{email,phone},'Signing link sent to '+(email||phone))
+    const sentVia=[]
+    if(data.email?.sent)sentVia.push('email')
+    if(data.sms?.sent)sentVia.push('text')
+    await load()
+    pop()
+    toast('Job done · signing link sent via '+sentVia.join(' + ')+' ✓')
+  }catch(e){
+    console.error('sendForSignatureFromJob:',e)
+    await load()
+    pop()
+    toast('Job completed but signing link failed: '+e.message,false)
+  }
+}
+
+async function billContractedFromJob(jobId){
+  const j=D.jobs.find(x=>x.id===jobId);if(!j){toast('Job not found',false);return}
+  const l=D.locs.find(x=>x.id===j.location_id)||{}
+  const ba=l.billing_account_id?D.bas.find(b=>b.id===l.billing_account_id):null
+  const locContract=D.contracts?.find(c=>c.location_id===l.id&&c.status!=='cancelled'&&c.signed)
+  const hasCardOnFile=!!ba?.card_on_file
+  const email=l.contact_email||ba?.email||''
+
+  let confirmMsg
+  if(hasCardOnFile){
+    confirmMsg=`Complete this job, charge ${ba.card_brand||'card'} ending ${ba.card_last4||'????'}, and email a paid receipt?`
+  }else if(locContract){
+    confirmMsg=`Complete this job and email the invoice to ${email||l.name||'the customer'}? They'll pay via portal — no card on file yet.`
+  }else{
+    confirmMsg=`No contract or card on file for ${l.name||'this customer'}.\n\nComplete this job anyway and email the invoice (customer pays online)?`
+  }
+  if(!confirm(confirmMsg))return
+
+  const result=await _completeJobAndCreateInvoice(jobId,{payingNow:hasCardOnFile})
+  if(!result.ok){toast(result.error||'Could not complete job',false);return}
+
+  // Path 1 — card on file: charge it (chargeCardOnFile already sends receipt + reopens invoice detail)
+  if(hasCardOnFile&&result.invId){
+    try{
+      await chargeCardOnFile(result.invId)
+      await load()
+    }catch(e){
+      console.error('auto-charge:',e)
+      toast('Job completed, but card charge failed: '+e.message+' — invoice still in draft',false)
+    }
+    return
+  }
+
+  // Path 2 — no card: just send the invoice email (uses existing helper)
+  if(result.invId){
+    try{
+      await sendInvoiceEmailFromDetail(result.invId,l.name||'Customer',result.invNum)
+      await load()
+      pop()
+      toast('Job done · invoice emailed ✓')
+    }catch(e){
+      console.error('billContracted send:',e)
+      await load()
+      pop()
+      toast('Job completed but invoice email failed: '+e.message,false)
+    }
+  }
 }
 
 function setSt(btn,eid,st){
@@ -5534,10 +5739,13 @@ function _kioskRender(){
       <p style="color:var(--g2);font-size:13px;margin:0 0 14px">A one-time agreement covering future visits — so you don't have to sign every time.</p>
       <div style="background:var(--c2);border:1px solid var(--b1);border-radius:var(--r);padding:14px;max-height:240px;overflow-y:auto;font-size:12px;line-height:1.5;color:var(--g1);margin-bottom:8px">
         <p><b>Stephens Advanced LLC — Service Agreement</b></p>
-        <p>By signing below, the customer (<b>${esc(l.name||ba.name||'Customer')}</b>) authorizes Stephens Advanced LLC to perform fire suppression, fire extinguisher, emergency lighting, and related life-safety inspections and services at the location(s) on file. Pricing follows the published rate card; per-visit estimates are provided in advance when scope is known.</p>
-        <p>Customer agrees to pay invoices within 30 days of service unless an alternative billing arrangement is on file. Late balances accrue at 1.5% per month.</p>
-        <p>Service is automatically scheduled at the intervals required by NFPA 10, NFPA 17A, NFPA 17, NFPA 96, and NFPA 101 unless customer cancels in writing.</p>
-        <p style="color:var(--bad);font-weight:700">⚠ PLACEHOLDER TEXT — replace before going live for real customers.</p>
+        <p>The undersigned (<b>${esc(l.name||ba.name||'Customer')}</b>) acknowledges and agrees to the following terms covering all services, parts, and equipment furnished by Stephens Advanced LLC, including any future visits at this location:</p>
+        <ol style="margin:8px 0 8px 18px;padding:0">
+          <li style="margin-bottom:6px">The purchaser agrees that the title to each item of merchandise of this purchase shall remain property of Stephens Advanced LLC until full payment as shown here and above.</li>
+          <li style="margin-bottom:6px">If full payment is not made as stated above, Stephens Advanced LLC reserves the right to take possession of each item of merchandise of this purchase, and the purchaser shall forfeit all rights thereto and interest therein.</li>
+          <li style="margin-bottom:6px">All monies therefore paid by the purchaser shall be retained by Stephens Advanced LLC as rental for use of said merchandise and as liquidated damages.</li>
+          <li>For any collections fees necessary to enforce payment hereon shall be borne by the purchaser, and balances over 30 days old will be charged the maximum interest allowed by state law.</li>
+        </ol>
       </div>
       ${sigUi}
       <button onclick="_kioskNext()" ${k.choices.contractSignature?'':'disabled'}
@@ -5919,20 +6127,39 @@ async function _kioskFinalize(method){
   }
 
   await load()
+  _kioskTeardown()
+  toast(method==='invoice' ? 'Invoice sent ✓' : method==='card_manual' ? 'Card payment recorded ✓' : 'Payment recorded ✓')
+}
+
+// SHARED KIOSK TEARDOWN — called by both _kioskFinalize and _kioskCancel.
+// Aggressively wipes every piece of per-job/kiosk state so the app is
+// genuinely ready for the next customer. Lock-up after kiosk was caused by
+// stale globals (_activeJobId, jobLines, jobNotes, jobPhotos, extR) and
+// the auto-save interval continuing to fire against the just-completed job.
+function _kioskTeardown(){
   popAll()
-  OVS.forEach(s=>{const el=document.getElementById(s);if(el){el.classList.remove('kiosk-locked');delete el.dataset.kiosk}})
+  OVS.forEach(s=>{const el=document.getElementById(s);if(el){el.classList.remove('kiosk-locked','open');delete el.dataset.kiosk;el.style.display='none'}})
   document.body.classList.remove('kiosk-mode')
   kioskState = null
-  _kioskSqInstance = null  // free the Square SDK card object so next session starts fresh
-  // Bug K fix: re-render the active tab so the now-completed job moves out of
-  // the SCHEDULED list immediately. Without this, await load() updates D.jobs
-  // but the previously-rendered list HTML stays stale until the user navigates.
+  _kioskSqInstance = null
+  // Per-job state — without this the next openJob can collide with the
+  // just-finished kiosk's autosave / extinguisher results / photo list.
+  window._activeJobId = null
+  window._activeJobLoc = null
+  _jobDataDirty = false
+  if(_autoSaveTimer){ clearInterval(_autoSaveTimer); _autoSaveTimer = null }
+  jobLines = []
+  jobNotes = ''
+  jobPhotos = []
+  extR = {}
+  // Re-render whichever tab Jon's currently looking at so the just-completed
+  // job moves out of the SCHEDULED list immediately.
   const activeBtn = document.querySelector('.nav button.on')
   const v = activeBtn?.dataset?.v
   if(v==='vJobs' && typeof rJobs==='function') rJobs()
   else if(v==='vCal' && typeof rCal==='function') rCal()
   else if(v==='vMoney' && typeof rMoney==='function') rMoney()
-  toast(method==='invoice' ? 'Invoice sent ✓' : method==='card_manual' ? 'Card payment recorded ✓' : 'Payment recorded ✓')
+  else if(v==='vCust' && typeof rCust==='function') rCust()
 }
 
 async function _kioskCancel(){
@@ -5942,11 +6169,7 @@ async function _kioskCancel(){
   if(k.choices.signatureData) upd.signature_data = k.choices.signatureData
   await SB.from('jobs').update(upd).eq('id', k.jobId)
   await load()
-  popAll()
-  OVS.forEach(s=>{const el=document.getElementById(s);if(el){el.classList.remove('kiosk-locked');delete el.dataset.kiosk}})
-  document.body.classList.remove('kiosk-mode')
-  kioskState = null
-  _kioskSqInstance = null  // free the Square SDK card object so next session starts fresh
+  _kioskTeardown()
   toast('Exited kiosk — job left open')
 }
 
@@ -8551,7 +8774,16 @@ function buildInvoiceEmailHtml({invNum,custName,addr,date,dueDate,lines,total,po
         <div style="font-size:11px;color:#aaa;margin-top:6px">Equipment, service history, invoices & attached documents</div>
       </div>`:''}
     </td></tr>
-    <tr><td style="padding:20px 32px;background:#fafafa;font-size:11px;color:#aaa;text-align:center;border-top:1px solid #eee">
+    <tr><td style="padding:18px 32px 14px;background:#fafafa;border-top:1px solid #eee">
+      <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#999;margin-bottom:8px">Terms &amp; Conditions</div>
+      <ol style="margin:0 0 0 16px;padding:0;font-size:10px;color:#777;line-height:1.55">
+        <li style="margin-bottom:4px">The purchaser agrees that the title to each item of merchandise of this purchase shall remain property of Stephens Advanced LLC until full payment as shown here and above.</li>
+        <li style="margin-bottom:4px">If full payment is not made as stated above, Stephens Advanced LLC reserves the right to take possession of each item of merchandise of this purchase, and the purchaser shall forfeit all rights thereto and interest therein.</li>
+        <li style="margin-bottom:4px">All monies therefore paid by the purchaser shall be retained by Stephens Advanced LLC as rental for use of said merchandise and as liquidated damages.</li>
+        <li>For any collections fees necessary to enforce payment hereon shall be borne by the purchaser, and balances over 30 days old will be charged the maximum interest allowed by state law.</li>
+      </ol>
+    </td></tr>
+    <tr><td style="padding:14px 32px 20px;background:#fafafa;font-size:11px;color:#aaa;text-align:center;border-top:1px solid #eee">
       Stephens Advanced LLC · Fire Suppression &amp; Safety · DFW Texas<br>jonathan@stephensadvanced.com · (214) 994-4799
     </td></tr>
   </table></body></html>`
@@ -8644,6 +8876,17 @@ function buildInvoicePdfHtml({invNum,custName,addr,date,dueDate,lines,total,poNu
           <div style="font-size:12px;font-weight:700;color:#333">Call (214) 994-4799 to arrange pickup or mailing</div>
         </div>
       </div>
+    </div>
+
+    <!-- Terms & Conditions -->
+    <div style="margin-top:20px;border-top:1px solid #e0e0e0;padding-top:14px">
+      <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#999;margin-bottom:8px">Terms &amp; Conditions</div>
+      <ol style="margin:0 0 0 16px;padding:0;font-size:10px;color:#666;line-height:1.55">
+        <li style="margin-bottom:4px">The purchaser agrees that the title to each item of merchandise of this purchase shall remain property of Stephens Advanced LLC until full payment as shown here and above.</li>
+        <li style="margin-bottom:4px">If full payment is not made as stated above, Stephens Advanced LLC reserves the right to take possession of each item of merchandise of this purchase, and the purchaser shall forfeit all rights thereto and interest therein.</li>
+        <li style="margin-bottom:4px">All monies therefore paid by the purchaser shall be retained by Stephens Advanced LLC as rental for use of said merchandise and as liquidated damages.</li>
+        <li>For any collections fees necessary to enforce payment hereon shall be borne by the purchaser, and balances over 30 days old will be charged the maximum interest allowed by state law.</li>
+      </ol>
     </div>
 
     <!-- Footer -->
