@@ -708,7 +708,7 @@ async function load(){
   // base64), photos (array of base64), ext_report_photos (jsonb of photos),
   // and reduce the embedded location to id/name/city/address — full location
   // detail is loaded separately and looked up via D.locs.find().
-  let jobsQuery=SB.from('jobs').select('id,job_number,location_id,billing_account_id,contract_id,type,scope,status,scheduled_date,scheduled_time,route_order,started_at,completed_at,technician,assigned_to,customer_notified_at,customer_arrived_at,travel_distance,travel_charge,estimated_value,notes,work_order_lines,gcal_event_id,sm8_job_number,sm8_amount,sm8_description,estimated_duration_hours,departure_alert_sent_at,confirmed_at,confirmed_by,confirmation_method,tentative,created_at,updated_at,deleted_at,location:locations(id,name,city,address)').is('deleted_at',null).order('updated_at',{ascending:false})
+  let jobsQuery=SB.from('jobs').select('id,job_number,location_id,billing_account_id,contract_id,type,scope,status,scheduled_date,scheduled_time,route_order,started_at,completed_at,technician,assigned_to,customer_notified_at,customer_arrived_at,travel_distance,travel_charge,estimated_value,notes,work_order_lines,gcal_event_id,sm8_job_number,sm8_amount,sm8_description,estimated_duration_hours,departure_alert_sent_at,confirmed_at,confirmed_by,confirmation_method,tentative,invoice_built,created_at,updated_at,deleted_at,location:locations(id,name,city,address)').is('deleted_at',null).order('updated_at',{ascending:false})
   const orParts=[`status.neq.completed`,`scheduled_date.gte.${jobCutoff}`]
   if(unpaidJobIds.length)orParts.push(`id.in.(${unpaidJobIds.join(',')})`)
   jobsQuery=jobsQuery.or(orParts.join(','))
@@ -956,7 +956,7 @@ async function ensureLocationDetail(locId){
   if(!loc)return null
   try{
     const[jq,iq]=await Promise.all([
-      SB.from('jobs').select('id,job_number,location_id,billing_account_id,contract_id,type,scope,status,scheduled_date,scheduled_time,route_order,started_at,completed_at,technician,assigned_to,customer_notified_at,customer_arrived_at,travel_distance,travel_charge,estimated_value,notes,work_order_lines,gcal_event_id,sm8_job_number,sm8_amount,sm8_description,estimated_duration_hours,departure_alert_sent_at,confirmed_at,confirmed_by,confirmation_method,tentative,created_at,updated_at,deleted_at,location:locations(id,name,city,address)').eq('location_id',locId).is('deleted_at',null).order('completed_at',{ascending:false,nullsFirst:false}),
+      SB.from('jobs').select('id,job_number,location_id,billing_account_id,contract_id,type,scope,status,scheduled_date,scheduled_time,route_order,started_at,completed_at,technician,assigned_to,customer_notified_at,customer_arrived_at,travel_distance,travel_charge,estimated_value,notes,work_order_lines,gcal_event_id,sm8_job_number,sm8_amount,sm8_description,estimated_duration_hours,departure_alert_sent_at,confirmed_at,confirmed_by,confirmation_method,tentative,invoice_built,created_at,updated_at,deleted_at,location:locations(id,name,city,address)').eq('location_id',locId).is('deleted_at',null).order('completed_at',{ascending:false,nullsFirst:false}),
       SB.from('invoices').select('*,invoice_lines(*)').eq('location_id',locId).is('deleted_at',null).order('date',{ascending:false})
     ])
     const jobs=jq.data||[]
@@ -3960,8 +3960,17 @@ async function updateJobChecklist(){
 
   let flags=[]
 
-  // Invoice flag
-  flags.push({label:'Build Invoice',done:hasAnyLines,action:null})
+  // Invoice flag — was auto-marked done as soon as any line item existed,
+  // which was misleading: it'd flip green before Jon actually reviewed the
+  // numbers. Now it requires a manual toggle (jobs.invoice_built). The
+  // hasAnyLines check still gates whether the flag is tap-able at all.
+  const j_for_inv = D.jobs.find(x=>x.id===jid)
+  const invBuilt = !!j_for_inv?.invoice_built
+  flags.push({
+    label:'Build Invoice',
+    done: invBuilt,
+    action: hasAnyLines ? `toggleInvoiceBuilt('${jid}')` : null
+  })
 
   // Extinguisher report — removed from checklist (use photo paste on job card instead)
 
@@ -4568,6 +4577,21 @@ async function confirmTentativeTime(jobId){
   // Re-render the openJob overlay so the pill flips solid-green
   pop(); await openJob(jobId)
   toast('✓ Time confirmed')
+}
+
+// Flip the Build Invoice checklist flag. Jon explicitly asked for this to
+// require a tap rather than auto-mark when line items exist — gives him a
+// "I've reviewed the numbers" gate before the Review & Finalize button
+// turns green.
+async function toggleInvoiceBuilt(jobId){
+  const j=D.jobs.find(x=>x.id===jobId)
+  if(!j){toast('Job not found',false);return}
+  const next = !j.invoice_built
+  const{error}=await SB.from('jobs').update({invoice_built:next}).eq('id',jobId)
+  if(error){toast('Error: '+error.message,false);return}
+  j.invoice_built=next  // mutate cached row so the next render sees it
+  await updateJobChecklist()
+  toast(next?'✓ Invoice marked built':'Build Invoice unchecked')
 }
 
 // Inverse of confirmTentativeTime — drop a confirmed job back to tentative
