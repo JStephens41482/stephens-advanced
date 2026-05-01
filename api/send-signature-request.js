@@ -8,8 +8,12 @@ const { renderEmail, renderText } = require('./email-template')
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end()
-  const { job_id, channels } = req.body || {}
+  const { job_id, channels, purpose } = req.body || {}
   if (!job_id) return res.status(400).json({ error: 'job_id required' })
+  // purpose: 'completion' (default) | 'quote_approval' — controls customer
+  // copy. A quote-approval link must NOT say "we just completed work" since
+  // no work has happened yet.
+  const isQuoteApproval = purpose === 'quote_approval'
 
   const supabaseKey = process.env.SUPABASE_SERVICE_KEY
   if (!supabaseKey) return res.status(500).json({ error: 'SUPABASE_SERVICE_KEY not configured' })
@@ -19,10 +23,13 @@ module.exports = async function handler(req, res) {
     // Pull job + location + most recent invoice
     const { data: job, error: jobErr } = await supabase
       .from('jobs')
-      .select('id,job_number,location_id,billing_account_id,scope,completed_at')
+      .select('id,job_number,location_id,billing_account_id,scope,status,completed_at,scheduled_date,quote_valid_until,work_order_lines')
       .eq('id', job_id)
       .maybeSingle()
     if (jobErr || !job) return res.status(404).json({ error: 'Job not found' })
+    // Auto-detect quote when purpose wasn't passed but the job is in
+    // quote status — defensive against future callers that forget the hint.
+    const treatAsQuote = isQuoteApproval || job.status === 'quote'
 
     const { data: loc } = await supabase
       .from('locations')
@@ -68,21 +75,52 @@ module.exports = async function handler(req, res) {
     let emailResult = null
     let smsResult = null
 
+    // For quotes, derive line items + total from work_order_lines on the
+    // job (no invoice exists yet for a pre-approved quote).
+    let displayLines = invLines
+    let displayTotal = total
+    if (treatAsQuote && (!displayLines || !displayLines.length)) {
+      const wol = Array.isArray(job.work_order_lines) ? job.work_order_lines : []
+      displayLines = wol.map((l, i) => ({
+        description: l.description || l.desc || '',
+        quantity: l.quantity || l.qty || 1,
+        unit_price: l.unit_price || l.price || 0,
+        total: (l.unit_price || l.price || 0) * (l.quantity || l.qty || 1),
+        sort_order: i
+      }))
+      const sum = displayLines.reduce((s, l) => s + (l.total || 0), 0)
+      if (sum > 0) displayTotal = `$${sum.toFixed(2)}`
+    }
+
     if (email && wantEmail) {
       try {
-        const opts = {
+        const opts = treatAsQuote ? {
+          headline: 'Please review your quote',
+          subheadline: 'Stephens Advanced LLC &mdash; Fire Suppression &amp; Safety',
+          greeting: `Hi ${customerName},`,
+          intro: `Here's the quote for ${locationName}. Sign below to approve the scope and pricing — once you do, we'll get on the schedule.`
+            + (job.quote_valid_until ? ` This quote is valid until ${job.quote_valid_until}.` : ''),
+          lineItems: displayLines,
+          totalLabel: 'Quote Total',
+          total: displayTotal,
+          cta: { label: 'Review & Approve Quote', url: signUrl },
+          fineprint: 'Approving this quote authorizes us to perform the work as priced. The link is unique to your account and expires in 14 days. Sign on any device — no app needed.',
+        } : {
           headline: 'Please review and sign',
           subheadline: 'Stephens Advanced LLC &mdash; Fire Suppression &amp; Safety',
           greeting: `Hi ${customerName},`,
           intro: `We just completed work at ${locationName}. ` + (invNum
             ? `Please review Invoice ${invNum}${total ? ` (${total})` : ''} and sign to acknowledge service.`
             : `Please sign to acknowledge service.`),
-          lineItems: invLines,
+          lineItems: displayLines,
           totalLabel: 'Total',
-          total: total,
+          total: displayTotal,
           cta: { label: 'Review & Sign', url: signUrl },
           fineprint: 'The link is unique to your account and expires in 14 days. Sign on any device — no app needed.',
         }
+        const subject = treatAsQuote
+          ? `Your quote — Stephens Advanced${locationName ? ' | ' + locationName : ''}`
+          : `Please sign — ${invNum ? 'Invoice ' + invNum + ' · ' : ''}Stephens Advanced${locationName ? ' | ' + locationName : ''}`
         const r = await fetch('https://api.resend.com/emails', {
           method: 'POST',
           headers: {
@@ -93,7 +131,7 @@ module.exports = async function handler(req, res) {
             from: 'Stephens Advanced <jonathan@stephensadvanced.com>',
             to: [email],
             bcc: ['jonathan@stephensadvanced.com'],
-            subject: `Please sign — ${invNum ? 'Invoice ' + invNum + ' · ' : ''}Stephens Advanced${locationName ? ' | ' + locationName : ''}`,
+            subject,
             html: renderEmail(opts),
             text: renderText(opts),
           })
@@ -106,7 +144,9 @@ module.exports = async function handler(req, res) {
 
     if (phone && wantSms) {
       try {
-        const body = `Stephens Advanced: Please review and sign for ${invNum ? 'invoice ' + invNum + ' (' + total + ') ' : 'your recent service '}at ${locationName}. Sign here: ${signUrl}`
+        const body = treatAsQuote
+          ? `Stephens Advanced: Your quote for ${locationName}${displayTotal ? ' (' + displayTotal + ')' : ''} is ready. Review & approve: ${signUrl}`
+          : `Stephens Advanced: Please review and sign for ${invNum ? 'invoice ' + invNum + ' (' + total + ') ' : 'your recent service '}at ${locationName}. Sign here: ${signUrl}`
         const sid = process.env.TWILIO_ACCOUNT_SID
         const token = process.env.TWILIO_AUTH_TOKEN
         const from = process.env.TWILIO_PHONE_NUMBER

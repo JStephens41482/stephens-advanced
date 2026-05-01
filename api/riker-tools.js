@@ -882,7 +882,7 @@ const schedule_job = {
 const build_quote = {
   schema: {
     name: 'build_quote',
-    description: "Build a quote (pre-approved pre-job). Doesn't go on the calendar — stays in the Quotes Pending section until customer approves via signature link or Jon marks it manually approved. Use when Jon says 'build a quote for X' or 'send Y a price'. Pair with send_quote_for_signature (separate tool) to text/email the sign link, or with approve_quote when customer says yes verbally.",
+    description: "Build a quote (pre-approved pre-job). Doesn't go on the calendar — stays in the Quotes Pending section until customer approves via signature link or Jon marks it manually approved. Use when Jon says 'build a quote for X' or 'send Y a price'. Pair with request_remote_signature (existing tool, pass purpose:'quote_approval') to text/email the sign link, or with approve_quote when customer says yes verbally. NOTE: when the remote sign link is signed, sign-job.js auto-converts the quote → scheduled — you don't need to call approve_quote in that case, only for verbal/email approvals.",
     input_schema: {
       type: 'object',
       properties: {
@@ -988,7 +988,10 @@ const approve_quote = {
       status: 'scheduled',
       quote_approved_at: new Date().toISOString(),
       quote_approved_by: input.approved_by || 'verbal',
-      tentative: true  // until customer confirms exact time
+      // Customer-approved → confirmed, not tentative. tentative=true is
+      // semantically "route logic guessed this, Jon hasn't confirmed";
+      // approval IS confirmation. (Watcher caught: was wrongly true.)
+      tentative: false
     }
     if(input.scheduled_date) upd.scheduled_date = input.scheduled_date
     if(input.scheduled_time) upd.scheduled_time = input.scheduled_time

@@ -3903,7 +3903,11 @@ function rJobsList(q){
   const all=D.jobs.filter(j=>j.status!=='cancelled')
   // hide completed jobs AND jobs that already have an invoice (they're done)
   const invoicedJobIds=new Set(D.invs.filter(i=>i.job_id).map(i=>i.job_id))
-  const visible=all.filter(j=>j.status!=='completed'&&!invoicedJobIds.has(j.id)&&(!j.scheduled_date||j.scheduled_date.slice(0,7)<=curMonth))
+  // Quotes always show regardless of proposed_date (they're a separate
+  // pipeline, not bounded by the current-month filter that scoped scheduled
+  // jobs). Without this carve-out, a quote proposed for July renders
+  // invisible in April.
+  const visible=all.filter(j=>j.status!=='completed'&&!invoicedJobIds.has(j.id)&&(j.status==='quote'||!j.scheduled_date||j.scheduled_date.slice(0,7)<=curMonth))
   let filtered=visible
   if(q){
     const ql=q.toLowerCase()
@@ -4413,8 +4417,8 @@ async function openJob(id){
         <button class="btn-p" style="background:var(--info);color:#fff;display:flex;align-items:center;gap:12px;margin-bottom:8px;padding:14px 16px;text-align:left;width:100%" onclick="approveQuoteInPerson('${j.id}')">
           <span style="font-size:22px;flex-shrink:0">👤</span>
           <div style="flex:1">
-            <div style="font-size:14px;font-weight:800;line-height:1.2">Get Signature Now (In-Person)</div>
-            <div style="font-size:11px;opacity:.85;margin-top:2px">Hand the phone to the customer to sign</div>
+            <div style="font-size:14px;font-weight:800;line-height:1.2">Mark In-Person Approval</div>
+            <div style="font-size:11px;opacity:.85;margin-top:2px">Customer is here and approved — capture name (signature pad coming)</div>
           </div>
         </button>
         <button class="btn-p" style="background:var(--ok);color:#fff;display:flex;align-items:center;gap:12px;padding:14px 16px;text-align:left;width:100%" onclick="approveQuoteManual('${j.id}')">
@@ -5362,7 +5366,12 @@ async function _convertQuoteToJob(jobId, opts){
     quote_approved_by: opts.approved_by || 'jon (manual)',
     scheduled_date: finalDate,
     scheduled_time: finalTime,
-    tentative: !opts.signed_in_person  // in-person sig = confirmed; remote = tentative until customer confirms time
+    // Approval IS confirmation regardless of channel — watcher caught the
+    // tentative=true on manual/verbal/remote was semantically wrong.
+    // "tentative" means "route logic chose this, Jon hasn't blessed it yet",
+    // not "waiting for customer". By the time we're here, customer + Jon
+    // are both committed.
+    tentative: false
   }
   if(opts.signature_data) upd.quote_signature_data = opts.signature_data
   const {error} = await SB.from('jobs').update(upd).eq('id', jobId)

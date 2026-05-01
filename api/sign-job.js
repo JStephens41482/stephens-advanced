@@ -46,9 +46,51 @@ module.exports = async function handler(req, res) {
       .eq('id', sigReq.id)
     if (updErr) return res.status(500).json({ error: updErr.message })
 
-    // 2. Stamp the job — gives the dashboard "Pending Signatures" widget visibility back
+    // 2. Stamp the job. For COMPLETION signatures we hit jobs.signature_data
+    // (drives the "Pending Signatures" widget). For QUOTE-APPROVAL signatures
+    // we hit jobs.quote_signature_data AND auto-convert status='quote' →
+    // 'scheduled' so Jon doesn't have to manually flip it after seeing the
+    // customer signed. The two columns let us preserve both proofs (scope
+    // agreement at quote time + work completion at job-end).
+    let convertedQuote = false
     if (sigReq.job_id) {
-      await supabase.from('jobs').update({ signature_data }).eq('id', sigReq.job_id)
+      const { data: jobBefore } = await supabase
+        .from('jobs')
+        .select('id, status, scheduled_date, scheduled_time, location_id')
+        .eq('id', sigReq.job_id)
+        .maybeSingle()
+      if (jobBefore?.status === 'quote') {
+        // Quote approval — write to quote_signature_data and flip to scheduled.
+        // tentative=false because customer explicitly approved (not route-set).
+        const upd = {
+          quote_signature_data: signature_data,
+          quote_approved_at: nowIso,
+          quote_approved_by: signed_by_name,
+          status: 'scheduled',
+          tentative: false
+        }
+        await supabase.from('jobs').update(upd).eq('id', sigReq.job_id)
+        convertedQuote = true
+        // Fire calendar sync if we have a date
+        if (jobBefore.scheduled_date && jobBefore.scheduled_time) {
+          try {
+            const startDt = new Date(jobBefore.scheduled_date + 'T' + jobBefore.scheduled_time + ':00')
+            const endDt = new Date(startDt.getTime() + 90 * 60000)
+            await supabase.from('calendar_events').insert({
+              title: 'Approved quote → scheduled',
+              event_type: 'job',
+              start_time: startDt.toISOString(),
+              end_time: endDt.toISOString(),
+              location_id: jobBefore.location_id,
+              job_id: jobBefore.id,
+              color: '#10b981'
+            })
+          } catch (e) { console.error('quote→sched cal sync:', e) }
+        }
+      } else {
+        // Completion signature path (existing behavior unchanged).
+        await supabase.from('jobs').update({ signature_data }).eq('id', sigReq.job_id)
+      }
     }
 
     // 2b. Update the invoice based on payment method
@@ -109,9 +151,17 @@ module.exports = async function handler(req, res) {
         .from('invoices').select('invoice_number,total').eq('id', sigReq.invoice_id).maybeSingle() : { data: null }
       const locName = loc?.name || 'a customer'
       const invStr = inv ? `Invoice ${inv.invoice_number} ($${(+inv.total).toFixed(2)})` : 'their service'
-      const subject = `✍️ ${locName} just signed`
+      // Differentiate the Jon-facing copy when a QUOTE just got approved
+      // (vs a completion signature) so he knows what to do next: a quote
+      // approval = the job is now scheduled and needs to land on his route;
+      // a completion = the work's done, sig captured, ready to invoice.
+      const subject = convertedQuote ? `✅ ${locName} approved the quote` : `✍️ ${locName} just signed`
       const payLabel = payment_method ? paymentLabel(payment_method, check_number) : ''
-      const opts = {
+      const opts = convertedQuote ? {
+        headline: 'Quote approved',
+        subheadline: 'Stephens Advanced &mdash; quote → scheduled',
+        intro: `${signed_by_name} at ${locName} approved the quote. The job is now on the schedule — open it to confirm the visit time.`,
+      } : {
         headline: 'Customer signed',
         subheadline: 'Stephens Advanced &mdash; offsite signer',
         intro: `${signed_by_name} at ${locName} just signed for ${invStr}${payLabel ? ' · paid by ' + payLabel : ''}.`,
@@ -140,10 +190,13 @@ module.exports = async function handler(req, res) {
       if (sid && twToken && from) {
         const auth = Buffer.from(sid + ':' + twToken).toString('base64')
         const payNoteSms = payment_method ? ` · ${paymentLabel(payment_method, check_number)}` : ''
+        const smsBody = convertedQuote
+          ? `${signed_by_name} approved the quote at ${locName}. Job is now on the schedule — open the app to confirm time.`
+          : `${signed_by_name} just signed for ${locName} (${invStr})${payNoteSms}.`
         const params = new URLSearchParams({
           To: '+12149944799',
           From: from,
-          Body: `${signed_by_name} just signed for ${locName} (${invStr})${payNoteSms}.`
+          Body: smsBody
         })
         await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
           method: 'POST',
