@@ -66,15 +66,78 @@ module.exports = async function handler(req, res) {
   if (!sbKey) return res.status(500).json({ error: 'missing supabase key' })
   const supabase = createClient(sbUrl, sbKey)
 
+  // Multi-tech: resolve which tech this beacon belongs to. Three paths:
+  //   1. Body / query carries explicit tech_id (preferred — native shell
+  //      and the in-app beacon both know who's logged in)
+  //   2. Same-origin browser request with sa_device cookie → look up the
+  //      auth_devices row for that cookie and read its tech_id
+  //   3. Legacy / Overland with no cookie → fall through to id=1 path
+  //      (Jon's row) so existing setups don't break
+  //
+  // CRITICAL: if we DID attempt cookie resolution (a logged-in browser)
+  // but couldn't pin the device to a tech, we REFUSE the write rather
+  // than fall through to the id=1 legacy path. Otherwise an employee
+  // tech on a legacy device (or one whose row predates the migration)
+  // would silently overwrite Jon's location.
+  let techId = null
+  let cookieAttempted = false
+  if (body.tech_id && typeof body.tech_id === 'string') {
+    techId = body.tech_id
+  } else if (sameOrigin) {
+    const cookieHeader = req.headers.cookie || ''
+    const m = cookieHeader.match(/(?:^|;\s*)sa_device=([^;]+)/)
+    if (m) {
+      cookieAttempted = true
+      try {
+        const crypto = require('crypto')
+        const tokenHash = crypto.createHash('sha256').update(decodeURIComponent(m[1])).digest('hex')
+        const { data: dev } = await supabase
+          .from('auth_devices')
+          .select('tech_id, revoked_at, expires_at')
+          .eq('token_hash', tokenHash)
+          .maybeSingle()
+        if (dev?.tech_id && !dev.revoked_at && new Date(dev.expires_at) > new Date()) {
+          techId = dev.tech_id
+        }
+      } catch (e) {
+        console.error('[update-location] cookie tech lookup:', e.message)
+      }
+    }
+  }
+  if (cookieAttempted && !techId) {
+    // Authenticated browser device but tech_id couldn't be resolved (likely
+    // the auth_devices row predates the multi-tech migration and the phone
+    // doesn't match any techs row). Refuse rather than risk clobbering
+    // Jon's GPS with an unknown tech's coordinates. Caller can re-auth to
+    // get a tech_id stamped on the device.
+    return res.status(403).json({ error: 'Could not resolve tech_id for this device. Re-authenticate.' })
+  }
+
   const updated_at = new Date().toISOString()
-  const { error } = await supabase.from('jon_location').upsert({
-    id: 1, lat, lng,
-    accuracy: accuracy != null ? parseFloat(accuracy) : null,
-    speed: speed != null ? parseFloat(speed) : null,
-    heading: heading != null ? parseFloat(heading) : null,
-    source,
-    updated_at
-  }, { onConflict: 'id' })
+  let error
+  if (techId) {
+    // Per-tech upsert keyed by tech_id (the unique partial index).
+    // Each tech has at most one row; their beacons can't collide.
+    ;({ error } = await supabase.from('jon_location').upsert({
+      tech_id: techId, lat, lng,
+      accuracy: accuracy != null ? parseFloat(accuracy) : null,
+      speed: speed != null ? parseFloat(speed) : null,
+      heading: heading != null ? parseFloat(heading) : null,
+      source,
+      updated_at
+    }, { onConflict: 'tech_id' }))
+  } else {
+    // Legacy single-row path (Overland or any caller without a tech_id).
+    // Continues to write to id=1 — Jon's row.
+    ;({ error } = await supabase.from('jon_location').upsert({
+      id: 1, lat, lng,
+      accuracy: accuracy != null ? parseFloat(accuracy) : null,
+      speed: speed != null ? parseFloat(speed) : null,
+      heading: heading != null ? parseFloat(heading) : null,
+      source,
+      updated_at
+    }, { onConflict: 'id' }))
+  }
 
   if (error) {
     console.error('[update-location]', error.message)

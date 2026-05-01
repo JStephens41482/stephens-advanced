@@ -83,7 +83,7 @@ module.exports = async function handler(req, res) {
       }
       const { data: techRow } = await supabase
         .from('techs')
-        .select('id, active')
+        .select('id, name, license_number, active, is_owner')
         .eq('id', techId)
         .maybeSingle()
       if (!techRow || techRow.active !== true) {
@@ -106,6 +106,9 @@ module.exports = async function handler(req, res) {
         if (!ok) return res.status(401).json({ error: 'unauthorized' })
       }
       identity.tech_id = techId
+      identity.tech_name = techRow.name || null
+      identity.license_number = techRow.license_number || null
+      identity.is_owner = !!techRow.is_owner
       // Accept client_context fields as identity hints
       if (body.client_context?.active_location_id) identity.location_id = body.client_context.active_location_id
     }

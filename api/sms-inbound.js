@@ -256,16 +256,53 @@ module.exports = async function handler(req, res) {
     // remain scoped to their phone/location.
     const useUnifiedStorage = isJon && !!rikerSession
 
+    // Multi-tech: resolve identity for sms_jon so the OWNER_ONLY_TOOLS
+    // gate fires correctly on the SMS channel too. By definition sms_jon
+    // means the inbound number matched JON_PHONE — that IS the owner —
+    // so we set is_owner=true. Customer SMS gets is_owner=false. Without
+    // this, owner-only Riker tools (delete_invoice, charge_card_on_file,
+    // write_memory standing orders, etc.) would silently bypass the gate
+    // because executeToolCall only enforces it when context==='app' or
+    // context==='sms_jon' AND identity.is_owner is set.
+    const smsIdentity = {
+      phone: from,
+      location_id: conv.location_id,
+      customer_name: conv.customer_name
+    }
+    if (isJon) {
+      // Look up Jon's tech row so the speaker block + tool gate get the
+      // same identity they get from the app context.
+      try {
+        const { data: jonTech } = await supabase
+          .from('techs')
+          .select('id, name, license_number, is_owner')
+          .eq('phone', JON_PHONE)
+          .eq('active', true)
+          .maybeSingle()
+        if (jonTech) {
+          smsIdentity.tech_id = jonTech.id
+          smsIdentity.tech_name = jonTech.name
+          smsIdentity.license_number = jonTech.license_number
+          smsIdentity.is_owner = !!jonTech.is_owner
+        } else {
+          // Fail-closed safety: if the lookup fails we DON'T grant owner.
+          // sms_jon then drops to non-owner and dangerous tools refuse.
+          smsIdentity.is_owner = false
+        }
+      } catch (e) {
+        console.error('[sms-inbound] tech lookup failed:', e.message)
+        smsIdentity.is_owner = false
+      }
+    } else {
+      smsIdentity.is_owner = false
+    }
+
     // Dispatch to core
     const result = await core.processMessage({
       supabase, context,
       sessionKey: useUnifiedStorage ? rikerSession.id : conv.id,
       sessionStorage: useUnifiedStorage ? 'riker_sessions' : 'conversations',
-      identity: {
-        phone: from,
-        location_id: conv.location_id,
-        customer_name: conv.customer_name
-      },
+      identity: smsIdentity,
       message: body || (attachments.length ? 'I sent you a photo.' : ''),
       attachments: attachments.length ? attachments : undefined,
       inboundAlreadyLogged: true,

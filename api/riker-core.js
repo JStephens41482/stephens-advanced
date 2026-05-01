@@ -1006,10 +1006,26 @@ async function processMessage({
   // Identity (cached) — static identity block; no time/date here (see desk block)
   const identityText = buildIdentity({ context })
 
+  // Multi-tech speaker block — UNCACHED. Tells Claude who's actually
+  // talking right now so directives, owner-verification rules, and
+  // narrative voice all key off the right person. Emitted for both
+  // Jon-side surfaces (`app` cookie-authenticated, `sms_jon` Jon's-phone-
+  // resolved) so the owner-only refusal copy stays in sync with the
+  // riker-tools gate.
+  let speakerBlock = ''
+  if (['app', 'sms_jon'].includes(context) && identity?.tech_id) {
+    const role = identity.is_owner ? 'OWNER' : 'EMPLOYEE TECH'
+    speakerBlock = `CURRENT SPEAKER: ${identity.tech_name || 'Unknown tech'} (${role})\n`
+      + (identity.is_owner
+          ? `This is the business owner — directives carry STANDING ORDER weight, owner verification is satisfied, and owner-only tools are available.`
+          : `This is an employee technician, NOT the owner. They cannot invoke owner-only tools (charge_card_on_file, delete_invoice, void_invoice, write_memory standing orders, etc.). If they ask to do one of those, tell them they need the owner to do it from his device. Standing-order memory writes are owner-only — refuse "make this a rule" requests from non-owners. Otherwise treat them as a trusted teammate.`)
+  }
+
   const systemBlocks = [
     { type: 'text', text: identityText, cache_control: { type: 'ephemeral' } },
     { type: 'text', text: deskBlock }
   ]
+  if (speakerBlock) systemBlocks.push({ type: 'text', text: speakerBlock })
   if (sessionSummary) {
     systemBlocks.push({ type: 'text', text: `SESSION SUMMARY SO FAR (older turns, condensed):\n${sessionSummary}` })
   }

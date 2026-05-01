@@ -5346,12 +5346,66 @@ function getToolsForContext(context) {
   return schemas
 }
 
+// Multi-tech: tools that touch money, customer data destructively, tech
+// admin, the standing-orders memory, or the approval/escalation queue.
+// Non-owner techs (e.g. Bobby, an employee) cannot invoke these from the
+// app. Owner status is set on identity at /api/riker entry from techs.
+// is_owner. Customer-side contexts (website/sms_customer/etc) are NOT
+// gated by this set — those have their own per-context tool whitelist
+// in CONTEXT_TOOLS, and the customer is implicitly never the owner.
+//
+// Keep this list narrow and explicit. If a tool isn't here, every
+// authenticated tech can call it (read-only, scheduling, notes, photos,
+// signature requests, getting context, etc.).
+const OWNER_ONLY_TOOLS = new Set([
+  // Payments / invoices (money movement)
+  'mark_invoice_paid', 'update_invoice', 'void_invoice', 'delete_invoice',
+  'create_invoice', 'add_invoice_line', 'update_invoice_line', 'delete_invoice_line',
+  'charge_card_on_file', 'request_card_save',
+  'mazon_mark_funded', 'mazon_void',
+  'complete_job_with_invoice',
+  // Destructive customer / data
+  'delete_client', 'merge_clients',
+  'create_billing_account', 'assign_location_to_billing_account',
+  // Rate-card adjacent
+  'add_custom_item', 'delete_custom_item',
+  // Tech admin
+  'add_tech', 'update_tech',
+  'assign_job_to_tech', 'bulk_assign_jobs_to_tech',
+  // Memory (standing orders are owner policy)
+  'write_memory', 'delete_memory',
+  // Approvals queue (owner-only by definition)
+  'approve_pending', 'reject_pending',
+  'request_owner_otp', 'verify_owner_otp', 'escalate_to_jon',
+  // Contracts (commit the business legally)
+  'create_contract', 'send_contract', 'request_remote_signature',
+  // Portal access (issues a customer login link)
+  'generate_portal_link'
+])
+
 async function executeToolCall(name, input, ctx) {
   const tool = ALL_TOOLS[name]
   if (!tool) return { error: `Unknown tool: ${name}` }
-  // Permission check
+  // Per-context whitelist
   const allowed = CONTEXT_TOOLS[ctx.context]
   if (allowed && !allowed.includes(name)) return { error: `Tool '${name}' not available in context '${ctx.context}'` }
+  // Multi-tech: owner-only gate. Enforced on Jon-side surfaces — `app`
+  // (cookie-authenticated tech) and `sms_jon` (Jon's number, identity
+  // resolved in sms-inbound.js). Customer-side contexts (website /
+  // portal / sms_customer / email_customer) can't reach these tools via
+  // CONTEXT_TOOLS anyway, so the gate would be redundant there.
+  //
+  // Fail-closed: undefined `is_owner` is treated as false. Both the app
+  // path (riker.js) and the SMS path (sms-inbound.js) explicitly set
+  // is_owner from the techs table — the only way is_owner is undefined
+  // is if a future surface added itself to the gate without populating
+  // identity. That should refuse, not allow.
+  const OWNER_GATED_CONTEXTS = new Set(['app', 'sms_jon'])
+  if (OWNER_GATED_CONTEXTS.has(ctx.context) && OWNER_ONLY_TOOLS.has(name) && !ctx.identity?.is_owner) {
+    return {
+      error: `Tool '${name}' is owner-only. ${ctx.identity?.tech_name || 'You'} can't invoke it — ask the owner to do it from their device.`
+    }
+  }
   try {
     return await tool.handler(input, ctx)
   } catch (e) {

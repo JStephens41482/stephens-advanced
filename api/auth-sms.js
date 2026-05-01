@@ -171,12 +171,31 @@ async function handleVerify(req, res) {
   // Success: burn the code, mint a device token.
   await SB.from('auth_codes').update({ used: true }).eq('id', row.id)
 
+  // Resolve which tech this phone belongs to. Multi-tech support: the
+  // techs table stores phone in E.164, matching what normalizePhone()
+  // produces above. If no tech matches, we still mint the cookie (so
+  // the legacy phone-only path keeps working) but tech_id is null.
+  // The client will treat null-tech as "not in roster yet — read only".
+  let resolvedTechId = null
+  try {
+    const { data: techRow } = await SB
+      .from('techs')
+      .select('id')
+      .eq('phone', phone)
+      .eq('active', true)
+      .maybeSingle()
+    if (techRow?.id) resolvedTechId = techRow.id
+  } catch (e) {
+    console.error('auth-sms tech lookup:', e)
+  }
+
   const token = randomToken()
   const tokenHash = sha256(token)
   const expiresAt = new Date(Date.now() + DEVICE_TTL_DAYS * 86400 * 1000).toISOString()
 
   const { error: devErr } = await SB.from('auth_devices').insert({
     phone,
+    tech_id: resolvedTechId,
     token_hash: tokenHash,
     label,
     user_agent: (req.headers['user-agent'] || '').slice(0, 300),
@@ -188,7 +207,7 @@ async function handleVerify(req, res) {
   }
 
   setDeviceCookie(res, token, DEVICE_TTL_DAYS * 86400)
-  return res.status(200).json({ ok: true, phone, expires_at: expiresAt })
+  return res.status(200).json({ ok: true, phone, expires_at: expiresAt, tech_id: resolvedTechId })
 }
 
 async function handleCheck(req, res) {
@@ -197,7 +216,7 @@ async function handleCheck(req, res) {
 
   const { data: rows } = await SB
     .from('auth_devices')
-    .select('id, phone, expires_at, revoked_at')
+    .select('id, phone, tech_id, expires_at, revoked_at')
     .eq('token_hash', sha256(token))
     .limit(1)
 
@@ -210,7 +229,41 @@ async function handleCheck(req, res) {
   // Touch last_seen_at so we can prune stale devices later.
   SB.from('auth_devices').update({ last_seen_at: new Date().toISOString() }).eq('id', row.id).then(() => {}).catch(() => {})
 
-  return res.status(200).json({ ok: true, phone: row.phone, expires_at: row.expires_at })
+  // Multi-tech: also resolve the tech row so the client knows who it is
+  // and what role it has, in a single round-trip. If tech_id wasn't set
+  // when the device was minted (legacy device, or tech added later),
+  // fall back to a phone lookup and patch the device row so future
+  // checks are cheap.
+  let tech = null
+  let techIdForCookie = row.tech_id
+  if (techIdForCookie) {
+    const { data: t } = await SB
+      .from('techs')
+      .select('id, name, phone, email, license_number, color, active, is_owner')
+      .eq('id', techIdForCookie)
+      .maybeSingle()
+    if (t) tech = t
+  }
+  if (!tech && row.phone) {
+    const { data: t } = await SB
+      .from('techs')
+      .select('id, name, phone, email, license_number, color, active, is_owner')
+      .eq('phone', row.phone)
+      .eq('active', true)
+      .maybeSingle()
+    if (t) {
+      tech = t
+      // Backfill the device row for future check() calls.
+      SB.from('auth_devices').update({ tech_id: t.id }).eq('id', row.id).then(() => {}).catch(() => {})
+    }
+  }
+
+  return res.status(200).json({
+    ok: true,
+    phone: row.phone,
+    expires_at: row.expires_at,
+    tech: tech || null
+  })
 }
 
 async function handleLogout(req, res) {
