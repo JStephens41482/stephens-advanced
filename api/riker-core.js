@@ -936,9 +936,18 @@ const _HONESTY_CHECKS = [
   { verbs: /\b(saved (it )?to memory|locked (it )?in|noted (it )?down|added to memory|stored that)\b/i,
     tools: new Set(['write_memory']),
     label: 'memory write' },
-  { verbs: /\b(logged (the )?(expense|receipt|bill|cost)|saved (the )?(receipt|bill)|recorded (the )?(expense|cost|bill))\b/i,
+  { verbs: /\b(logged (the )?(expense|receipt|cost)|saved (the )?(receipt)|recorded (the )?(expense|cost))\b/i,
     tools: new Set(['log_expense']),
-    label: 'expense log' }
+    label: 'expense log' },
+  { verbs: /\b(logged (the )?bill|added (the )?bill|saved (the )?bill|recorded (the )?bill)\b/i,
+    tools: new Set(['add_bill']),
+    label: 'bill log' },
+  { verbs: /\b(marked (the )?bill paid|paid (the )?bill|bill is paid|knocked out (the )?bill)\b/i,
+    tools: new Set(['mark_bill_paid']),
+    label: 'bill paid' },
+  { verbs: /\b(allocated|swept|moved into (the )?(buckets?|profit first))\b/i,
+    tools: new Set(['log_income']),
+    label: 'income allocation' }
 ]
 
 function _enforceActionHonesty(text, actionsTaken) {

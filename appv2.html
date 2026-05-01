@@ -735,7 +735,7 @@ async function load(){
   if(unpaidJobIds.length)orParts.push(`id.in.(${unpaidJobIds.join(',')})`)
   jobsQuery=jobsQuery.or(orParts.join(','))
 
-  const[j,l,i,b,r,ci,td2,mz,bq,tk,sr,pt,ce,ct,cl2,rch,pr,nf,cn,jLast,iLast,pSig,exp]=await Promise.all([
+  const[j,l,i,b,r,ci,td2,mz,bq,tk,sr,pt,ce,ct,cl2,rch,pr,nf,cn,jLast,iLast,pSig,exp,bills2,cb]=await Promise.all([
     jobsQuery,
     // Locations: explicit columns only. PR #9 derives equipment from invoice
     // lines (see post-load shadowing below) so no nested equipment selects.
@@ -779,6 +779,14 @@ async function load(){
       ? SB.from('expenses').select('*').is('deleted_at',null)
         .gte('date',new Date(Date.now()-90*86400000).toISOString().split('T')[0])
         .order('date',{ascending:false}).limit(500)
+      : Promise.resolve({data: []}),
+    // Bills (Books / Profit First) — owner-only, same gate as expenses.
+    (window._me?.tech?.is_owner !== false)
+      ? SB.from('bills').select('*').is('deleted_at',null).order('due_date',{ascending:true})
+      : Promise.resolve({data: []}),
+    // Cash buckets — always loaded for owners (5 rows, tiny).
+    (window._me?.tech?.is_owner !== false)
+      ? SB.from('cash_buckets').select('*').order('display_order')
       : Promise.resolve({data: []})
   ])
   if(j.error)console.error('jobs error:',j.error)
@@ -871,6 +879,8 @@ async function load(){
   D.notifications=nf.data||[]
   D.contracts=cn.data||[]
   D.expenses=exp?.data||[]
+  D.bills=bills2?.data||[]
+  D.cashBuckets=cb?.data||[]
   // Build {location_id: 'YYYY-MM-DD'} map of latest service across ALL history
   // (using the most recent of completed_at on jobs and date on invoices).
   // The customer list reads this so older customers no longer show "No service yet".
@@ -2618,13 +2628,24 @@ function _jobCostTotal(jobId){
 
 function rCosts(){
   const exps=(D.expenses||[]).filter(e=>!e.deleted_at)
+  const bills=(D.bills||[]).filter(b=>!b.deleted_at)
+  const buckets=(D.cashBuckets||[])
   const today=td()
   const weekAgo=new Date(Date.now()-7*86400000).toISOString().split('T')[0]
   const monthAgo=new Date(Date.now()-30*86400000).toISOString().split('T')[0]
+  const weekOut=new Date(Date.now()+7*86400000).toISOString().split('T')[0]
 
   const sumToday=exps.filter(e=>e.date===today).reduce((s,e)=>s+(+e.amount||0),0)
   const sumWeek=exps.filter(e=>e.date>=weekAgo).reduce((s,e)=>s+(+e.amount||0),0)
   const sumMonth=exps.filter(e=>e.date>=monthAgo).reduce((s,e)=>s+(+e.amount||0),0)
+
+  // Bills bucketed
+  const unpaidBills=bills.filter(b=>!b.paid)
+  const overdueBills=unpaidBills.filter(b=>b.due_date<today)
+  const dueThisWeekBills=unpaidBills.filter(b=>b.due_date>=today&&b.due_date<=weekOut)
+  const upcomingBills=unpaidBills.filter(b=>b.due_date>weekOut)
+  const totalOwed=unpaidBills.reduce((s,b)=>s+(+b.amount||0),0)
+  const overdueTotal=overdueBills.reduce((s,b)=>s+(+b.amount||0),0)
 
   // Group by date for the timeline list
   const byDate={}
@@ -2635,8 +2656,66 @@ function rCosts(){
   })
   const dateKeys=Object.keys(byDate).sort().reverse()
 
+  // Cash buckets card colors per Profit First role
+  const _bucketColor = name => name==='profit'?'#a855f7':name==='owner_pay'?'#10b981':name==='tax'?'#f59e0b':name==='opex'?'var(--info)':'var(--g1)'
+
   let h=`
-    <!-- TOTALS STRIP -->
+    <!-- PROFIT FIRST CASH BUCKETS -->
+    ${buckets.length?`<div style="background:var(--c1);border:1px solid var(--b1);border-radius:var(--r);padding:12px 14px;margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px">
+        <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--g1)">Cash Position · Profit First</div>
+        <div style="font-size:10px;color:var(--g2)">5/50/15/30 split</div>
+      </div>
+      ${buckets.map(b=>{
+        const bal=Number(b.current_balance||0)
+        const isOwnerPay=b.name==='owner_pay'
+        return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-top:1px solid var(--b1)">
+          <div style="display:flex;align-items:center;gap:8px;min-width:0">
+            <div style="width:8px;height:8px;border-radius:50%;background:${_bucketColor(b.name)};flex-shrink:0"></div>
+            <span style="font-size:12px;font-weight:700;color:var(--w)">${esc(b.display_name)}</span>
+            ${b.allocation_pct!=null?`<span style="font-size:10px;color:var(--g2)">${b.allocation_pct}%</span>`:''}
+          </div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <span style="font-size:14px;font-weight:800;color:${bal>0?_bucketColor(b.name):'var(--g2)'};font-variant-numeric:tabular-nums">${fmt(bal)}</span>
+            ${isOwnerPay&&bal>0?`<span style="font-size:9px;font-weight:800;text-transform:uppercase;color:var(--ok);padding:2px 5px;border-radius:3px;background:rgba(16,185,129,.15)">↓ pay yourself</span>`:''}
+          </div>
+        </div>`
+      }).join('')}
+      <div style="display:flex;gap:6px;margin-top:10px">
+        <button class="btn-dim" style="flex:1;font-size:11px;padding:8px" onclick="askRikerCash()">Ask Riker what to pay</button>
+        <button class="btn-dim" style="flex:1;font-size:11px;padding:8px" onclick="openLogIncome()">+ Log income</button>
+      </div>
+    </div>`:''}
+
+    <!-- BILLS DUE -->
+    ${unpaidBills.length||overdueBills.length?`<div style="background:var(--c1);border:1px solid ${overdueBills.length?'var(--bad)':'var(--b1)'};border-radius:var(--r);padding:12px 14px;margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">
+        <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:${overdueBills.length?'var(--bad)':'var(--g1)'}">Bills · ${unpaidBills.length} unpaid · ${fmt(totalOwed)} owed</div>
+        <button onclick="openBillEntry({})" style="background:transparent;border:none;color:var(--fire);font-size:12px;font-weight:800;cursor:pointer">+ Bill</button>
+      </div>
+      ${overdueBills.length?`<div style="font-size:11px;font-weight:800;color:var(--bad);text-transform:uppercase;margin:6px 0 4px">⚠ Overdue · ${fmt(overdueTotal)}</div>`:''}
+      ${overdueBills.concat(dueThisWeekBills).slice(0,8).map(b=>{
+        const isOverdue=b.due_date<today
+        const daysOff=Math.round((new Date(b.due_date)-new Date(today))/86400000)
+        const dueLbl=isOverdue?`${Math.abs(daysOff)}d late`:daysOff===0?'today':`in ${daysOff}d`
+        return `<div onclick="openBillEntry({id:'${b.id}'})" style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-top:1px solid var(--b1);cursor:pointer">
+          <div style="min-width:0;flex:1">
+            <div style="font-size:13px;font-weight:700;color:var(--w);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(b.vendor)}</div>
+            <div style="font-size:10px;color:${isOverdue?'var(--bad)':'var(--g1)'};margin-top:2px">${b.due_date} · ${dueLbl}${b.priority===0?' · MUST PAY':''}${b.recurring?' · recurring':''}${b.entity==='personal'?' · personal':''}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:14px;font-weight:800;color:var(--w);font-variant-numeric:tabular-nums">${fmt(+b.amount||0)}</span>
+            <button onclick="event.stopPropagation();markBillPaidQuick('${b.id}')" style="background:var(--ok);color:#fff;border:none;border-radius:4px;padding:4px 8px;font-size:10px;font-weight:800;cursor:pointer">PAID</button>
+          </div>
+        </div>`
+      }).join('')}
+      ${unpaidBills.length>(overdueBills.length+dueThisWeekBills.length)?`<div style="margin-top:8px;font-size:11px;color:var(--g2);text-align:center">+ ${unpaidBills.length-(overdueBills.length+dueThisWeekBills.length)} more upcoming</div>`:''}
+    </div>`:`<div style="background:var(--c1);border:1px solid var(--b1);border-radius:var(--r);padding:12px 14px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center">
+      <span style="font-size:12px;color:var(--g1)">No unpaid bills</span>
+      <button onclick="openBillEntry({})" style="background:transparent;border:none;color:var(--fire);font-size:12px;font-weight:800;cursor:pointer">+ Bill</button>
+    </div>`}
+
+    <!-- TOTALS STRIP (spend) -->
     <div style="display:flex;gap:8px;margin-bottom:14px">
       <div style="flex:1;padding:12px;background:var(--c1);border:1px solid var(--b1);border-radius:var(--rs);text-align:center">
         <div style="font-size:18px;font-weight:800;color:var(--w);font-variant-numeric:tabular-nums">${fmt(sumToday)}</div>
@@ -2644,11 +2723,11 @@ function rCosts(){
       </div>
       <div style="flex:1;padding:12px;background:var(--c1);border:1px solid var(--b1);border-radius:var(--rs);text-align:center">
         <div style="font-size:18px;font-weight:800;color:var(--w);font-variant-numeric:tabular-nums">${fmt(sumWeek)}</div>
-        <div style="font-size:10px;color:var(--g2);text-transform:uppercase;letter-spacing:.8px;margin-top:2px">7d</div>
+        <div style="font-size:10px;color:var(--g2);text-transform:uppercase;letter-spacing:.8px;margin-top:2px">7d Spend</div>
       </div>
       <div style="flex:1;padding:12px;background:var(--c1);border:1px solid var(--b1);border-radius:var(--rs);text-align:center">
         <div style="font-size:18px;font-weight:800;color:var(--w);font-variant-numeric:tabular-nums">${fmt(sumMonth)}</div>
-        <div style="font-size:10px;color:var(--g2);text-transform:uppercase;letter-spacing:.8px;margin-top:2px">30d</div>
+        <div style="font-size:10px;color:var(--g2);text-transform:uppercase;letter-spacing:.8px;margin-top:2px">30d Spend</div>
       </div>
     </div>
 
@@ -2944,6 +3023,171 @@ function openJobCosts(jobId){
 
   h+=`</div>`
   push(h)
+}
+
+// ─── BILLS: entry overlay + quick mark-paid ─────────────────────
+async function openBillEntry(opts){
+  opts=opts||{}
+  const editing=opts.id?(D.bills||[]).find(b=>b.id===opts.id):null
+  const today=td()
+  const b=editing||{vendor:'',amount:'',due_date:today,category:'other',entity:'business',recurring:false,priority:5,autopay:false}
+  const cats=['gas','parts','vendor_bill','equipment','software','vehicle','insurance','phone','rent','utilities','loan_payment','subscription','other']
+  push(`<div class="ov-hdr">
+    <button class="ov-back" onclick="pop()">‹</button>
+    <div class="ov-title">${editing?'Edit Bill':'New Bill'}</div>
+    ${editing?`<button class="del-btn" onclick="if(confirm('Delete this bill?'))delBill('${editing.id}')">🗑</button>`:'<div style="width:60px"></div>'}
+  </div><div class="ov-body">
+    <div class="fg"><label class="fg-l">Vendor *</label><input id="bill-vendor" placeholder="e.g. AT&T, Vercel, Ford Credit" value="${esc(b.vendor)}"></div>
+    <div class="fg"><label class="fg-l">Amount *</label><input id="bill-amount" type="number" step="0.01" inputmode="decimal" placeholder="0.00" value="${b.amount!==''?b.amount:''}" style="font-size:18px;font-weight:700"></div>
+    <div class="fg"><label class="fg-l">Due Date *</label><input id="bill-due" type="date" value="${esc(b.due_date||today)}"></div>
+    <div class="fg"><label class="fg-l">Category</label>
+      <select id="bill-category">${cats.map(c=>`<option value="${c}"${b.category===c?' selected':''}>${c}</option>`).join('')}</select>
+    </div>
+    <div class="fg"><label class="fg-l">Personal vs Business</label>
+      <select id="bill-entity">
+        <option value="business"${b.entity==='business'?' selected':''}>Business</option>
+        <option value="personal"${b.entity==='personal'?' selected':''}>Personal</option>
+        <option value="mixed"${b.entity==='mixed'?' selected':''}>Mixed</option>
+      </select>
+    </div>
+    <div class="fg"><label class="fg-l">Priority</label>
+      <select id="bill-priority">
+        <option value="0"${b.priority===0?' selected':''}>0 — MUST PAY (insurance, mortgage, utilities)</option>
+        <option value="5"${(b.priority==null||b.priority===5)?' selected':''}>5 — Normal</option>
+        <option value="10"${b.priority===10?' selected':''}>10 — Defer-able (subscription, optional)</option>
+      </select>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <label style="flex:1;display:flex;align-items:center;gap:6px;padding:10px;border-radius:var(--rs);background:var(--c2);border:1px solid var(--b1);font-size:12px;cursor:pointer">
+        <input id="bill-recurring" type="checkbox" ${b.recurring?'checked':''}> Recurring
+      </label>
+      <label style="flex:1;display:flex;align-items:center;gap:6px;padding:10px;border-radius:var(--rs);background:var(--c2);border:1px solid var(--b1);font-size:12px;cursor:pointer">
+        <input id="bill-autopay" type="checkbox" ${b.autopay?'checked':''}> Autopay
+      </label>
+    </div>
+    <div class="fg" id="bill-rec-fields" style="${b.recurring?'':'display:none'}">
+      <label class="fg-l">Recurring Interval / Day</label>
+      <select id="bill-rec-interval" style="margin-bottom:6px">
+        ${['monthly','biweekly','weekly','quarterly','semi_annual','annual'].map(v=>`<option value="${v}"${b.recurring_interval===v?' selected':''}>${v}</option>`).join('')}
+      </select>
+      <input id="bill-rec-day" type="number" min="1" max="31" placeholder="day of month (1-31)" value="${b.recurring_day_of_month||''}">
+    </div>
+    <div class="fg"><label class="fg-l">Notes</label><textarea id="bill-notes" style="min-height:50px">${esc(b.notes||'')}</textarea></div>
+    <button class="btn-p" id="bill-save-btn" onclick="saveBill('${editing?editing.id:''}')">${editing?'Save':'Add Bill'}</button>
+    <button class="btn-dim" style="margin-top:8px" onclick="pop()">Cancel</button>
+  </div>`)
+  // Toggle recurring fields
+  const rec=$('bill-recurring')
+  if(rec){rec.addEventListener('change',e=>{const f=$('bill-rec-fields');if(f)f.style.display=e.target.checked?'':'none'})}
+}
+
+async function saveBill(existingId){
+  const amount=parseFloat(($('bill-amount')||{}).value||'0')
+  if(!amount||isNaN(amount)||amount<0){toast('Enter a valid amount',false);return}
+  const vendor=($('bill-vendor')||{}).value?.trim()
+  if(!vendor){toast('Vendor required',false);return}
+  const due=($('bill-due')||{}).value
+  if(!due){toast('Due date required',false);return}
+  const recurring=!!($('bill-recurring')||{}).checked
+  const row={
+    vendor, amount, due_date:due,
+    category: ($('bill-category')||{}).value || 'other',
+    entity: ($('bill-entity')||{}).value || 'business',
+    priority: parseInt(($('bill-priority')||{}).value||'5'),
+    recurring,
+    recurring_interval: recurring ? (($('bill-rec-interval')||{}).value || 'monthly') : null,
+    recurring_day_of_month: recurring ? (parseInt(($('bill-rec-day')||{}).value)||null) : null,
+    autopay: !!($('bill-autopay')||{}).checked,
+    notes: ($('bill-notes')||{}).value || null,
+    updated_at: new Date().toISOString()
+  }
+  setLoad('bill-save-btn',true)
+  let billId=existingId||null
+  if(existingId){
+    const{error}=await SB.from('bills').update(row).eq('id',existingId)
+    if(error){setLoad('bill-save-btn',false);toast('Save failed: '+error.message,false);return}
+  } else {
+    const{data:ins,error}=await SB.from('bills').insert(row).select().single()
+    if(error){setLoad('bill-save-btn',false);toast('Save failed: '+error.message,false);return}
+    billId=ins.id
+  }
+  audit(existingId?'updated':'created','bill',billId,'jon',{amount:row.amount,vendor:row.vendor,due:row.due_date},`Bill ${existingId?'updated':'logged'}: ${fmt(row.amount)} to ${row.vendor} due ${row.due_date}`)
+  await load()
+  pop()
+  rCosts()
+  toast('✓ Bill saved')
+}
+
+async function delBill(id){
+  const res=await trash('bills',{id},'Bill deleted','jon','app')
+  if(res.error){toast('Delete failed: '+res.error,false);return}
+  audit('deleted','bill',id,'jon',null,'Bill soft-deleted')
+  await load(); pop(); rCosts(); toast('Bill deleted')
+}
+
+// One-tap "PAID" button — uses defaults: paid_via=null, from opex bucket,
+// also creates an expense row. For nuanced inputs Jon edits the bill first.
+async function markBillPaidQuick(id){
+  const bill=(D.bills||[]).find(b=>b.id===id)
+  if(!bill){toast('Bill not found',false);return}
+  if(!confirm(`Mark "${bill.vendor}" $${(+bill.amount).toFixed(2)} as paid (from OpEx bucket)?`))return
+  const nowIso=new Date().toISOString()
+  // Create matching expense row
+  let expId=null
+  try{
+    const{data:exp}=await SB.from('expenses').insert({
+      amount:bill.amount, category:bill.category, vendor:bill.vendor,
+      date:nowIso.slice(0,10), description:`Bill payment · ${bill.vendor}`,
+      source:'bill_payment', entity:bill.entity,
+      tax_deductible:bill.entity!=='personal',
+      tech_id:window._me?.tech?.id||null
+    }).select().single()
+    expId=exp?.id
+  }catch(e){console.error('bill→expense:',e)}
+  // Decrement OpEx bucket
+  const opex=(D.cashBuckets||[]).find(b=>b.name==='opex')
+  if(opex){
+    await SB.from('cash_buckets').update({
+      current_balance: Number(opex.current_balance) - Number(bill.amount),
+      updated_at: nowIso
+    }).eq('name','opex')
+  }
+  // Mark bill paid
+  const{error}=await SB.from('bills').update({
+    paid:true, paid_at:nowIso, paid_from_bucket:'opex', expense_id:expId, updated_at:nowIso
+  }).eq('id',id)
+  if(error){toast('Update failed: '+error.message,false);return}
+  audit('updated','bill',id,'jon',{paid:true,from_bucket:'opex'},`Bill paid: ${fmt(bill.amount)} to ${bill.vendor} from opex`)
+  await load(); rCosts()
+  toast(`✓ Paid ${fmt(bill.amount)} to ${bill.vendor}`)
+}
+
+async function openLogIncome(){
+  const amt=prompt('Non-invoice income amount (cash deposit, refund, etc.):')
+  if(!amt)return
+  const n=parseFloat(amt)
+  if(!n||isNaN(n)||n<=0){toast('Invalid amount',false);return}
+  const note=prompt('Source / note (optional):')||''
+  // Use the same allocate_invoice_payment RPC the trigger uses.
+  const{error}=await SB.rpc('allocate_invoice_payment',{p_invoice_id:null,p_amount:n})
+  if(error){toast('Allocation failed: '+error.message,false);return}
+  // Audit on cash_allocations
+  await SB.from('cash_allocations').insert({source_amount:n,source:'manual',allocated_to:{},notes:note||'Manual deposit via app'})
+  await load(); rCosts()
+  toast(`✓ Allocated ${fmt(n)} via Profit First sweep`)
+}
+
+function askRikerCash(){
+  // Open the chat and prefill with a question — Riker calls get_cash_status
+  // and (if cash is short) recommend_payments
+  if(typeof openChat==='function')openChat()
+  setTimeout(()=>{
+    const ta=document.getElementById('chatInput')
+    if(ta){
+      ta.value="What's my cash position and what bills should I pay this week?"
+      ta.focus()
+    }
+  },200)
 }
 
 function openAddTech(){

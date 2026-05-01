@@ -4300,6 +4300,329 @@ const log_expense = {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// BOOKS / PROFIT FIRST — bills + cash advisor
+// ═══════════════════════════════════════════════════════════════
+// Phase 3 of Costs/Books. log_expense covers what was already spent;
+// these tools cover what's owed (bills) and what to pay with (cash
+// position). The auto-allocation trigger on invoices handles "money
+// in" without any tool — every paid invoice fans out to the buckets.
+
+// ─── add_bill ──────────────────────────────────────────────────
+const add_bill = {
+  schema: {
+    name: 'add_bill',
+    description: "Log a bill Jon owes (forward-looking liability). Use when Jon texts/says 'phone bill due 5/15, $180', 'Vercel charged $20', 'truck payment $1300 on the 1st', 'I owe Captiveaire $847 for tank exchange', etc. Distinct from log_expense (which is for spending that already happened). When Jon pays it later, mark_bill_paid creates the matching expense row and links them. If recurring=true and recurring_day_of_month is set, a future cron will auto-create the next month's instance.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        vendor: { type: 'string', description: "Who Jon owes, e.g. 'AT&T', 'Vercel', 'Captiveaire', 'Ford Credit'." },
+        amount: { type: 'number', description: 'Dollar amount as a number, e.g. 180.00.' },
+        due_date: { type: 'string', description: "ISO YYYY-MM-DD when this bill is due. If Jon says 'on the 15th', compute the next 15th from today." },
+        category: { type: 'string', enum: ['gas','parts','vendor_bill','equipment','software','vehicle','insurance','phone','rent','utilities','loan_payment','subscription','other'], description: "Best fit. 'phone' for phone/internet/cell, 'software' for SaaS subs, 'loan_payment' for truck/equipment loans, 'rent' for shop/office rent, 'insurance' for any insurance, 'subscription' for non-software recurring (gym, etc.). Default 'other' if unclear." },
+        entity: { type: 'string', enum: ['business','personal','mixed'], description: "Default 'business'. Use 'personal' for non-business bills (mortgage, groceries, kid stuff) so they don't muddy job margin reports. 'mixed' when truly split (cell phone)." },
+        recurring: { type: 'boolean', description: "True if this hits monthly/quarterly/etc. Pair with recurring_interval and recurring_day_of_month." },
+        recurring_interval: { type: 'string', enum: ['weekly','biweekly','monthly','quarterly','semi_annual','annual'], description: "How often it repeats. Required if recurring=true." },
+        recurring_day_of_month: { type: 'integer', description: "1-31. Day of month it hits. Required for monthly/quarterly recurrences." },
+        autopay: { type: 'boolean', description: "True if it auto-debits without action. Affects priority and reminder logic." },
+        priority: { type: 'integer', description: "0=must pay (mortgage, insurance, utilities — late hits credit), 5=normal (default), 10=defer-able (subscription Jon could pause). Set to 0 for anything where missing it has hard consequences." },
+        notes: { type: 'string' }
+      },
+      required: ['vendor','amount','due_date']
+    }
+  },
+  async handler(input, ctx) {
+    const sb = ctx.supabase
+    const row = {
+      vendor: input.vendor,
+      amount: Number(input.amount),
+      due_date: input.due_date,
+      category: input.category || 'other',
+      entity: input.entity || 'business',
+      recurring: !!input.recurring,
+      recurring_interval: input.recurring_interval || null,
+      recurring_day_of_month: input.recurring_day_of_month || null,
+      autopay: !!input.autopay,
+      priority: input.priority != null ? Number(input.priority) : 5,
+      notes: input.notes || null
+    }
+    if (!Number.isFinite(row.amount) || row.amount < 0) return { error: 'Invalid amount.' }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(row.due_date)) return { error: 'due_date must be ISO YYYY-MM-DD.' }
+    const { data: ins, error } = await sb.from('bills').insert(row).select().single()
+    if (error) return { error: 'Insert failed: ' + error.message }
+    try {
+      await sb.from('audit_log').insert({
+        action: 'created', entity_type: 'bill', entity_id: ins.id, actor: 'ai_chat',
+        details: { changes: row, summary: `Bill logged: $${row.amount.toFixed(2)} to ${row.vendor}, due ${row.due_date}${row.recurring ? ' · recurring ' + row.recurring_interval : ''}` }
+      })
+    } catch (e) {}
+    return {
+      ok: true,
+      bill_id: ins.id,
+      summary: `Logged bill: $${row.amount.toFixed(2)} to ${row.vendor} · due ${row.due_date}${row.recurring ? ' · recurring ' + row.recurring_interval : ''}${row.priority === 0 ? ' · MUST PAY' : ''}`,
+      clientHint: { type: 'bill_logged', bill_id: ins.id }
+    }
+  }
+}
+
+// ─── mark_bill_paid ────────────────────────────────────────────
+const mark_bill_paid = {
+  schema: {
+    name: 'mark_bill_paid',
+    description: "Mark a bill as paid. Optionally creates a matching expenses row so the spend shows up in the Costs timeline + per-job rollup. Use when Jon says 'paid the phone bill', 'truck payment went through', 'sent Captiveaire $847'.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        bill_id: { type: 'string', description: 'Bill UUID. If unknown, vendor + due_date can be passed instead and the tool resolves.' },
+        vendor: { type: 'string', description: "Vendor name to resolve when bill_id isn't known." },
+        due_date: { type: 'string', description: 'ISO YYYY-MM-DD to disambiguate vendor matches.' },
+        paid_via: { type: 'string', description: "How it was paid: 'Visa 4111', 'autopay', 'check 1234', 'ACH', 'cash'. Optional." },
+        paid_from_bucket: { type: 'string', enum: ['opex','owner_pay','profit','tax','income'], description: "Which Profit First bucket the money came out of. Default 'opex' for business bills." },
+        also_log_as_expense: { type: 'boolean', description: 'Default true. Creates an expenses row so the spend shows in Costs.' }
+      }
+    }
+  },
+  async handler(input, ctx) {
+    const sb = ctx.supabase
+    let bill = null
+    if (input.bill_id) {
+      const { data } = await sb.from('bills').select('*').eq('id', input.bill_id).maybeSingle()
+      bill = data
+    } else if (input.vendor) {
+      let q = sb.from('bills').select('*').is('deleted_at', null).eq('paid', false).ilike('vendor', `%${input.vendor}%`)
+      if (input.due_date) q = q.eq('due_date', input.due_date)
+      const { data } = await q.order('due_date', { ascending: true }).limit(5)
+      if (!data || !data.length) return { error: `No unpaid bill found for "${input.vendor}".` }
+      if (data.length > 1) return { error: `${data.length} unpaid bills match "${input.vendor}". Pass bill_id or due_date.`, candidates: data.map(b => ({ id: b.id, vendor: b.vendor, amount: b.amount, due_date: b.due_date })) }
+      bill = data[0]
+    } else {
+      return { error: 'Provide bill_id or vendor.' }
+    }
+    if (!bill) return { error: 'Bill not found.' }
+    if (bill.paid) return { error: `Bill already marked paid on ${bill.paid_at}` }
+
+    const fromBucket = input.paid_from_bucket || 'opex'
+    const nowIso = new Date().toISOString()
+    let expenseId = null
+    const shouldLogExpense = input.also_log_as_expense !== false
+
+    if (shouldLogExpense) {
+      const { data: exp, error: expErr } = await sb.from('expenses').insert({
+        amount: bill.amount, category: bill.category, vendor: bill.vendor,
+        date: nowIso.slice(0, 10), description: `Bill payment · ${bill.vendor}`,
+        paid_via: input.paid_via || null, source: 'bill_payment',
+        entity: bill.entity, tax_deductible: bill.entity !== 'personal',
+        tech_id: ctx.identity?.tech_id || null
+      }).select().single()
+      if (!expErr) expenseId = exp.id
+    }
+
+    // Decrement the source bucket
+    const { data: bucket } = await sb.from('cash_buckets').select('current_balance').eq('name', fromBucket).maybeSingle()
+    if (bucket) {
+      await sb.from('cash_buckets').update({
+        current_balance: Number(bucket.current_balance) - Number(bill.amount),
+        updated_at: nowIso
+      }).eq('name', fromBucket)
+    }
+
+    await sb.from('bills').update({
+      paid: true, paid_at: nowIso,
+      paid_via: input.paid_via || null,
+      paid_from_bucket: fromBucket,
+      expense_id: expenseId,
+      updated_at: nowIso
+    }).eq('id', bill.id)
+
+    try {
+      await sb.from('audit_log').insert({
+        action: 'updated', entity_type: 'bill', entity_id: bill.id, actor: 'ai_chat',
+        details: { changes: { paid: true, paid_from_bucket: fromBucket }, summary: `Bill paid: $${Number(bill.amount).toFixed(2)} to ${bill.vendor} from ${fromBucket}` }
+      })
+    } catch (e) {}
+
+    return {
+      ok: true,
+      bill_id: bill.id,
+      expense_id: expenseId,
+      paid_from_bucket: fromBucket,
+      remaining_in_bucket: bucket ? Number(bucket.current_balance) - Number(bill.amount) : null,
+      summary: `Paid $${Number(bill.amount).toFixed(2)} to ${bill.vendor} from ${fromBucket}${expenseId ? ' · also logged as expense' : ''}`
+    }
+  }
+}
+
+// ─── get_cash_status ───────────────────────────────────────────
+const get_cash_status = {
+  schema: {
+    name: 'get_cash_status',
+    description: "Read the current Profit First bucket balances + open bills + a quick cash-position summary. Use whenever Jon asks about money: 'how much do I have', 'what's in opex', 'show me the buckets', 'where am I at this month', 'what bills are coming up'.",
+    input_schema: { type: 'object', properties: {} }
+  },
+  async handler(input, ctx) {
+    const sb = ctx.supabase
+    const today = new Date().toISOString().split('T')[0]
+    const weekOut = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0]
+    const [bucketsResp, billsResp] = await Promise.all([
+      sb.from('cash_buckets').select('*').order('display_order'),
+      sb.from('bills').select('id,vendor,amount,due_date,category,priority,entity,autopay').eq('paid', false).is('deleted_at', null).order('due_date', { ascending: true })
+    ])
+    const buckets = bucketsResp.data || []
+    const allBills = billsResp.data || []
+    const overdue = allBills.filter(b => b.due_date < today)
+    const dueThisWeek = allBills.filter(b => b.due_date >= today && b.due_date <= weekOut)
+    const totalOwed = allBills.reduce((s, b) => s + Number(b.amount || 0), 0)
+    const overdueTotal = overdue.reduce((s, b) => s + Number(b.amount || 0), 0)
+    const dueThisWeekTotal = dueThisWeek.reduce((s, b) => s + Number(b.amount || 0), 0)
+    const opex = buckets.find(b => b.name === 'opex')
+    const ownerPay = buckets.find(b => b.name === 'owner_pay')
+    const cashShort = opex && (Number(opex.current_balance) < (overdueTotal + dueThisWeekTotal))
+    return {
+      ok: true,
+      buckets: buckets.map(b => ({ name: b.name, display_name: b.display_name, balance: Number(b.current_balance), allocation_pct: b.allocation_pct, is_spendable: b.is_spendable })),
+      summary: {
+        opex_available: opex ? Number(opex.current_balance) : 0,
+        owner_pay_available: ownerPay ? Number(ownerPay.current_balance) : 0,
+        bills_total_owed: totalOwed,
+        bills_overdue_count: overdue.length,
+        bills_overdue_total: overdueTotal,
+        bills_due_this_week_count: dueThisWeek.length,
+        bills_due_this_week_total: dueThisWeekTotal,
+        opex_can_cover_urgent: !cashShort,
+        opex_shortfall: cashShort ? (overdueTotal + dueThisWeekTotal - Number(opex.current_balance)) : 0
+      },
+      overdue_bills: overdue,
+      due_this_week_bills: dueThisWeek
+    }
+  }
+}
+
+// ─── recommend_payments ────────────────────────────────────────
+const recommend_payments = {
+  schema: {
+    name: 'recommend_payments',
+    description: "Run the cash advisor. Given an available cash amount (from Jon: 'I have $X this week'), return a prioritized list of which bills to pay, in what order, and how much is left over for owner pay. Uses the Profit First OpEx bucket as the source by default. Hard rule: priority=0 bills (insurance, mortgage, utilities) get paid before everything else. Then ordered by due_date. Stops when cash runs out and tells Jon what's deferred.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        available_amount: { type: 'number', description: "Cash Jon has to deploy. If omitted, defaults to current OpEx bucket balance." },
+        include_personal: { type: 'boolean', description: 'Default false — recommend business bills only.' }
+      }
+    }
+  },
+  async handler(input, ctx) {
+    const sb = ctx.supabase
+    const [bucketsResp, billsResp] = await Promise.all([
+      sb.from('cash_buckets').select('*').order('display_order'),
+      sb.from('bills').select('*').eq('paid', false).is('deleted_at', null).order('due_date', { ascending: true })
+    ])
+    const buckets = bucketsResp.data || []
+    let bills = billsResp.data || []
+    if (!input.include_personal) bills = bills.filter(b => b.entity !== 'personal')
+    const opex = buckets.find(b => b.name === 'opex')
+    let cash = input.available_amount != null ? Number(input.available_amount) : (opex ? Number(opex.current_balance) : 0)
+    const startCash = cash
+    if (!cash || cash <= 0) return { error: 'No cash to deploy. Specify available_amount or fund the OpEx bucket first.' }
+    if (!bills.length) return { ok: true, message: 'No unpaid bills.', recommended: [], deferred: [], leftover: cash }
+
+    // Sort: priority 0 first, then by due_date, then by amount asc (snowball-ish)
+    bills.sort((a, b) => {
+      if ((a.priority || 5) !== (b.priority || 5)) return (a.priority || 5) - (b.priority || 5)
+      const dt = (a.due_date || '').localeCompare(b.due_date || '')
+      if (dt !== 0) return dt
+      return Number(a.amount) - Number(b.amount)
+    })
+
+    const recommended = []
+    const deferred = []
+    for (const b of bills) {
+      const amt = Number(b.amount)
+      if (cash >= amt) {
+        recommended.push({ bill_id: b.id, vendor: b.vendor, amount: amt, due_date: b.due_date, category: b.category, priority: b.priority })
+        cash -= amt
+      } else {
+        deferred.push({ bill_id: b.id, vendor: b.vendor, amount: amt, due_date: b.due_date, category: b.category, priority: b.priority, short_by: amt - cash })
+      }
+    }
+
+    return {
+      ok: true,
+      starting_cash: startCash,
+      recommended_total: recommended.reduce((s, r) => s + r.amount, 0),
+      recommended_count: recommended.length,
+      recommended,
+      deferred_total: deferred.reduce((s, r) => s + r.amount, 0),
+      deferred_count: deferred.length,
+      deferred,
+      leftover: cash,
+      summary: `Pay these ${recommended.length} bills ($${recommended.reduce((s, r) => s + r.amount, 0).toFixed(2)}). $${cash.toFixed(2)} left over.${deferred.length ? ` ${deferred.length} bills ($${deferred.reduce((s, r) => s + r.amount, 0).toFixed(2)}) deferred — short by $${(deferred[0]?.short_by || 0).toFixed(2)} on the first.` : ''}`
+    }
+  }
+}
+
+// ─── recommend_owner_pay ───────────────────────────────────────
+const recommend_owner_pay = {
+  schema: {
+    name: 'recommend_owner_pay',
+    description: "Tell Jon how much he can safely pay himself right now. Reads the Owner's Pay bucket balance (Profit First). That whole balance IS his — he earned it the moment customers paid invoices. Doesn't touch OpEx (operating reserve) or Profit (quarterly bonus) or Tax (estimated taxes set-aside). Use when Jon asks 'how much can I pay myself', 'what's my paycheck this week'.",
+    input_schema: { type: 'object', properties: {} }
+  },
+  async handler(input, ctx) {
+    const sb = ctx.supabase
+    const { data: bucket } = await sb.from('cash_buckets').select('*').eq('name', 'owner_pay').maybeSingle()
+    if (!bucket) return { error: 'owner_pay bucket not found — Profit First setup may not be complete.' }
+    const balance = Number(bucket.current_balance)
+    return {
+      ok: true,
+      can_pay_yourself: balance,
+      bucket: 'owner_pay',
+      summary: balance > 0
+        ? `You can pay yourself $${balance.toFixed(2)} right now. That's already yours — earned the moment customers paid. (Profit First Owner's Pay bucket; doesn't touch OpEx/Profit/Tax.)`
+        : `Owner's Pay bucket is at $${balance.toFixed(2)}. Either no invoices have been paid since the last withdrawal, or you've already drawn it down.`
+    }
+  }
+}
+
+// ─── log_income (manual non-invoice income) ────────────────────
+// Most income flows automatically from invoice → trigger → buckets.
+// This is for cash deposits, refunds, or other inflows that didn't
+// come through an invoice. Runs the same allocation as the trigger.
+const log_income = {
+  schema: {
+    name: 'log_income',
+    description: "Log non-invoice income (cash deposit, refund, miscellaneous payment) and run the Profit First allocation. Customer invoice payments allocate automatically via DB trigger — DO NOT call this for those. Only call when Jon mentions a deposit that didn't come through the invoice flow: 'deposited the cash from saturday', 'got a $200 refund from Vercel', 'tax refund came in'.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        amount: { type: 'number', description: 'Dollar amount.' },
+        source: { type: 'string', description: "What it was: 'cash deposit', 'refund', 'tax refund', 'rebate'." },
+        notes: { type: 'string' }
+      },
+      required: ['amount']
+    }
+  },
+  async handler(input, ctx) {
+    const sb = ctx.supabase
+    const amount = Number(input.amount)
+    if (!Number.isFinite(amount) || amount <= 0) return { error: 'Invalid amount.' }
+    const { error } = await sb.rpc('allocate_invoice_payment', { p_invoice_id: null, p_amount: amount })
+    if (error) return { error: 'Allocation RPC failed: ' + error.message }
+    // Audit on the allocation log directly (the trigger writes one for invoices; we mark this manual)
+    try {
+      await sb.from('cash_allocations').insert({
+        source_amount: amount, source: 'manual',
+        allocated_to: {},  // breakdown was logged by allocate_invoice_payment via the function — duplicate row is just a label
+        notes: input.notes || input.source || 'Manual income deposit'
+      })
+    } catch (e) {}
+    return {
+      ok: true,
+      amount,
+      summary: `Allocated $${amount.toFixed(2)} via Profit First sweep: 5% profit · 50% owner pay · 15% tax · 30% opex.`
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // TOOL: search_email
 // ═══════════════════════════════════════════════════════════════
 // Searches Gmail directly with an arbitrary query. Used for reading
@@ -5528,6 +5851,7 @@ const ALL_TOOLS = {
   list_custom_items, add_custom_item, delete_custom_item,
   send_on_my_way, send_review_request,
   log_expense,
+  add_bill, mark_bill_paid, get_cash_status, recommend_payments, recommend_owner_pay, log_income,
   // Phase 2 — inbox management
   manage_email, list_labels, create_label, forward_email,
   // Phase 3 — attachments
@@ -5603,6 +5927,9 @@ const OWNER_ONLY_TOOLS = new Set([
   'write_memory', 'delete_memory',
   // Costs / bills — Jon-only spend until per-tech reimbursement workflow
   'log_expense',
+  // Books / Profit First — financial mgmt is owner-only by definition
+  'add_bill', 'mark_bill_paid', 'recommend_payments', 'recommend_owner_pay', 'log_income',
+  'get_cash_status',  // read-only, still owner-only — non-owners shouldn't see Jon's books
   // Approvals queue (owner-only by definition)
   'approve_pending', 'reject_pending',
   'request_owner_otp', 'verify_owner_otp', 'escalate_to_jon',
