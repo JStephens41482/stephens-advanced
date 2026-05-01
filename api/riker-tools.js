@@ -4091,6 +4091,172 @@ const send_review_request = {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// TOOL: log_expense
+// ═══════════════════════════════════════════════════════════════
+// Phase 2 of Costs/Bills: Jon texts a receipt photo + caption ("gas
+// for body rocks") to his Twilio number → Claude sees the photo as
+// content block → reads amount + vendor + date off the receipt → calls
+// log_expense to insert the row. The expense lands in the Costs tab on
+// the next app load with the receipt photo persisted in the
+// expense-receipts bucket.
+//
+// Resolves location/job from natural language (location_name) so Jon
+// doesn't have to know UUIDs. If a job_id is passed it's used directly;
+// otherwise we resolve location → most-recent-job-for-that-location.
+const log_expense = {
+  schema: {
+    name: 'log_expense',
+    description: "Log an expense (gas, parts, vendor bill, meal, anything Jon spent money on). Use this when Jon texts a photo of a receipt with a caption ('gas for body rocks', 'just paid the phone bill', '$48 at home depot for the captiveaire repair'), or when Jon asks you in chat to log a cost. After reading the receipt photo (if attached) for the amount, vendor name, and date, call this tool with the parsed values plus whatever job/customer Jon told you it's for. Returns the saved expense_id and what was logged so you can confirm honestly.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        amount: { type: 'number', description: 'Dollar amount as a number, e.g. 48.27. REQUIRED. Read it off the receipt total or take from Jon\'s caption.' },
+        category: { type: 'string', enum: ['gas','parts','vendor_bill','equipment','software','vehicle','insurance','phone','meal','lodging','tolls','office','other'], description: "Best-fit category. Default 'other' if unclear. 'gas' for fuel pumps, 'parts' for Home Depot / Grainger / fire-supply houses, 'meal' for restaurants, 'phone' for AT&T/Verizon, 'software' for SaaS subs." },
+        vendor: { type: 'string', description: "Vendor name from the receipt or caption, e.g. 'Shell', 'Home Depot', 'Mauros Grill'. Optional but include when readable." },
+        date: { type: 'string', description: "ISO date YYYY-MM-DD. Optional — defaults to today. Use the receipt's printed date when visible." },
+        job_id: { type: 'string', description: "Job UUID if Jon mentioned a specific job. Use only if you have the exact ID." },
+        location_name: { type: 'string', description: "Customer / location name when Jon says 'for body rocks', 'for the maxons job', etc. Resolves to the most-recent active job at that location and links the expense there." },
+        location_id: { type: 'string', description: 'Location UUID if known directly.' },
+        description: { type: 'string', description: "Short note about what the spend was for, e.g. 'replacement nozzles', 'tank exchange', 'lunch on the road'. Optional." },
+        paid_via: { type: 'string', description: "How it was paid, e.g. 'Visa 4111', 'cash', 'company card', 'check 1234'. Optional." },
+        photo_url: { type: 'string', description: "If the receipt photo arrived as an MMS attachment, paste its [attachments: ...] signed URL here verbatim. The tool will fetch the image, copy it into the expense-receipts bucket, and persist the permanent public URL on the expense row. Without this the expense saves text-only." },
+        reimbursable: { type: 'boolean', description: "True if this should be flagged for reimbursement (paid out-of-pocket on a personal card, etc.). Default false." }
+      },
+      required: ['amount']
+    }
+  },
+  async handler(input, ctx) {
+    const sb = ctx.supabase
+    const today = new Date().toISOString().split('T')[0]
+
+    // ── Resolve location/job ─────────────────────────────────────
+    let resolvedJobId = input.job_id || null
+    let resolvedLocationId = input.location_id || null
+    let resolvedLocationName = null
+
+    if (!resolvedJobId && input.location_name) {
+      const s = String(input.location_name).trim().toLowerCase().replace(/[%_]/g, '')
+      const { data: locs } = await sb.from('locations')
+        .select('id, name')
+        .is('deleted_at', null)
+        .ilike('name', `%${s}%`)
+        .limit(5)
+      if (!locs || !locs.length) {
+        return { error: `No client found matching "${input.location_name}". Logged nothing — re-send with the right name or omit the location.` }
+      }
+      if (locs.length > 1) {
+        return {
+          error: `Ambiguous — ${locs.length} clients match "${input.location_name}". Logged nothing.`,
+          candidates: locs.map(l => ({ id: l.id, name: l.name }))
+        }
+      }
+      resolvedLocationId = locs[0].id
+      resolvedLocationName = locs[0].name
+      // Try to find the most-recent active or recently-completed job at this location
+      const { data: jobs } = await sb.from('jobs')
+        .select('id, status, scheduled_date, completed_at')
+        .eq('location_id', resolvedLocationId)
+        .is('deleted_at', null)
+        .neq('status', 'cancelled')
+        .order('scheduled_date', { ascending: false, nullsFirst: false })
+        .limit(1)
+      if (jobs && jobs.length) resolvedJobId = jobs[0].id
+    } else if (resolvedLocationId && !resolvedJobId) {
+      const { data: jobs } = await sb.from('jobs')
+        .select('id').eq('location_id', resolvedLocationId)
+        .is('deleted_at', null).neq('status', 'cancelled')
+        .order('scheduled_date', { ascending: false, nullsFirst: false }).limit(1)
+      if (jobs && jobs.length) resolvedJobId = jobs[0].id
+    } else if (resolvedJobId) {
+      const { data: j } = await sb.from('jobs').select('location_id').eq('id', resolvedJobId).maybeSingle()
+      if (j?.location_id) resolvedLocationId = j.location_id
+    }
+
+    // ── Photo: fetch the signed URL, copy to expense-receipts ────
+    let photoUrl = null
+    let photoPath = null
+    if (input.photo_url && /^https?:\/\//i.test(input.photo_url)) {
+      try {
+        const resp = await fetch(input.photo_url)
+        if (resp.ok) {
+          const buf = Buffer.from(await resp.arrayBuffer())
+          const contentType = resp.headers.get('content-type') || 'image/jpeg'
+          const ext = (contentType.split('/')[1] || 'jpg').replace('jpeg', 'jpg').split(';')[0]
+          const dt = new Date((input.date || today) + 'T12:00:00')
+          const yr = dt.getFullYear(), mo = String(dt.getMonth() + 1).padStart(2, '0')
+          const fname = (require('crypto').randomUUID ? require('crypto').randomUUID() : (Date.now() + '-' + Math.random().toString(36).slice(2, 10))) + '.' + ext
+          const path = `${yr}/${mo}/${fname}`
+          const { error: upErr } = await sb.storage.from('expense-receipts').upload(path, buf, { contentType, upsert: false })
+          if (upErr) {
+            console.warn('[log_expense] storage upload failed:', upErr.message)
+          } else {
+            const { data: pub } = sb.storage.from('expense-receipts').getPublicUrl(path)
+            photoUrl = pub?.publicUrl || null
+            photoPath = path
+          }
+        } else {
+          console.warn('[log_expense] photo fetch returned', resp.status)
+        }
+      } catch (e) {
+        console.warn('[log_expense] photo fetch/upload error:', e.message)
+      }
+    }
+
+    // ── Build the row ────────────────────────────────────────────
+    const row = {
+      amount: Number(input.amount),
+      category: input.category || 'other',
+      vendor: input.vendor || null,
+      date: input.date || today,
+      description: input.description || null,
+      paid_via: input.paid_via || null,
+      job_id: resolvedJobId,
+      location_id: resolvedLocationId,
+      tech_id: ctx.identity?.tech_id || null,
+      photo_url: photoUrl,
+      photo_path: photoPath,
+      source: input.photo_url ? 'riker_mms' : 'riker',
+      reimbursable: !!input.reimbursable,
+      tax_deductible: true,
+      updated_at: new Date().toISOString()
+    }
+    if (!Number.isFinite(row.amount) || row.amount < 0) {
+      return { error: `Invalid amount: ${input.amount}. Logged nothing.` }
+    }
+
+    const { data: ins, error } = await sb.from('expenses').insert(row).select().single()
+    if (error) {
+      console.error('[log_expense] insert error:', error)
+      return { error: 'Insert failed: ' + error.message }
+    }
+
+    // Audit (best-effort)
+    try {
+      await sb.from('audit_log').insert({
+        action: 'created', entity_type: 'expense', entity_id: ins.id, actor: ctx.identity?.tech_name || 'jon',
+        details: { changes: { amount: row.amount, category: row.category, job_id: row.job_id, vendor: row.vendor },
+                   summary: `Expense logged via Riker: ${'$'+row.amount.toFixed(2)} · ${row.category}${row.vendor ? ' · ' + row.vendor : ''}${resolvedLocationName ? ' · ' + resolvedLocationName : ''}` }
+      })
+    } catch (e) { /* audit best-effort */ }
+
+    return {
+      ok: true,
+      expense_id: ins.id,
+      amount: row.amount,
+      category: row.category,
+      vendor: row.vendor,
+      date: row.date,
+      job_id: row.job_id,
+      location_id: row.location_id,
+      location_name: resolvedLocationName,
+      photo_persisted: !!photoUrl,
+      summary: `Logged $${row.amount.toFixed(2)} · ${row.category}${row.vendor ? ' · ' + row.vendor : ''}${resolvedLocationName ? ' for ' + resolvedLocationName : ''}${photoUrl ? ' · receipt saved' : ''}`,
+      clientHint: { type: 'expense_logged', expense_id: ins.id }
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // TOOL: search_email
 // ═══════════════════════════════════════════════════════════════
 // Searches Gmail directly with an arbitrary query. Used for reading
@@ -5318,6 +5484,7 @@ const ALL_TOOLS = {
   list_service_requests, respond_to_service_request,
   list_custom_items, add_custom_item, delete_custom_item,
   send_on_my_way, send_review_request,
+  log_expense,
   // Phase 2 — inbox management
   manage_email, list_labels, create_label, forward_email,
   // Phase 3 — attachments
@@ -5391,6 +5558,8 @@ const OWNER_ONLY_TOOLS = new Set([
   'assign_job_to_tech', 'bulk_assign_jobs_to_tech',
   // Memory (standing orders are owner policy)
   'write_memory', 'delete_memory',
+  // Costs / bills — Jon-only spend until per-tech reimbursement workflow
+  'log_expense',
   // Approvals queue (owner-only by definition)
   'approve_pending', 'reject_pending',
   'request_owner_otp', 'verify_owner_otp', 'escalate_to_jon',
