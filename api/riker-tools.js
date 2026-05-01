@@ -4416,13 +4416,16 @@ const mark_bill_paid = {
       if (!expErr) expenseId = exp.id
     }
 
-    // Decrement the source bucket
-    const { data: bucket } = await sb.from('cash_buckets').select('current_balance').eq('name', fromBucket).maybeSingle()
-    if (bucket) {
-      await sb.from('cash_buckets').update({
-        current_balance: Number(bucket.current_balance) - Number(bill.amount),
-        updated_at: nowIso
-      }).eq('name', fromBucket)
+    // Decrement the source bucket atomically — read-modify-write loses
+    // concurrent trigger writes (HIGH-severity race per watcher 2026-05-01).
+    const { data: newBalance, error: bktErr } = await sb.rpc('adjust_bucket', {
+      p_name: fromBucket,
+      p_delta: -Number(bill.amount)
+    })
+    if (bktErr) {
+      console.error('[mark_bill_paid] adjust_bucket failed:', bktErr.message)
+      // Continue — still mark the bill paid so we don't lose the user's intent.
+      // The bucket adjustment failure is logged for review.
     }
 
     await sb.from('bills').update({
@@ -4445,7 +4448,7 @@ const mark_bill_paid = {
       bill_id: bill.id,
       expense_id: expenseId,
       paid_from_bucket: fromBucket,
-      remaining_in_bucket: bucket ? Number(bucket.current_balance) - Number(bill.amount) : null,
+      remaining_in_bucket: typeof newBalance === 'number' ? newBalance : null,
       summary: `Paid $${Number(bill.amount).toFixed(2)} to ${bill.vendor} from ${fromBucket}${expenseId ? ' · also logged as expense' : ''}`
     }
   }
@@ -4604,16 +4607,16 @@ const log_income = {
     const sb = ctx.supabase
     const amount = Number(input.amount)
     if (!Number.isFinite(amount) || amount <= 0) return { error: 'Invalid amount.' }
-    const { error } = await sb.rpc('allocate_invoice_payment', { p_invoice_id: null, p_amount: amount })
+    // Pass p_source through so the function writes a SINGLE labeled audit row.
+    // Watcher caught the original double-insert: the function wrote one row,
+    // then we wrote a second 'manual' row with empty allocated_to, which made
+    // SUM(source_amount) double-count manual income.
+    const { error } = await sb.rpc('allocate_invoice_payment', {
+      p_invoice_id: null,
+      p_amount: amount,
+      p_source: input.source ? `manual:${String(input.source).slice(0, 40)}` : 'manual'
+    })
     if (error) return { error: 'Allocation RPC failed: ' + error.message }
-    // Audit on the allocation log directly (the trigger writes one for invoices; we mark this manual)
-    try {
-      await sb.from('cash_allocations').insert({
-        source_amount: amount, source: 'manual',
-        allocated_to: {},  // breakdown was logged by allocate_invoice_payment via the function — duplicate row is just a label
-        notes: input.notes || input.source || 'Manual income deposit'
-      })
-    } catch (e) {}
     return {
       ok: true,
       amount,
@@ -5947,16 +5950,20 @@ async function executeToolCall(name, input, ctx) {
   if (allowed && !allowed.includes(name)) return { error: `Tool '${name}' not available in context '${ctx.context}'` }
   // Multi-tech: owner-only gate. Enforced on Jon-side surfaces — `app`
   // (cookie-authenticated tech) and `sms_jon` (Jon's number, identity
-  // resolved in sms-inbound.js). Customer-side contexts (website /
-  // portal / sms_customer / email_customer) can't reach these tools via
-  // CONTEXT_TOOLS anyway, so the gate would be redundant there.
+  // resolved in sms-inbound.js). 'website' is included because
+  // CONTEXT_TOOLS.website = null (full access), so without this gate a
+  // website caller could in theory invoke books tools — the website
+  // owner-verification flow is OTP-via-memory, not identity.is_owner,
+  // so default-deny is correct until that flow stamps is_owner.
+  // sms_customer / email_customer / portal already block these tools
+  // via their explicit CONTEXT_TOOLS whitelist.
   //
   // Fail-closed: undefined `is_owner` is treated as false. Both the app
   // path (riker.js) and the SMS path (sms-inbound.js) explicitly set
   // is_owner from the techs table — the only way is_owner is undefined
   // is if a future surface added itself to the gate without populating
   // identity. That should refuse, not allow.
-  const OWNER_GATED_CONTEXTS = new Set(['app', 'sms_jon'])
+  const OWNER_GATED_CONTEXTS = new Set(['app', 'sms_jon', 'website'])
   if (OWNER_GATED_CONTEXTS.has(ctx.context) && OWNER_ONLY_TOOLS.has(name) && !ctx.identity?.is_owner) {
     return {
       error: `Tool '${name}' is owner-only. ${ctx.identity?.tech_name || 'You'} can't invoke it — ask the owner to do it from their device.`

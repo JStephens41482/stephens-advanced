@@ -781,8 +781,11 @@ async function load(){
         .order('date',{ascending:false}).limit(500)
       : Promise.resolve({data: []}),
     // Bills (Books / Profit First) — owner-only, same gate as expenses.
+    // Only fetch UNPAID bills for the dashboard view. Paid history is
+    // reachable on demand from the per-bill drill-down (future). Without
+    // this filter the wire payload grows unbounded as bills accumulate.
     (window._me?.tech?.is_owner !== false)
-      ? SB.from('bills').select('*').is('deleted_at',null).order('due_date',{ascending:true})
+      ? SB.from('bills').select('*').is('deleted_at',null).eq('paid',false).order('due_date',{ascending:true})
       : Promise.resolve({data: []}),
     // Cash buckets — always loaded for owners (5 rows, tiny).
     (window._me?.tech?.is_owner !== false)
@@ -3144,14 +3147,12 @@ async function markBillPaidQuick(id){
     }).select().single()
     expId=exp?.id
   }catch(e){console.error('bill→expense:',e)}
-  // Decrement OpEx bucket
-  const opex=(D.cashBuckets||[]).find(b=>b.name==='opex')
-  if(opex){
-    await SB.from('cash_buckets').update({
-      current_balance: Number(opex.current_balance) - Number(bill.amount),
-      updated_at: nowIso
-    }).eq('name','opex')
-  }
+  // Decrement OpEx bucket via atomic RPC. Watcher caught the read-modify-
+  // write race: D.cashBuckets is stale after page load, and a concurrent
+  // invoice-paid trigger could increment OpEx between our read and write,
+  // silently losing the trigger's add. adjust_bucket does an atomic
+  // `current_balance = current_balance + p_delta` SQL update.
+  await SB.rpc('adjust_bucket',{p_name:'opex',p_delta:-Number(bill.amount)})
   // Mark bill paid
   const{error}=await SB.from('bills').update({
     paid:true, paid_at:nowIso, paid_from_bucket:'opex', expense_id:expId, updated_at:nowIso
@@ -3168,11 +3169,16 @@ async function openLogIncome(){
   const n=parseFloat(amt)
   if(!n||isNaN(n)||n<=0){toast('Invalid amount',false);return}
   const note=prompt('Source / note (optional):')||''
-  // Use the same allocate_invoice_payment RPC the trigger uses.
-  const{error}=await SB.rpc('allocate_invoice_payment',{p_invoice_id:null,p_amount:n})
+  // Single allocate_invoice_payment call with p_source — function writes
+  // ONE labeled cash_allocations row. (Watcher caught a double-write
+  // before: the function logged one row + this code logged a second
+  // empty-breakdown row, so SUM(source_amount) double-counted.)
+  const{error}=await SB.rpc('allocate_invoice_payment',{
+    p_invoice_id:null,
+    p_amount:n,
+    p_source:note?`manual:${note.slice(0,40)}`:'manual'
+  })
   if(error){toast('Allocation failed: '+error.message,false);return}
-  // Audit on cash_allocations
-  await SB.from('cash_allocations').insert({source_amount:n,source:'manual',allocated_to:{},notes:note||'Manual deposit via app'})
   await load(); rCosts()
   toast(`✓ Allocated ${fmt(n)} via Profit First sweep`)
 }
