@@ -769,11 +769,17 @@ async function load(){
     SB.from('jobs').select('id,job_number,location_id,completed_at,scope').eq('status','completed')
       .gte('completed_at',new Date(Date.now()-14*86400000).toISOString())
       .is('signature_data',null).is('deleted_at',null).order('completed_at',{ascending:false}).limit(50),
-    // Expenses (Costs tab). 90-day window keeps the dashboard payload bounded;
-    // historical drill-down reloads on demand from openExpenseHistory().
-    SB.from('expenses').select('*').is('deleted_at',null)
-      .gte('date',new Date(Date.now()-90*86400000).toISOString().split('T')[0])
-      .order('date',{ascending:false}).limit(500)
+    // Expenses (Costs tab). Owner-only — non-owner techs (Bobby etc.)
+    // get an empty array so Jon's spend never lands in a non-owner's
+    // browser memory. Multi-tech gate, not just UI gating.
+    // is_owner!==false treats both owners (true) and pre-_me legacy
+    // boots (undefined) as allowed — only an explicit false (employee)
+    // skips the load.
+    (window._me?.tech?.is_owner !== false)
+      ? SB.from('expenses').select('*').is('deleted_at',null)
+        .gte('date',new Date(Date.now()-90*86400000).toISOString().split('T')[0])
+        .order('date',{ascending:false}).limit(500)
+      : Promise.resolve({data: []})
   ])
   if(j.error)console.error('jobs error:',j.error)
   if(l.error)console.error('locations error:',l.error)
@@ -2864,10 +2870,14 @@ async function saveExpense(existingId){
 }
 
 async function delExpense(id){
-  // Soft-delete; the storage object stays so historical photos don't 404
-  const{error}=await SB.from('expenses').update({deleted_at:new Date().toISOString()}).eq('id',id)
-  if(error){toast('Delete failed: '+error.message,false);return}
-  audit('deleted','expense',id,'jon',null,'Expense soft-deleted')
+  // Use trash() for parity with every other entity delete in this app —
+  // it writes a full snapshot to deleted_records BEFORE flipping
+  // deleted_at, so an accidental delete is restorable. Storage object
+  // is left in place so the photo URL on the snapshot still resolves
+  // for restore.
+  const res=await trash('expenses',{id},'Expense deleted','jon','app')
+  if(res.error){toast('Delete failed: '+res.error,false);return}
+  audit('deleted','expense',id,'jon',null,'Expense soft-deleted (snapshot in deleted_records)')
   await load()
   pop()
   rCosts()
@@ -3961,20 +3971,24 @@ async function openJob(id){
     <div id="job-activity-${j.id}" style="font-size:12px"></div>
   </div>`
 
-  // COSTS LINKED TO THIS JOB — owner-only. Sum of expenses where job_id=j.id,
-  // tap-target opens the per-job expense list. "+ Cost" jumps straight into a
-  // new-expense overlay pre-linked to this job. Visible to owner only because
-  // employees shouldn't see what Jon spent.
+  // COSTS LINKED TO THIS JOB — owner-only. Sum of expenses where job_id=j.id.
+  // Two explicit buttons (View / + Log) instead of wrapping the card in
+  // onclick — iOS Safari can synthesize a parent click after touchend that
+  // beats event.stopPropagation, causing the inner button to also fire the
+  // wrapper. Separate buttons sidestep that whole class of bug.
   if(_isOwner()){
     const jobExps=(D.expenses||[]).filter(e=>e.job_id===j.id&&!e.deleted_at)
     const jobCost=jobExps.reduce((s,e)=>s+(+e.amount||0),0)
-    h+=`<div class="ds owner-only" onclick="openJobCosts('${j.id}')" style="cursor:pointer">
+    h+=`<div class="ds owner-only">
       <div class="ds-t" style="display:flex;justify-content:space-between;align-items:center">
         <span>Costs ${jobExps.length?'· '+jobExps.length:''}</span>
         <span style="font-size:13px;font-weight:800;color:${jobCost>0?'var(--bad)':'var(--g2)'};font-variant-numeric:tabular-nums">${jobCost?'-'+fmt(jobCost):'$0.00'}</span>
       </div>
       ${jobExps.length?`<div style="font-size:11px;color:var(--g1);margin-top:4px">${jobExps.slice(0,3).map(e=>esc(e.vendor||_expenseCatLabel(e.category))+' '+fmt(+e.amount||0)).join(' · ')}${jobExps.length>3?' · …':''}</div>`:'<div style="font-size:11px;color:var(--g2);margin-top:4px">No costs logged for this job</div>'}
-      <button onclick="event.stopPropagation();openExpenseEntry({jobId:'${j.id}'})" style="margin-top:8px;width:100%;padding:8px;border-radius:var(--rs);background:transparent;border:1px dashed var(--b1);color:var(--fire);font-size:12px;font-weight:700;cursor:pointer">+ Log a cost for this job</button>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        ${jobExps.length?`<button onclick="openJobCosts('${j.id}')" style="flex:1;padding:8px;border-radius:var(--rs);background:var(--c2);border:1px solid var(--b1);color:var(--w2);font-size:12px;font-weight:700;cursor:pointer;min-height:44px">View all ${jobExps.length} →</button>`:''}
+        <button onclick="openExpenseEntry({jobId:'${j.id}'})" style="flex:1;padding:8px;border-radius:var(--rs);background:transparent;border:1px dashed var(--fire);color:var(--fire);font-size:12px;font-weight:700;cursor:pointer;min-height:44px">+ Log a cost</button>
+      </div>
     </div>`
   }
 
