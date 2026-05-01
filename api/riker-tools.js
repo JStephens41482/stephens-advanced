@@ -4090,6 +4090,38 @@ const send_review_request = {
   }
 }
 
+// Pick the right job to attach a receipt to. Receipts almost always pair
+// with TODAY's active visit or a job that just wrapped — not next quarter's
+// scheduled inspection. Strategy:
+//   1. Most recent job at the location with scheduled_date <= today AND
+//      status NOT IN ('cancelled') — covers in-progress, completed-today,
+//      and recent past work.
+//   2. Fallback: nearest future scheduled job (if there's no past/active
+//      work at all yet — first receipt for a brand new customer).
+async function _pickJobForReceipt(sb, locationId) {
+  if (!locationId) return null
+  const today = new Date().toISOString().split('T')[0]
+  const { data: pastJobs } = await sb.from('jobs')
+    .select('id')
+    .eq('location_id', locationId)
+    .is('deleted_at', null)
+    .neq('status', 'cancelled')
+    .lte('scheduled_date', today)
+    .order('scheduled_date', { ascending: false, nullsFirst: false })
+    .limit(1)
+  if (pastJobs && pastJobs.length) return pastJobs[0].id
+  const { data: futureJobs } = await sb.from('jobs')
+    .select('id')
+    .eq('location_id', locationId)
+    .is('deleted_at', null)
+    .neq('status', 'cancelled')
+    .gt('scheduled_date', today)
+    .order('scheduled_date', { ascending: true })
+    .limit(1)
+  if (futureJobs && futureJobs.length) return futureJobs[0].id
+  return null
+}
+
 // ═══════════════════════════════════════════════════════════════
 // TOOL: log_expense
 // ═══════════════════════════════════════════════════════════════
@@ -4152,54 +4184,58 @@ const log_expense = {
       }
       resolvedLocationId = locs[0].id
       resolvedLocationName = locs[0].name
-      // Try to find the most-recent active or recently-completed job at this location
-      const { data: jobs } = await sb.from('jobs')
-        .select('id, status, scheduled_date, completed_at')
-        .eq('location_id', resolvedLocationId)
-        .is('deleted_at', null)
-        .neq('status', 'cancelled')
-        .order('scheduled_date', { ascending: false, nullsFirst: false })
-        .limit(1)
-      if (jobs && jobs.length) resolvedJobId = jobs[0].id
+      resolvedJobId = await _pickJobForReceipt(sb, resolvedLocationId)
     } else if (resolvedLocationId && !resolvedJobId) {
-      const { data: jobs } = await sb.from('jobs')
-        .select('id').eq('location_id', resolvedLocationId)
-        .is('deleted_at', null).neq('status', 'cancelled')
-        .order('scheduled_date', { ascending: false, nullsFirst: false }).limit(1)
-      if (jobs && jobs.length) resolvedJobId = jobs[0].id
+      resolvedJobId = await _pickJobForReceipt(sb, resolvedLocationId)
     } else if (resolvedJobId) {
       const { data: j } = await sb.from('jobs').select('location_id').eq('id', resolvedJobId).maybeSingle()
       if (j?.location_id) resolvedLocationId = j.location_id
     }
 
     // ── Photo: fetch the signed URL, copy to expense-receipts ────
+    // Track failure mode so the return value can tell Riker EXACTLY what
+    // went wrong (URL malformed / signed URL expired / storage upload
+    // rejected) — Riker's prompt rule 13 then surfaces that to Jon so he
+    // knows to re-send instead of trusting a silent text-only insert.
     let photoUrl = null
     let photoPath = null
-    if (input.photo_url && /^https?:\/\//i.test(input.photo_url)) {
-      try {
-        const resp = await fetch(input.photo_url)
-        if (resp.ok) {
-          const buf = Buffer.from(await resp.arrayBuffer())
-          const contentType = resp.headers.get('content-type') || 'image/jpeg'
-          const ext = (contentType.split('/')[1] || 'jpg').replace('jpeg', 'jpg').split(';')[0]
-          const dt = new Date((input.date || today) + 'T12:00:00')
-          const yr = dt.getFullYear(), mo = String(dt.getMonth() + 1).padStart(2, '0')
-          const fname = (require('crypto').randomUUID ? require('crypto').randomUUID() : (Date.now() + '-' + Math.random().toString(36).slice(2, 10))) + '.' + ext
-          const path = `${yr}/${mo}/${fname}`
-          const { error: upErr } = await sb.storage.from('expense-receipts').upload(path, buf, { contentType, upsert: false })
-          if (upErr) {
-            console.warn('[log_expense] storage upload failed:', upErr.message)
+    let photoError = null
+    const photoAttempted = !!input.photo_url
+    if (photoAttempted) {
+      if (!/^https?:\/\//i.test(input.photo_url)) {
+        photoError = 'photo_url not a valid http(s) URL'
+      } else if (input.photo_url.length < 60) {
+        // Signed URLs from Supabase are >100 chars; anything shorter is
+        // almost certainly truncated by the model when copying verbatim.
+        photoError = 'photo_url looks truncated (model may have clipped at a quote)'
+      } else {
+        try {
+          const resp = await fetch(input.photo_url)
+          if (!resp.ok) {
+            photoError = `signed URL fetch returned ${resp.status} (likely expired or malformed)`
           } else {
-            const { data: pub } = sb.storage.from('expense-receipts').getPublicUrl(path)
-            photoUrl = pub?.publicUrl || null
-            photoPath = path
+            const buf = Buffer.from(await resp.arrayBuffer())
+            const contentType = resp.headers.get('content-type') || 'image/jpeg'
+            const ext = (contentType.split('/')[1] || 'jpg').replace('jpeg', 'jpg').split(';')[0]
+            const dt = new Date((input.date || today) + 'T12:00:00')
+            const yr = dt.getFullYear(), mo = String(dt.getMonth() + 1).padStart(2, '0')
+            const fname = (require('crypto').randomUUID ? require('crypto').randomUUID() : (Date.now() + '-' + Math.random().toString(36).slice(2, 10))) + '.' + ext
+            const path = `${yr}/${mo}/${fname}`
+            const { error: upErr } = await sb.storage.from('expense-receipts').upload(path, buf, { contentType, upsert: false })
+            if (upErr) {
+              photoError = 'storage upload failed: ' + upErr.message
+            } else {
+              const { data: pub } = sb.storage.from('expense-receipts').getPublicUrl(path)
+              photoUrl = pub?.publicUrl || null
+              photoPath = path
+              if (!photoUrl) photoError = 'public URL resolution returned null'
+            }
           }
-        } else {
-          console.warn('[log_expense] photo fetch returned', resp.status)
+        } catch (e) {
+          photoError = 'fetch/upload threw: ' + e.message
         }
-      } catch (e) {
-        console.warn('[log_expense] photo fetch/upload error:', e.message)
       }
+      if (photoError) console.warn('[log_expense]', photoError)
     }
 
     // ── Build the row ────────────────────────────────────────────
@@ -4230,12 +4266,17 @@ const log_expense = {
       return { error: 'Insert failed: ' + error.message }
     }
 
-    // Audit (best-effort)
+    // Audit (best-effort). actor:'ai_chat' matches every other Riker
+    // tool's audit shape so the audit_log filter for ai_chat actions
+    // catches log_expense rows too.
     try {
       await sb.from('audit_log').insert({
-        action: 'created', entity_type: 'expense', entity_id: ins.id, actor: ctx.identity?.tech_name || 'jon',
-        details: { changes: { amount: row.amount, category: row.category, job_id: row.job_id, vendor: row.vendor },
-                   summary: `Expense logged via Riker: ${'$'+row.amount.toFixed(2)} · ${row.category}${row.vendor ? ' · ' + row.vendor : ''}${resolvedLocationName ? ' · ' + resolvedLocationName : ''}` }
+        action: 'created', entity_type: 'expense', entity_id: ins.id, actor: 'ai_chat',
+        details: {
+          changes: { amount: row.amount, category: row.category, job_id: row.job_id, vendor: row.vendor },
+          tech_name: ctx.identity?.tech_name || null,
+          summary: `Expense logged via Riker: ${'$'+row.amount.toFixed(2)} · ${row.category}${row.vendor ? ' · ' + row.vendor : ''}${resolvedLocationName ? ' · ' + resolvedLocationName : ''}`
+        }
       })
     } catch (e) { /* audit best-effort */ }
 
@@ -4249,8 +4290,10 @@ const log_expense = {
       job_id: row.job_id,
       location_id: row.location_id,
       location_name: resolvedLocationName,
+      photo_attempted: photoAttempted,
       photo_persisted: !!photoUrl,
-      summary: `Logged $${row.amount.toFixed(2)} · ${row.category}${row.vendor ? ' · ' + row.vendor : ''}${resolvedLocationName ? ' for ' + resolvedLocationName : ''}${photoUrl ? ' · receipt saved' : ''}`,
+      photo_error: photoError,  // null on success, string explaining what failed otherwise
+      summary: `Logged $${row.amount.toFixed(2)} · ${row.category}${row.vendor ? ' · ' + row.vendor : ''}${resolvedLocationName ? ' for ' + resolvedLocationName : ''}${photoUrl ? ' · receipt saved' : (photoAttempted ? ' · ⚠️ receipt NOT saved (' + photoError + ')' : '')}`,
       clientHint: { type: 'expense_logged', expense_id: ins.id }
     }
   }
