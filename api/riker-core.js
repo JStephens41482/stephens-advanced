@@ -947,7 +947,13 @@ const _HONESTY_CHECKS = [
     label: 'bill paid' },
   { verbs: /\b(allocated|swept|moved into (the )?(buckets?|profit first))\b/i,
     tools: new Set(['log_income']),
-    label: 'income allocation' }
+    label: 'income allocation' },
+  { verbs: /\b(built (the |a )?quote|created (the |a )?quote|sent (the |a )?quote)\b/i,
+    tools: new Set(['build_quote', 'send_quote_for_signature', 'request_remote_signature']),
+    label: 'quote build/send' },
+  { verbs: /\b(approved (the |that )?quote|accepted (the |that )?quote|converted (the |that )?quote)\b/i,
+    tools: new Set(['approve_quote']),
+    label: 'quote approval' }
 ]
 
 function _enforceActionHonesty(text, actionsTaken) {

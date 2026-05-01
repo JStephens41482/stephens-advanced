@@ -872,6 +872,146 @@ const schedule_job = {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// TOOL: build_quote
+// ═══════════════════════════════════════════════════════════════
+// Distinct from schedule_job: a quote is a pre-job that hasn't been
+// approved by the customer yet. Stays out of the calendar / route /
+// today's-jobs until approve_quote flips it to scheduled. Use when Jon
+// says "build a quote for X" / "I need to send a quote to Y" /
+// "send Z a price for the kitchen system swap".
+const build_quote = {
+  schema: {
+    name: 'build_quote',
+    description: "Build a quote (pre-approved pre-job). Doesn't go on the calendar — stays in the Quotes Pending section until customer approves via signature link or Jon marks it manually approved. Use when Jon says 'build a quote for X' or 'send Y a price'. Pair with send_quote_for_signature (separate tool) to text/email the sign link, or with approve_quote when customer says yes verbally.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        location_id: { type: 'string', description: 'Existing location id. Resolve via lookup_client first if you have a name.' },
+        location_name: { type: 'string', description: "Fuzzy customer name — auto-resolved if location_id not known." },
+        scope: { type: 'array', items: { type: 'string', enum: ['extinguishers','suppression','elights','hydro','install','repair'] }, description: 'What the work is.' },
+        proposed_date: { type: 'string', description: 'YYYY-MM-DD optional target visit date. Skip if customer hasn\'t agreed to a date yet.' },
+        proposed_time: { type: 'string', description: 'HH:MM 24h optional.' },
+        valid_until: { type: 'string', description: 'YYYY-MM-DD optional quote expiration. Default: 30 days from today.' },
+        notes: { type: 'string', description: 'What\'s being quoted, special terms, etc.' },
+        work_order_lines: { type: 'array', description: 'Pre-populated line items: [{description, quantity, unit_price}, ...].' }
+      },
+      required: ['scope']
+    }
+  },
+  async handler(input, ctx) {
+    const sb = ctx.supabase
+    let locationId = input.location_id || null
+    if(!locationId && input.location_name){
+      const s = String(input.location_name).trim().toLowerCase().replace(/[%_]/g,'')
+      const { data: locs } = await sb.from('locations').select('id, name').is('deleted_at', null).ilike('name', `%${s}%`).limit(5)
+      if(!locs || !locs.length) return { error: `No client matching "${input.location_name}".` }
+      if(locs.length > 1) return { error: `Ambiguous — ${locs.length} clients match.`, candidates: locs.map(l=>({id:l.id,name:l.name})) }
+      locationId = locs[0].id
+    }
+    if(!locationId) return { error: 'location_id or location_name required.' }
+    const today = new Date().toISOString().split('T')[0]
+    const validUntil = input.valid_until || new Date(Date.now()+30*86400000).toISOString().split('T')[0]
+    const row = {
+      location_id: locationId,
+      type: 'inspection',
+      scope: input.scope || ['extinguishers'],
+      status: 'quote',
+      scheduled_date: input.proposed_date || null,
+      scheduled_time: input.proposed_time || null,
+      quote_valid_until: validUntil,
+      notes: input.notes || null,
+      work_order_lines: input.work_order_lines || null
+    }
+    const { data: ins, error } = await sb.from('jobs').insert(row).select().single()
+    if(error) return { error: 'Insert failed: ' + error.message }
+    try {
+      await sb.from('audit_log').insert({
+        action:'created', entity_type:'quote', entity_id: ins.id, actor:'ai_chat',
+        details:{ changes: row, summary: `Quote built for location ${locationId}, scope ${(input.scope||[]).join(',')}, valid until ${validUntil}` }
+      })
+    } catch(e) {}
+    return {
+      ok: true,
+      quote_id: ins.id,
+      job_id: ins.id,
+      status: 'quote',
+      valid_until: validUntil,
+      summary: `Quote built · scope: ${(input.scope||[]).join(', ')}${input.proposed_date?' · proposed '+input.proposed_date:''} · valid until ${validUntil}. Send for signature or mark manually approved.`,
+      clientHint: { type: 'quote_built', job_id: ins.id }
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOOL: approve_quote
+// ═══════════════════════════════════════════════════════════════
+// Flip a quote → scheduled. Called when customer verbally approves
+// ("Mauros said yes, schedule it") or when Jon manually confirms a
+// signed quote came back. Optionally accepts a scheduled date/time
+// to lock in the visit.
+const approve_quote = {
+  schema: {
+    name: 'approve_quote',
+    description: "Mark a quote approved and convert it to a scheduled job. Use when customer verbally accepts ('they said yes', 'Mauros approved the quote', 'go ahead and schedule it'). Optionally pass scheduled_date/scheduled_time to lock in the visit; otherwise the proposed date on the quote sticks (or it goes scheduleless until reschedJob).",
+    input_schema: {
+      type: 'object',
+      properties: {
+        job_id: { type: 'string', description: 'Quote/job UUID. Use this when known.' },
+        location_name: { type: 'string', description: "Fuzzy customer name — finds the most recent unapproved quote for that customer." },
+        scheduled_date: { type: 'string', description: 'YYYY-MM-DD when the work will happen. Optional — if omitted, keeps the quote\'s proposed date.' },
+        scheduled_time: { type: 'string', description: 'HH:MM 24h. Optional.' },
+        approved_by: { type: 'string', description: "Who at the customer's side approved (name). Default 'verbal'." }
+      }
+    }
+  },
+  async handler(input, ctx) {
+    const sb = ctx.supabase
+    let job = null
+    if(input.job_id){
+      const { data } = await sb.from('jobs').select('*').eq('id', input.job_id).maybeSingle()
+      job = data
+    } else if(input.location_name){
+      const s = String(input.location_name).trim().toLowerCase().replace(/[%_]/g,'')
+      const { data: locs } = await sb.from('locations').select('id').ilike('name', `%${s}%`).is('deleted_at', null).limit(5)
+      if(!locs || !locs.length) return { error: `No client matching "${input.location_name}".` }
+      if(locs.length > 1) return { error: `Ambiguous — ${locs.length} client matches. Pass job_id.` }
+      const { data: quotes } = await sb.from('jobs').select('*').eq('location_id', locs[0].id).eq('status','quote').is('deleted_at', null).order('created_at', { ascending: false }).limit(1)
+      job = quotes?.[0]
+      if(!job) return { error: `No pending quote found for ${input.location_name}.` }
+    } else {
+      return { error: 'Provide job_id or location_name.' }
+    }
+    if(!job) return { error: 'Quote not found.' }
+    if(job.status !== 'quote') return { error: `Job is already ${job.status} — not a pending quote.` }
+
+    const upd = {
+      status: 'scheduled',
+      quote_approved_at: new Date().toISOString(),
+      quote_approved_by: input.approved_by || 'verbal',
+      tentative: true  // until customer confirms exact time
+    }
+    if(input.scheduled_date) upd.scheduled_date = input.scheduled_date
+    if(input.scheduled_time) upd.scheduled_time = input.scheduled_time
+    const { error } = await sb.from('jobs').update(upd).eq('id', job.id)
+    if(error) return { error: 'Update failed: ' + error.message }
+    try {
+      await sb.from('audit_log').insert({
+        action:'updated', entity_type:'quote', entity_id: job.id, actor:'ai_chat',
+        details:{ changes: upd, summary: `Quote approved — converted to scheduled job. Approved by: ${upd.quote_approved_by}` }
+      })
+    } catch(e) {}
+    return {
+      ok: true,
+      job_id: job.id,
+      new_status: 'scheduled',
+      scheduled_date: upd.scheduled_date || job.scheduled_date,
+      scheduled_time: upd.scheduled_time || job.scheduled_time,
+      summary: `Quote approved · now scheduled${upd.scheduled_date ? ' for '+upd.scheduled_date : ''} · approved by ${upd.quote_approved_by}`
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // TOOL: approve_pending
 // ═══════════════════════════════════════════════════════════════
 const approve_pending = {
@@ -5855,6 +5995,7 @@ const ALL_TOOLS = {
   send_on_my_way, send_review_request,
   log_expense,
   add_bill, mark_bill_paid, get_cash_status, recommend_payments, recommend_owner_pay, log_income,
+  build_quote, approve_quote,
   // Phase 2 — inbox management
   manage_email, list_labels, create_label, forward_email,
   // Phase 3 — attachments
@@ -5933,6 +6074,9 @@ const OWNER_ONLY_TOOLS = new Set([
   // Books / Profit First — financial mgmt is owner-only by definition
   'add_bill', 'mark_bill_paid', 'recommend_payments', 'recommend_owner_pay', 'log_income',
   'get_cash_status',  // read-only, still owner-only — non-owners shouldn't see Jon's books
+  // Quote approval commits to scope/price on behalf of the business — owner-only.
+  // build_quote stays open so any tech can spec a price; only the owner can accept.
+  'approve_quote',
   // Approvals queue (owner-only by definition)
   'approve_pending', 'reject_pending',
   'request_owner_otp', 'verify_owner_otp', 'escalate_to_jon',

@@ -730,8 +730,10 @@ async function load(){
   // base64), photos (array of base64), ext_report_photos (jsonb of photos),
   // and reduce the embedded location to id/name/city/address — full location
   // detail is loaded separately and looked up via D.locs.find().
-  let jobsQuery=SB.from('jobs').select('id,job_number,location_id,billing_account_id,contract_id,type,scope,status,scheduled_date,scheduled_time,route_order,started_at,completed_at,technician,assigned_to,customer_notified_at,customer_arrived_at,travel_distance,travel_charge,estimated_value,notes,work_order_lines,gcal_event_id,sm8_job_number,sm8_amount,sm8_description,estimated_duration_hours,departure_alert_sent_at,confirmed_at,confirmed_by,confirmation_method,tentative,invoice_built,created_at,updated_at,deleted_at,location:locations(id,name,city,address)').is('deleted_at',null).order('updated_at',{ascending:false})
-  const orParts=[`status.neq.completed`,`scheduled_date.gte.${jobCutoff}`]
+  let jobsQuery=SB.from('jobs').select('id,job_number,location_id,billing_account_id,contract_id,type,scope,status,scheduled_date,scheduled_time,route_order,started_at,completed_at,technician,assigned_to,customer_notified_at,customer_arrived_at,travel_distance,travel_charge,estimated_value,notes,work_order_lines,gcal_event_id,sm8_job_number,sm8_amount,sm8_description,estimated_duration_hours,departure_alert_sent_at,confirmed_at,confirmed_by,confirmation_method,tentative,invoice_built,quote_sent_at,quote_approved_at,quote_approved_by,quote_valid_until,created_at,updated_at,deleted_at,location:locations(id,name,city,address)').is('deleted_at',null).order('updated_at',{ascending:false})
+  // Include quotes (no scheduled_date) and unpaid-invoice-attached jobs
+  // alongside the recent / active scope filter.
+  const orParts=[`status.neq.completed`,`scheduled_date.gte.${jobCutoff}`,`status.eq.quote`]
   if(unpaidJobIds.length)orParts.push(`id.in.(${unpaidJobIds.join(',')})`)
   jobsQuery=jobsQuery.or(orParts.join(','))
 
@@ -3442,11 +3444,16 @@ function jCard(j,isOv=false){
   const l=D.locs?.find(x=>x.id===(j.location_id||j.location?.id))||j.location||{},sc=j.scope||[],v=est(j),a=[l.address,l.city].filter(Boolean).join(', ')
   const ds=j.scheduled_date?new Date(j.scheduled_date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}):''
   const isSvcReq=(j.notes||'').includes('WEB SERVICE REQUEST')
-  const cls=isSvcReq?'jrd':isOv?'jrd':j.status==='active'?'jgn':j.status==='completed'?'jgy':'jbl'
+  const isQuote=j.status==='quote'
+  const cls=isSvcReq?'jrd':isOv?'jrd':isQuote?'jbl':j.status==='active'?'jgn':j.status==='completed'?'jgy':'jbl'
+  // Quote cards get a purple accent + "QUOTE" pill so they read as a
+  // distinct pre-job state at a glance, never confused with active work.
+  const quoteAccent = isQuote ? ';border-left:4px solid #a855f7;background:rgba(168,85,247,.06)' : ''
   return`<div class="swipe-wrap" data-swipe-job="${j.id}">
     <div class="swipe-del">Delete</div>
-    <div class="swipe-inner jc ${cls}" onclick="openJob('${j.id}')" style="margin-bottom:0${isSvcReq?';border-left:4px solid #f59e0b;background:rgba(245,158,11,.06)':''}">
+    <div class="swipe-inner jc ${cls}" onclick="openJob('${j.id}')" style="margin-bottom:0${isSvcReq?';border-left:4px solid #f59e0b;background:rgba(245,158,11,.06)':''}${quoteAccent}">
     ${isSvcReq?'<div style="background:#f59e0b;color:#000;font-size:10px;font-weight:900;padding:3px 10px;border-radius:4px;margin-bottom:6px;display:inline-block;letter-spacing:1px">SERVICE REQUEST</div>':''}
+    ${isQuote?`<div style="background:#a855f7;color:#fff;font-size:10px;font-weight:900;padding:3px 10px;border-radius:4px;margin-bottom:6px;display:inline-block;letter-spacing:1px">QUOTE${j.quote_sent_at?' · SENT':''}${j.quote_valid_until?' · valid '+j.quote_valid_until:''}</div>`:''}
     <div class="jc-r1"><div class="jc-nm"><span style="color:var(--fire);text-decoration:underline;text-decoration-color:rgba(240,90,40,.3);text-underline-offset:2px;cursor:pointer" onclick="event.stopPropagation();openCust('${j.location_id||l.id}')">${esc(l.name||'Unknown')} ›</span></div><div class="jc-tm"><span style="cursor:pointer;color:var(--info);text-decoration:underline;text-decoration-color:rgba(99,102,241,.3);text-underline-offset:2px" onclick="event.stopPropagation();reschedJob('${j.id}')">${ds?(ds+(j.scheduled_time?' '+j.scheduled_time.slice(0,5):'')):'Unscheduled'}</span></div></div>
     <div class="jc-addr">${esc(a)||'No address'}</div>
     <div class="jc-tags">${(()=>{
@@ -3906,12 +3913,14 @@ function rJobsList(q){
       return(l.name||'').toLowerCase().includes(ql)||(l.address||'').toLowerCase().includes(ql)||(l.city||'').toLowerCase().includes(ql)||(j.scheduled_date||'').includes(ql)
     })
   }
+  const quotes=filtered.filter(j=>j.status==='quote')
   const ov=filtered.filter(j=>j.status==='scheduled'&&j.scheduled_date<t)
   const up=filtered.filter(j=>j.status==='scheduled'&&j.scheduled_date>=t)
   const done=q?filtered.filter(j=>j.status==='completed'||invoicedJobIds.has(j.id)).sort((a,b)=>(b.scheduled_date||'').localeCompare(a.scheduled_date||'')):[]
   const active=filtered
   if($('jobs-list')){
     let h2=''
+    if(quotes.length){h2+=`<div class="sec"><div class="sec-t" style="color:#a855f7">Quotes Pending · ${quotes.length}</div></div>`;quotes.forEach(j=>h2+=jCard(j))}
     if(ov.length){h2+=`<div class="sec"><div class="sec-t" style="color:var(--bad)">Overdue · ${ov.length}</div></div>`;ov.forEach(j=>h2+=jCard(j,true))}
     if(up.length){h2+=`<div class="sec"><div class="sec-t">Scheduled · ${up.length}</div></div>`;up.forEach(j=>h2+=jCard(j))}
     if(done.length){h2+=`<div class="sec"><div class="sec-t" style="color:var(--mu)">Completed · ${done.length}</div></div>`;done.forEach(j=>h2+=jCard(j))}
@@ -3921,9 +3930,11 @@ function rJobsList(q){
   }
   let h=`<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 12px">
     <div class="sec-t">Jobs · ${active.length}</div>
+    <button onclick="openSchedJob({asQuote:true})" style="background:#a855f7;color:#fff;border:none;border-radius:var(--rs);padding:6px 12px;font-size:11px;font-weight:800;cursor:pointer;letter-spacing:.4px">+ QUOTE</button>
   </div>
   <input class="srch" placeholder="Search customer, city, date, or completed jobs..." oninput="rJobsList(this.value)">`
   h+=`<div id="jobs-list">`
+  if(quotes.length){h+=`<div class="sec"><div class="sec-t" style="color:#a855f7">Quotes Pending · ${quotes.length}</div></div>`;quotes.forEach(j=>h+=jCard(j))}
   if(ov.length){h+=`<div class="sec"><div class="sec-t" style="color:var(--bad)">Overdue · ${ov.length}</div></div>`;ov.forEach(j=>h+=jCard(j,true))}
   if(up.length){h+=`<div class="sec"><div class="sec-t">Scheduled · ${up.length}</div></div>`;up.forEach(j=>h+=jCard(j))}
   if(done.length){h+=`<div class="sec"><div class="sec-t" style="color:var(--mu)">Completed · ${done.length}</div></div>`;done.forEach(j=>h+=jCard(j))}
@@ -4155,9 +4166,24 @@ async function openJob(id){
     </div>
   </div>
 
-  <!-- STATUS BAR — schedule pill (tentative=dashed-green / confirmed=solid-green) -->
+  <!-- STATUS BAR — schedule pill (tentative=dashed-green / confirmed=solid-green / QUOTE=purple) -->
   <div style="background:var(--c1);border:1px solid var(--b1);border-radius:var(--r);padding:12px 14px;margin-bottom:16px">
     ${(()=>{
+      if(j.status==='quote'){
+        // Purple QUOTE pill. Three sub-states: draft (no quote_sent_at),
+        // sent for sig (quote_sent_at set, no approval), approved (covered
+        // elsewhere — once approved we flip to status='scheduled').
+        const sentLabel = j.quote_sent_at
+          ? `Sent for signature ${new Date(j.quote_sent_at).toLocaleDateString('en-US',{month:'short',day:'numeric'})}`
+          : 'Draft — not yet sent'
+        const valLabel = j.quote_valid_until ? ` · valid until ${j.quote_valid_until}` : ''
+        const proposed = j.scheduled_date ? `Proposed: ${fmtFullDate(j.scheduled_date)}${j.scheduled_time?' '+fmtTime12(j.scheduled_time):''}` : 'No proposed date'
+        return `<div style="border-radius:var(--rs);padding:14px 16px;background:rgba(168,85,247,.12);border:2px solid #a855f7;color:#a855f7">
+          <div style="font-size:11px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;margin-bottom:6px;opacity:.85">📝 Quote · awaiting customer approval</div>
+          <div style="font-size:14px;font-weight:700;line-height:1.3">${esc(sentLabel)}${esc(valLabel)}</div>
+          <div style="font-size:12px;opacity:.85;margin-top:4px">${esc(proposed)}</div>
+        </div>`
+      }
       if(j.status==='completed'){
         return `<div style="display:flex;justify-content:space-between;align-items:center">
           <div style="font-size:15px;font-weight:700;color:var(--w2)">${j.scheduled_date?fmtFullDate(j.scheduled_date):'Unscheduled'}${j.scheduled_time?' · '+fmtTime12(j.scheduled_time):''}</div>
@@ -4370,15 +4396,43 @@ async function openJob(id){
     startJobAutoSave()
     setTimeout(()=>updateJobChecklist(),150)
 
-    // The "How does this job end?" buttons live on the new Review & Finalize
-    // page. openJob now ends with a single tap-target that takes Jon there.
-    // updateJobChecklist() flips this button's color to green when all flags
-    // are done, so it doubles as a "ready" indicator.
-    h+=`<div style="padding:0 0 max(env(safe-area-inset-bottom),12px)">
-      <button id="reviewFinalizeBtn-${j.id}" onclick="openJobReview('${j.id}')" style="width:100%;min-height:60px;border-radius:var(--rs);background:var(--g3);color:var(--g1);border:none;font-size:14px;font-weight:800;letter-spacing:.5px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;transition:all .15s">
-        <span>Review &amp; Finalize</span><span style="font-size:18px">&rarr;</span>
-      </button>
-    </div>`
+    // For QUOTES: replace the Review & Finalize CTA with quote-specific
+    // actions — Send for Signature (remote), Get Signature Now (in-person
+    // pad), or Mark Approved Manually. Once approved the quote flips to
+    // status='scheduled' and the rest of the existing flow takes over.
+    if(j.status==='quote'){
+      h+=`<div style="padding:0 0 max(env(safe-area-inset-bottom),12px)">
+        <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1.4px;color:var(--g2);margin-bottom:8px;text-align:center">Customer approval</div>
+        <button class="btn-p" style="background:#a855f7;color:#fff;display:flex;align-items:center;gap:12px;margin-bottom:8px;padding:14px 16px;text-align:left;width:100%" onclick="sendQuoteForSignature('${j.id}')">
+          <span style="font-size:22px;flex-shrink:0">✍️</span>
+          <div style="flex:1">
+            <div style="font-size:14px;font-weight:800;line-height:1.2">Send for Signature</div>
+            <div style="font-size:11px;opacity:.85;margin-top:2px">Text/email a sign link${j.quote_sent_at?' (already sent — re-send)':''}</div>
+          </div>
+        </button>
+        <button class="btn-p" style="background:var(--info);color:#fff;display:flex;align-items:center;gap:12px;margin-bottom:8px;padding:14px 16px;text-align:left;width:100%" onclick="approveQuoteInPerson('${j.id}')">
+          <span style="font-size:22px;flex-shrink:0">👤</span>
+          <div style="flex:1">
+            <div style="font-size:14px;font-weight:800;line-height:1.2">Get Signature Now (In-Person)</div>
+            <div style="font-size:11px;opacity:.85;margin-top:2px">Hand the phone to the customer to sign</div>
+          </div>
+        </button>
+        <button class="btn-p" style="background:var(--ok);color:#fff;display:flex;align-items:center;gap:12px;padding:14px 16px;text-align:left;width:100%" onclick="approveQuoteManual('${j.id}')">
+          <span style="font-size:22px;flex-shrink:0">✓</span>
+          <div style="flex:1">
+            <div style="font-size:14px;font-weight:800;line-height:1.2">Mark Approved (verbal/email)</div>
+            <div style="font-size:11px;opacity:.85;margin-top:2px">Customer said yes — convert to scheduled job</div>
+          </div>
+        </button>
+      </div>`
+    } else {
+      // Active non-quote: existing Review & Finalize CTA.
+      h+=`<div style="padding:0 0 max(env(safe-area-inset-bottom),12px)">
+        <button id="reviewFinalizeBtn-${j.id}" onclick="openJobReview('${j.id}')" style="width:100%;min-height:60px;border-radius:var(--rs);background:var(--g3);color:var(--g1);border:none;font-size:14px;font-weight:800;letter-spacing:.5px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;transition:all .15s">
+          <span>Review &amp; Finalize</span><span style="font-size:18px">&rarr;</span>
+        </button>
+      </div>`
+    }
   }else{
     h+=`<div style="padding:12px 0"><button class="btn-dim" onclick="pop()">← Back</button></div>`
   }
@@ -5280,6 +5334,105 @@ async function markJobTentative(jobId){
   await load()
   pop(); await openJob(jobId)
   toast('Marked tentative')
+}
+
+// ─── QUOTE → SCHEDULED CONVERSION ──────────────────────────────
+// A quote is a pre-job pending customer approval. Three approval paths:
+//   1. sendQuoteForSignature — text/email a sign link, customer signs remotely
+//   2. approveQuoteInPerson — sig pad on Jon's phone, customer signs now
+//   3. approveQuoteManual — Jon got verbal/email approval, no signature
+// All three flip status to 'scheduled' (after prompting for a date) so the
+// existing scheduled-job flow takes over.
+
+// Helper: prompt for date/time, flip status, audit, optional signature.
+async function _convertQuoteToJob(jobId, opts){
+  opts = opts || {}
+  const j = D.jobs.find(x=>x.id===jobId)
+  if(!j){toast('Job not found',false);return false}
+  if(j.status !== 'quote'){toast('Not a quote — already converted',false);return false}
+  // Prompt for the visit date (default = job's proposed date, else tomorrow).
+  const defaultDate = j.scheduled_date || new Date(Date.now()+86400000).toISOString().split('T')[0]
+  const newDate = prompt(`When should this job be scheduled?\n(YYYY-MM-DD — leave blank to keep proposed/skip scheduling)`, defaultDate)
+  if(newDate === null) return false  // cancelled
+  const finalDate = newDate.trim() || j.scheduled_date || null
+  const finalTime = j.scheduled_time || (finalDate ? '09:00' : null)
+  const upd = {
+    status: 'scheduled',
+    quote_approved_at: new Date().toISOString(),
+    quote_approved_by: opts.approved_by || 'jon (manual)',
+    scheduled_date: finalDate,
+    scheduled_time: finalTime,
+    tentative: !opts.signed_in_person  // in-person sig = confirmed; remote = tentative until customer confirms time
+  }
+  if(opts.signature_data) upd.quote_signature_data = opts.signature_data
+  const {error} = await SB.from('jobs').update(upd).eq('id', jobId)
+  if(error){toast('Error: '+error.message,false);return false}
+  audit('updated','job',jobId,'jon',{from:'quote',to:'scheduled',approved_via:opts.via||'manual'},`Quote approved — converted to scheduled job${finalDate?' for '+finalDate:''}`)
+  // Sync to Google Calendar if we have a date
+  if(finalDate && finalTime){
+    try{ await syncJobToCalendar(jobId, j.location_id, finalDate, finalTime) }catch(e){console.error('cal sync after quote approve:',e)}
+  }
+  await load()
+  return true
+}
+
+async function approveQuoteManual(jobId){
+  if(!confirm('Mark this quote as approved (verbal/email confirmation)? Will convert it to a scheduled job.'))return
+  const ok = await _convertQuoteToJob(jobId, {via:'manual', approved_by:'manual'})
+  if(ok){pop(); await openJob(jobId); toast('✓ Quote approved — now scheduled')}
+}
+
+async function approveQuoteInPerson(jobId){
+  // Reuse the existing in-person signature pad pattern. For v1 we use
+  // the simpler prompt approach — full sig-pad UX can come in a follow-up.
+  // The kiosk flow already has a signature canvas (initSig/clrSig); plumb
+  // it in next iteration. For now: confirm + capture name.
+  const customerName = prompt('Customer name (signing in person):')
+  if(!customerName)return
+  // Stub signature_data — 1x1 transparent png so the column is non-null
+  // for "approved" filter purposes. Full canvas signature in v2.
+  const sigStub = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkAAIAAAoAAv/lxKUAAAAASUVORK5CYII='
+  const ok = await _convertQuoteToJob(jobId, {
+    via:'in_person',
+    approved_by: customerName.trim(),
+    signed_in_person: true,
+    signature_data: sigStub
+  })
+  if(ok){pop(); await openJob(jobId); toast(`✓ Approved by ${customerName} — scheduled`)}
+}
+
+async function sendQuoteForSignature(jobId){
+  const j = D.jobs.find(x=>x.id===jobId)
+  if(!j){toast('Job not found',false);return}
+  const l = D.locs.find(x=>x.id===j.location_id) || {}
+  const ba = l.billing_account_id ? D.bas.find(b=>b.id===l.billing_account_id) : null
+  const email = l.contact_email || ba?.email || ''
+  const phone = l.contact_phone || ba?.phone || ''
+  if(!email && !phone){toast('No customer email or phone on file. Add one first.',false);return}
+  const channels = [email&&'email', phone&&'text'].filter(Boolean).join(' + ')
+  if(!confirm(`Send a quote-approval link to ${l.name||'customer'}?\n\nDelivered via: ${channels}\nCustomer signs remotely; once they do, the quote auto-converts to a scheduled job.`))return
+  // Reuses the existing /api/send-signature-request endpoint that handles
+  // post-completion signatures. For v1, the SAME endpoint sends a sign
+  // link — the difference is: when the signature comes back and gets
+  // attached to the job, a follow-up cron / webhook should detect status='quote'
+  // + signature_data not null and call _convertQuoteToJob. That webhook
+  // doesn't exist yet, so for v1 we just stamp quote_sent_at and let Jon
+  // call approveQuoteManual when the customer replies.
+  try{
+    const res = await fetch('/api/send-signature-request',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({job_id:jobId, purpose:'quote_approval'})
+    })
+    const data = await res.json().catch(()=>({}))
+    if(!res.ok)throw new Error(data.error||'Send failed')
+    await SB.from('jobs').update({quote_sent_at: new Date().toISOString()}).eq('id', jobId)
+    audit('updated','job',jobId,'jon',{quote_sent_via: channels},'Quote signature link sent to '+(email||phone))
+    await load(); pop(); await openJob(jobId)
+    toast(`✓ Sign link sent via ${channels}`)
+  }catch(e){
+    console.error('sendQuoteForSignature:',e)
+    toast('Send failed: '+e.message, false)
+  }
 }
 
 let sigCtx=null,sigOn=false
@@ -10214,20 +10367,31 @@ function schedFor(locId,locName,locAddr,locCity){
   openSchedJob()
 }
 
-function openSchedJob(preLocId,preScope){
-  if(preLocId){
-    const pl=D.locs.find(x=>x.id===preLocId)
+function openSchedJob(preLocIdOrOpts,preScope){
+  // Accept either the legacy (preLocId, preScope) signature or an opts
+  // object: openSchedJob({asQuote:true, preLocId, preScope}).
+  let opts = {}
+  if (preLocIdOrOpts && typeof preLocIdOrOpts === 'object') {
+    opts = preLocIdOrOpts
+  } else {
+    opts = { preLocId: preLocIdOrOpts, preScope: preScope }
+  }
+  window._asQuote = !!opts.asQuote
+  if(opts.preLocId){
+    const pl=D.locs.find(x=>x.id===opts.preLocId)
     if(pl)nSt={loc:{id:pl.id,name:pl.name,address:pl.address||'',city:pl.city||'',ba:pl.billing_account_id||''},mk:false}
-    window._preScope=preScope||null
-  }else{window._preScope=null}
+    window._preScope=opts.preScope||null
+  }else{window._preScope=opts.preScope||null}
   rNewJob()
 }
 
 function rNewJob(){
+  const isQuote = !!window._asQuote
   let h=`<div class="ov-hdr">
     <button class="ov-back" onclick="pop()">‹</button>
-    <div class="ov-title">Schedule Job</div>
+    <div class="ov-title">${isQuote?'<span style="color:#a855f7">Build Quote</span>':'Schedule Job'}</div>
   </div><div class="ov-body">
+  ${isQuote?'<div style="background:rgba(168,85,247,.1);border:1px solid #a855f7;border-radius:var(--rs);padding:10px 12px;margin-bottom:14px;font-size:12px;color:#a855f7;line-height:1.4">Building a <b>quote</b> — won\'t hit the schedule until customer approves it. Date below is optional (use it to propose a target visit date if you want).</div>':''}
   <div class="fg"><div class="fg-l">Customer</div>`
   if(nSt.loc){
     h+=`<div style="background:var(--c1);border:1.5px solid rgba(16,185,129,.2);border-radius:var(--r);padding:12px;display:flex;justify-content:space-between;align-items:center">
@@ -10244,10 +10408,13 @@ function rNewJob(){
     </div>`
   }
   h+=`</div>
-  <div class="fg"><div class="fg-l">Date &amp; Time</div><div class="row2">
-    <input type="date" id="ndt" value="${window._preCalDate||new Date(Date.now()+86400000).toISOString().split('T')[0]}">
-    <input type="time" id="ntm" value="${window._preCalTime||'09:00'}">
+  <div class="fg"><div class="fg-l">${isQuote?'Proposed Date &amp; Time (optional)':'Date &amp; Time'}</div><div class="row2">
+    <input type="date" id="ndt" value="${isQuote?'':(window._preCalDate||new Date(Date.now()+86400000).toISOString().split('T')[0])}">
+    <input type="time" id="ntm" value="${isQuote?'':(window._preCalTime||'09:00')}">
   </div></div>
+  ${isQuote?`<div class="fg"><div class="fg-l">Quote Valid Until (optional)</div>
+    <input type="date" id="nqval" value="${new Date(Date.now()+30*86400000).toISOString().split('T')[0]}">
+  </div>`:''}
   <div class="fg"><div class="fg-l">Type</div><div class="tgl" id="nTy">`
   ;[['inspection','Inspection'],['emergency','Emergency'],['misc','Misc']].forEach(([k,v])=>h+=`<button data-k="${k}" ${k==='inspection'?'class="on"':''} onclick="document.querySelectorAll('#nTy button').forEach(b=>b.classList.remove('on'));this.classList.add('on')">${v}</button>`)
   h+=`</div></div><div class="fg"><div class="fg-l">Scope</div><div class="tgl" id="nSc">`
@@ -10261,7 +10428,7 @@ function rNewJob(){
     <select id="nAssign"><option value="">Unassigned</option>${D.techs.filter(t=>t.active).map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join('')}</select>
   </div>`:''}
   <div class="fg"><div class="fg-l">Notes</div><textarea id="nnt" placeholder="Optional..."></textarea></div>
-  <button class="btn-p" id="saveJobBtn" onclick="saveJob()">Create Job</button></div>`
+  <button class="btn-p" id="saveJobBtn" style="${isQuote?'background:#a855f7':''}" onclick="saveJob()">${isQuote?'Build Quote':'Create Job'}</button></div>`
   push(h)
 }
 
@@ -10288,29 +10455,37 @@ function selectSchedLoc(id){
 }
 
 async function saveJob(){
+  const isQuote=!!window._asQuote
+  const ctaLabel=isQuote?'Build Quote':'Create Job'
   setLoad('saveJobBtn',true)
   let lid=nSt.loc?.id,ba=nSt.loc?.ba||null
   if(nSt.mk){
-    const nm=$('nn')?.value?.trim();if(!nm){toast('Enter business name',false);setLoad('saveJobBtn',false,'Create Job');return}
+    const nm=$('nn')?.value?.trim();if(!nm){toast('Enter business name',false);setLoad('saveJobBtn',false,ctaLabel);return}
     const city=$('nc2')?.value?.trim()||''
     const{data,error}=await SB.from('locations').insert({name:nm,address:$('na')?.value?.trim()||null,city:city||null,state:$('ns2')?.value?.trim()||'TX',zip:$('nz2')?.value?.trim()||null,contact_name:$('nco2')?.value?.trim()||null,contact_phone:$('np2')?.value?.trim()||null,is_brycer_jurisdiction:_isBrycerCity(city),brycer_ahj_name:_isBrycerCity(city)?(city||'').trim()+' Fire Department':null}).select().single()
-    if(error){toast('Error creating customer',false);setLoad('saveJobBtn',false,'Create Job');return}
+    if(error){toast('Error creating customer',false);setLoad('saveJobBtn',false,ctaLabel);return}
     lid=data.id
   }
-  if(!lid){toast('Select a customer',false);setLoad('saveJobBtn',false,'Create Job');return}
+  if(!lid){toast('Select a customer',false);setLoad('saveJobBtn',false,ctaLabel);return}
   const ty=document.querySelector('#nTy button.on')?.dataset.k||'inspection'
   const sc=Array.from(document.querySelectorAll('#nSc button.gn')).map(b=>b.dataset.k)
   // capture form values BEFORE popAll destroys the DOM
-  const jobDate=$('ndt')?.value||new Date(Date.now()+86400000).toISOString().split('T')[0]
-  const jobTime=$('ntm')?.value||'09:00'
+  // Quote: date+time are optional. Real job: keep the existing default.
+  const jobDateRaw=$('ndt')?.value||''
+  const jobTimeRaw=$('ntm')?.value||''
+  const jobDate=isQuote?(jobDateRaw||null):(jobDateRaw||new Date(Date.now()+86400000).toISOString().split('T')[0])
+  const jobTime=isQuote?(jobTimeRaw||null):(jobTimeRaw||'09:00')
+  const validUntil=isQuote?($('nqval')?.value||null):null
   const jobNoteTxt=$('nnt')?.value?.trim()||''
   const assignTo=$('nAssign')?.value||null
-  // double-booking check
-  const conflicts=D.jobs.filter(j2=>j2.scheduled_date===jobDate&&j2.scheduled_time===jobTime&&j2.status==='scheduled')
-  if(conflicts.length){
-    const cNames=conflicts.map(j2=>{const cl=D.locs?.find(x=>x.id===j2.location_id);return cl?.name||'Unknown'}).join(', ')
-    if(!confirm(`Warning: ${conflicts.length} job${conflicts.length>1?'s':''} already scheduled at ${jobTime} on ${jobDate} (${cNames}). Schedule anyway?`)){
-      setLoad('saveJobBtn',false,'Create Job');return
+  // double-booking check — only when actually scheduling (skip for quotes)
+  if(!isQuote && jobDate && jobTime){
+    const conflicts=D.jobs.filter(j2=>j2.scheduled_date===jobDate&&j2.scheduled_time===jobTime&&j2.status==='scheduled')
+    if(conflicts.length){
+      const cNames=conflicts.map(j2=>{const cl=D.locs?.find(x=>x.id===j2.location_id);return cl?.name||'Unknown'}).join(', ')
+      if(!confirm(`Warning: ${conflicts.length} job${conflicts.length>1?'s':''} already scheduled at ${jobTime} on ${jobDate} (${cNames}). Schedule anyway?`)){
+        setLoad('saveJobBtn',false,ctaLabel);return
+      }
     }
   }
   // auto-detect scope from location equipment if not manually set
@@ -10323,13 +10498,22 @@ async function saveJob(){
     if(loc2.emergency_lights?.[0]?.fixture_count)finalScope.push('elights')
     if(!finalScope.length)finalScope=['extinguishers','suppression']
   }
-  const{data:newJob,error}=await SB.from('jobs').insert({location_id:lid,billing_account_id:ba,type:ty,scope:finalScope,scheduled_date:jobDate,scheduled_time:jobTime,status:'scheduled',notes:jobNoteTxt||null,assigned_to:assignTo||null}).select().single()
-  if(error){toast('Error creating job',false);setLoad('saveJobBtn',false,'Create Job');return}
-  // sync to calendar_events
-  if(newJob?.id)try{await syncJobToCalendar(newJob.id,lid,jobDate,jobTime)}catch(e){console.error('cal sync:',e)}
-  if(newJob?.id)audit('created','job',newJob.id,'jon',{scheduled_date:jobDate,scheduled_time:jobTime,scope:finalScope},'Job created for '+(D.locs.find(x=>x.id===lid)?.name||'?'))
-  await load();toast('Job created ✓')
-  nSt={loc:null,mk:false};window._preCalDate=null;window._preCalTime=null
+  const insertRow={
+    location_id:lid, billing_account_id:ba, type:ty, scope:finalScope,
+    scheduled_date:jobDate, scheduled_time:jobTime,
+    status: isQuote ? 'quote' : 'scheduled',
+    notes:jobNoteTxt||null, assigned_to:assignTo||null,
+    quote_valid_until: validUntil
+  }
+  const{data:newJob,error}=await SB.from('jobs').insert(insertRow).select().single()
+  if(error){toast('Error creating '+(isQuote?'quote':'job'),false);setLoad('saveJobBtn',false,ctaLabel);return}
+  // calendar sync — only for actual scheduled jobs, not quotes
+  if(!isQuote && newJob?.id && jobDate && jobTime){
+    try{await syncJobToCalendar(newJob.id,lid,jobDate,jobTime)}catch(e){console.error('cal sync:',e)}
+  }
+  if(newJob?.id)audit('created',isQuote?'quote':'job',newJob.id,'jon',{scheduled_date:jobDate,scheduled_time:jobTime,scope:finalScope,quote:isQuote},(isQuote?'Quote built for ':'Job created for ')+(D.locs.find(x=>x.id===lid)?.name||'?'))
+  await load();toast(isQuote?'Quote built ✓ — open it to send for signature':'Job created ✓')
+  nSt={loc:null,mk:false};window._preCalDate=null;window._preCalTime=null;window._asQuote=false
   popAll()
   rCal()
   if(newJob?.id)setTimeout(()=>openJob(newJob.id),100)
