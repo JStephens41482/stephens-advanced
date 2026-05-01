@@ -892,7 +892,78 @@ async function callClaudeWithTools({ systemBlocks, messages, toolSchemas, toolCt
     onCost(cost, usageTotal)
   }
 
+  // ─── ACTION HONESTY GUARD ───────────────────────────────────────
+  // Catches the case where Claude says "sent" / "texted" / "scheduled"
+  // / "marked paid" etc. in `finalText` without actually invoking the
+  // corresponding tool. Prompt rule 8a tells the model not to do this,
+  // but the model lies anyway sometimes — this is the server-side
+  // backstop that rewrites the reply when a lie is detected.
+  //
+  // We don't try to "fix" the lie by silently calling the tool — that
+  // could pick the wrong recipient. We replace the false success
+  // claim with an honest "I didn't actually do that — try again with
+  // [specific tool]" message that forces a retry on Jon's next turn.
+  finalText = _enforceActionHonesty(finalText, actionsTaken)
+
   return { text: finalText, usage: usageTotal, actionsTaken, clientHints, turns, latencyMs: totalLatencyMs }
+}
+
+// Map of "verb that implies success" → "tools that prove it actually
+// happened". If the reply contains any of the verbs (case-insensitive)
+// AND none of the corresponding tools were invoked in this turn,
+// rewrite the reply with a flag.
+const _HONESTY_CHECKS = [
+  { verbs: /\b(sent|texted|emailed|messaged|fired off|shot (them|her|him|you) (a )?text|just shot)\b/i,
+    tools: new Set(['send_sms', 'send_email', 'send_review_request', 'send_on_my_way', 'send_contract',
+                    'forward_email', 'reply_all', 'request_remote_signature',
+                    'send_email_with_attachment', 'approve_email_draft']),
+    label: 'send' },
+  { verbs: /\b(scheduled|booked|rescheduled|moved (the |that )?(job|appointment))\b/i,
+    tools: new Set(['schedule_job', 'reschedule_job']),
+    label: 'schedule' },
+  { verbs: /\b(cancell?ed (the )?(job|appointment))\b/i,
+    tools: new Set(['cancel_job']),
+    label: 'cancel' },
+  { verbs: /\b(marked (it )?paid|paid off|paid the invoice)\b/i,
+    tools: new Set(['mark_invoice_paid']),
+    label: 'mark_paid' },
+  { verbs: /\b(voided|deleted (the )?invoice)\b/i,
+    tools: new Set(['void_invoice', 'delete_invoice']),
+    label: 'void/delete invoice' },
+  { verbs: /\b(charged (the |their )?card)\b/i,
+    tools: new Set(['charge_card_on_file']),
+    label: 'charge card' },
+  { verbs: /\b(saved (it )?to memory|locked (it )?in|noted (it )?down|added to memory|stored that)\b/i,
+    tools: new Set(['write_memory']),
+    label: 'memory write' }
+]
+
+function _enforceActionHonesty(text, actionsTaken) {
+  if (!text || typeof text !== 'string') return text
+  const calledTools = new Set((actionsTaken || []).filter(a => a.ok).map(a => a.type))
+  const violations = []
+  for (const check of _HONESTY_CHECKS) {
+    if (check.verbs.test(text)) {
+      // Did any of the proving tools actually fire successfully?
+      let proved = false
+      for (const t of check.tools) {
+        if (calledTools.has(t)) { proved = true; break }
+      }
+      if (!proved) violations.push(check.label)
+    }
+  }
+  if (!violations.length) return text
+  // Log it so we can audit how often this catches the model lying.
+  console.warn('[riker-honesty] caught lie. labels=', violations,
+               'reply_preview=', text.slice(0, 140),
+               'actions=', Array.from(calledTools).slice(0, 10))
+  // Prepend a corrective so Jon sees the truth. We don't drop the
+  // model's text entirely (it might contain useful context), just put
+  // a clear warning above it.
+  const banner = `⚠️ HONESTY CHECK FAILED: I claimed to do something (${violations.join(', ')}) `
+    + `without actually calling the tool. The action did NOT happen. `
+    + `Ask me again with more specifics so I can actually invoke the right tool.\n\n— Original reply below (do not trust action claims): —\n\n`
+  return banner + text
 }
 
 // Trim a tool result so the interactions log stays compact

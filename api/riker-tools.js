@@ -4013,20 +4013,37 @@ const send_on_my_way = {
 const send_review_request = {
   schema: {
     name: 'send_review_request',
-    description: "Text the customer at a job site a Google review link. Use when Jon says 'send [customer] a review link', 'ask [customer] for a review', or 'send the review link' (referring to the most recent completed job). Looks up the location's contact_phone and sends a friendly request with Stephens Advanced's Google review short URL.",
+    description: "Text a Google review link via Twilio. Default mode: looks up the location's contact_phone from job_id / location_id / location_name and texts the customer. Test mode: pass to_phone to send the same review-link SMS to ANY phone (typically Jon's own number for end-to-end verification). When Jon says 'send me a review link' or 'send the review link to my phone', use to_phone='+12149944799'. The Twilio SID returned proves the send actually happened.",
     input_schema: {
       type: 'object',
       properties: {
-        job_id: { type: 'string', description: "Job UUID. Preferred when known — guarantees the right customer/phone. If omitted, you must pass location_id or location_name." },
-        location_id: { type: 'string', description: 'Location UUID. Use when no job_id is available.' },
-        location_name: { type: 'string', description: "Fuzzy client name, e.g. 'Bobby's Diner'. Resolves to a location automatically." }
+        job_id: { type: 'string', description: "Job UUID. Preferred when known — guarantees the right customer/phone. Omit if using to_phone." },
+        location_id: { type: 'string', description: 'Location UUID. Use when no job_id is available. Omit if using to_phone.' },
+        location_name: { type: 'string', description: "Fuzzy client name, e.g. 'Bobby's Diner'. Resolves to a location automatically. Omit if using to_phone." },
+        to_phone: { type: 'string', description: "Override recipient phone in E.164 (+12149944799). Use when the user asks to send the review link to a specific number — typically Jon's own for testing. When set, customer-resolution params are ignored." }
       }
     }
   },
   async handler(input, ctx) {
     const REVIEW_URL = 'https://g.page/r/CVoOkNkSCkSkEAI/review'
 
-    // Resolve location → contact_phone, contact_name, business name
+    // Test path: explicit to_phone overrides customer resolution. Greeting
+    // and signature stay the same as the customer-facing copy so what Jon
+    // sees on his test phone matches what a real customer would receive.
+    if (input.to_phone) {
+      let to = String(input.to_phone).replace(/[\s\-\(\)\.]/g, '')
+      if (!to.startsWith('+')) to = '+1' + to.replace(/^1/, '')
+      if (!/^\+\d{10,15}$/.test(to)) return { error: `Invalid to_phone: ${input.to_phone}` }
+      const msg = `Hi — Jon with Stephens Advanced. Thanks for letting us out today! If you've got 30 seconds, we'd really appreciate a quick review on Google: ${REVIEW_URL}\n\nThank you!`
+      try {
+        const sid = await sendSMSRaw(to, msg)
+        return { ok: true, sent_to: to, mode: 'test', message: msg, sid }
+      } catch (e) {
+        return { error: 'SMS send failed: ' + e.message }
+      }
+    }
+
+    // Production path: resolve location → contact_phone, contact_name, business name
     let loc = null
     if (input.job_id) {
       const { data: job } = await ctx.supabase.from('jobs')
@@ -4050,7 +4067,7 @@ const send_review_request = {
       if (locs.length > 1) return { error: `Ambiguous — ${locs.length} matches for "${input.location_name}". Pass location_id explicitly.`, candidates: locs.map(l => ({ id: l.id, name: l.name })) }
       loc = locs[0]
     } else {
-      return { error: 'Provide job_id, location_id, or location_name.' }
+      return { error: 'Provide job_id, location_id, location_name, or to_phone.' }
     }
 
     if (!loc) return { error: 'Location not found' }
