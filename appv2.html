@@ -397,6 +397,7 @@ body.not-owner .del-btn{display:none!important}
   <div class="vw" id="vCust"><div class="vw-pad" id="custC"></div></div>
   <div class="vw" id="vMoney"><div class="vw-pad" id="moneyC"></div></div>
   <div class="vw" id="vTechs"><div class="vw-pad" id="techsC"></div></div>
+  <div class="vw" id="vCosts"><div class="vw-pad" id="costsC"></div></div>
   <button class="fab" onclick="openNew()"><span class="fab-plus">+</span> New</button>
   <div class="nav">
     <button class="on" data-v="vCal" onclick="go(this)"><span class="ni">📅</span><span class="nt">Today</span></button>
@@ -404,6 +405,7 @@ body.not-owner .del-btn{display:none!important}
     <button data-v="vCust" onclick="go(this)"><span class="ni">👤</span><span class="nt">Clients</span></button>
     <button id="navMoney" data-v="vMoney" onclick="go(this)"><span class="ni">💰</span><span class="nt">Money</span></button>
     <button id="navTechs" data-v="vTechs" onclick="go(this)"><span class="ni">👥</span><span class="nt">Crew</span></button>
+    <button id="navCosts" data-v="vCosts" onclick="go(this)"><span class="ni">🧾</span><span class="nt">Costs</span></button>
   </div>
 </div>
 <button class="chat-fab" onclick="openChat()"><span class="chat-fab-icon">💬</span> Riker</button>
@@ -733,7 +735,7 @@ async function load(){
   if(unpaidJobIds.length)orParts.push(`id.in.(${unpaidJobIds.join(',')})`)
   jobsQuery=jobsQuery.or(orParts.join(','))
 
-  const[j,l,i,b,r,ci,td2,mz,bq,tk,sr,pt,ce,ct,cl2,rch,pr,nf,cn,jLast,iLast,pSig]=await Promise.all([
+  const[j,l,i,b,r,ci,td2,mz,bq,tk,sr,pt,ce,ct,cl2,rch,pr,nf,cn,jLast,iLast,pSig,exp]=await Promise.all([
     jobsQuery,
     // Locations: explicit columns only. PR #9 derives equipment from invoice
     // lines (see post-load shadowing below) so no nested equipment selects.
@@ -766,7 +768,12 @@ async function load(){
     // payload (it's a heavy column), so we ask the DB directly.
     SB.from('jobs').select('id,job_number,location_id,completed_at,scope').eq('status','completed')
       .gte('completed_at',new Date(Date.now()-14*86400000).toISOString())
-      .is('signature_data',null).is('deleted_at',null).order('completed_at',{ascending:false}).limit(50)
+      .is('signature_data',null).is('deleted_at',null).order('completed_at',{ascending:false}).limit(50),
+    // Expenses (Costs tab). 90-day window keeps the dashboard payload bounded;
+    // historical drill-down reloads on demand from openExpenseHistory().
+    SB.from('expenses').select('*').is('deleted_at',null)
+      .gte('date',new Date(Date.now()-90*86400000).toISOString().split('T')[0])
+      .order('date',{ascending:false}).limit(500)
   ])
   if(j.error)console.error('jobs error:',j.error)
   if(l.error)console.error('locations error:',l.error)
@@ -857,6 +864,7 @@ async function load(){
   D.pricingRules=pr.data||[]
   D.notifications=nf.data||[]
   D.contracts=cn.data||[]
+  D.expenses=exp?.data||[]
   // Build {location_id: 'YYYY-MM-DD'} map of latest service across ALL history
   // (using the most recent of completed_at on jobs and date on invoices).
   // The customer list reads this so older customers no longer show "No service yet".
@@ -1685,7 +1693,7 @@ function go(btn){
   if(typeof popAll==='function')popAll()
   document.querySelectorAll('.vw').forEach(e=>e.classList.remove('on'));$(v).classList.add('on')
   document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('on'));btn.classList.add('on')
-  if(v==='vCal')rCal();else if(v==='vJobs')rJobs();else if(v==='vCust'){load().then(rCust)}else if(v==='vTechs')rTechs();else rMoney()
+  if(v==='vCal')rCal();else if(v==='vJobs')rJobs();else if(v==='vCust'){load().then(rCust)}else if(v==='vTechs')rTechs();else if(v==='vCosts')rCosts();else rMoney()
 }
 
 function toast(m,ok=true){
@@ -2568,6 +2576,364 @@ function rTechs(){
     })
   }
   $('techsC').innerHTML=h
+}
+
+// ═══════════════════════════════════════════════════════════════
+// COSTS / BILLS — owner-only expense tracker
+// ═══════════════════════════════════════════════════════════════
+// Tracks every dollar Jon spends so he can see real margins per job
+// (revenue from invoices minus cost from expenses linked to that job).
+// Manual entry + receipt photo capture in v1; OCR + auto-gas in v2.
+
+const EXPENSE_CATEGORIES = [
+  {value:'gas',          label:'⛽ Gas / Fuel'},
+  {value:'parts',        label:'🔧 Parts / Supplies'},
+  {value:'vendor_bill',  label:'🧾 Vendor Bill'},
+  {value:'equipment',    label:'🛠 Equipment'},
+  {value:'software',     label:'💻 Software / SaaS'},
+  {value:'vehicle',      label:'🚐 Vehicle (oil, tires, repair)'},
+  {value:'insurance',    label:'🛡 Insurance'},
+  {value:'phone',        label:'📞 Phone / Internet'},
+  {value:'meal',         label:'🍔 Meal'},
+  {value:'lodging',      label:'🏨 Lodging'},
+  {value:'tolls',        label:'🛣 Tolls / Parking'},
+  {value:'office',       label:'📎 Office Supplies'},
+  {value:'other',        label:'• Other'}
+]
+
+function _expenseCatLabel(v){return (EXPENSE_CATEGORIES.find(c=>c.value===v)||{label:v}).label}
+
+// Sum expenses linked to a specific job. Used by openJob (per-job cost
+// section) and by getJobMargin() if/when we add P&L per job.
+function _jobCostTotal(jobId){
+  if(!jobId)return 0
+  return (D.expenses||[]).filter(e=>e.job_id===jobId&&!e.deleted_at).reduce((s,e)=>s+(+e.amount||0),0)
+}
+
+function rCosts(){
+  const exps=(D.expenses||[]).filter(e=>!e.deleted_at)
+  const today=td()
+  const weekAgo=new Date(Date.now()-7*86400000).toISOString().split('T')[0]
+  const monthAgo=new Date(Date.now()-30*86400000).toISOString().split('T')[0]
+
+  const sumToday=exps.filter(e=>e.date===today).reduce((s,e)=>s+(+e.amount||0),0)
+  const sumWeek=exps.filter(e=>e.date>=weekAgo).reduce((s,e)=>s+(+e.amount||0),0)
+  const sumMonth=exps.filter(e=>e.date>=monthAgo).reduce((s,e)=>s+(+e.amount||0),0)
+
+  // Group by date for the timeline list
+  const byDate={}
+  exps.forEach(e=>{
+    const d=e.date||td()
+    if(!byDate[d])byDate[d]=[]
+    byDate[d].push(e)
+  })
+  const dateKeys=Object.keys(byDate).sort().reverse()
+
+  let h=`
+    <!-- TOTALS STRIP -->
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <div style="flex:1;padding:12px;background:var(--c1);border:1px solid var(--b1);border-radius:var(--rs);text-align:center">
+        <div style="font-size:18px;font-weight:800;color:var(--w);font-variant-numeric:tabular-nums">${fmt(sumToday)}</div>
+        <div style="font-size:10px;color:var(--g2);text-transform:uppercase;letter-spacing:.8px;margin-top:2px">Today</div>
+      </div>
+      <div style="flex:1;padding:12px;background:var(--c1);border:1px solid var(--b1);border-radius:var(--rs);text-align:center">
+        <div style="font-size:18px;font-weight:800;color:var(--w);font-variant-numeric:tabular-nums">${fmt(sumWeek)}</div>
+        <div style="font-size:10px;color:var(--g2);text-transform:uppercase;letter-spacing:.8px;margin-top:2px">7d</div>
+      </div>
+      <div style="flex:1;padding:12px;background:var(--c1);border:1px solid var(--b1);border-radius:var(--rs);text-align:center">
+        <div style="font-size:18px;font-weight:800;color:var(--w);font-variant-numeric:tabular-nums">${fmt(sumMonth)}</div>
+        <div style="font-size:10px;color:var(--g2);text-transform:uppercase;letter-spacing:.8px;margin-top:2px">30d</div>
+      </div>
+    </div>
+
+    <!-- ACTIONS -->
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <button class="btn-p" style="flex:2" onclick="openExpenseEntry({snap:true})">📷 Snap a Bill</button>
+      <button class="btn-dim" style="flex:1" onclick="openExpenseEntry({})">+ Manual</button>
+    </div>`
+
+  if(!exps.length){
+    h+=`<div class="ey"><div class="ey-i">🧾</div><div class="ey-t">No expenses logged yet.<br><br><span style="font-size:12px;color:var(--g2)">Tap Snap a Bill to log a receipt or + Manual for cash entries.</span></div></div>`
+  } else {
+    dateKeys.forEach(dk=>{
+      const dayExps=byDate[dk]
+      const dayTotal=dayExps.reduce((s,e)=>s+(+e.amount||0),0)
+      const dateFmt=fmtFullDate(dk)
+      h+=`<div style="margin-top:14px"><div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;padding:0 4px">
+        <span style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--g1)">${dateFmt}</span>
+        <span style="font-size:13px;font-weight:700;color:var(--w);font-variant-numeric:tabular-nums">${fmt(dayTotal)}</span>
+      </div>`
+      dayExps.forEach(e=>{
+        const job=e.job_id?D.jobs.find(j=>j.id===e.job_id):null
+        const loc=e.location_id?D.locs.find(l=>l.id===e.location_id):(job?D.locs.find(l=>l.id===job.location_id):null)
+        const linkLabel=loc?(' · '+esc(loc.name)):(job?(' · job '+(job.job_number||job.id.slice(0,8))):'')
+        h+=`<div onclick="openExpenseEntry({id:'${e.id}'})" style="display:flex;gap:10px;align-items:center;padding:10px 12px;margin-bottom:4px;background:var(--c1);border:1px solid var(--b1);border-radius:var(--rs);cursor:pointer">
+          ${e.photo_url?`<img src="${esc(e.photo_url)}" style="width:44px;height:44px;object-fit:cover;border-radius:6px;flex-shrink:0;border:1px solid var(--b1)">`:`<div style="width:44px;height:44px;border-radius:6px;background:var(--c2);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">${_expenseCatLabel(e.category).split(' ')[0]}</div>`}
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline">
+              <span style="font-size:13px;font-weight:700;color:var(--w);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(e.vendor||e.description||_expenseCatLabel(e.category))}</span>
+              <span style="font-size:14px;font-weight:800;color:var(--w);font-variant-numeric:tabular-nums;flex-shrink:0">${fmt(+e.amount||0)}</span>
+            </div>
+            <div style="font-size:11px;color:var(--g1);margin-top:2px;display:flex;gap:4px;align-items:center;flex-wrap:wrap">
+              <span>${_expenseCatLabel(e.category)}</span>${linkLabel}
+              ${e.source==='photo_capture'?'<span style="padding:1px 5px;border-radius:3px;font-size:9px;font-weight:800;background:var(--infos);color:var(--info)">PHOTO</span>':''}
+              ${e.reimbursable&&!e.reimbursed?'<span style="padding:1px 5px;border-radius:3px;font-size:9px;font-weight:800;background:var(--warns);color:var(--warn)">REIMBURSE</span>':''}
+            </div>
+          </div>
+        </div>`
+      })
+      h+=`</div>`
+    })
+  }
+  $('costsC').innerHTML=h
+}
+
+// Holds the in-progress photo (base64) between snap and save
+let _expensePhotoB64=null
+
+async function openExpenseEntry(opts){
+  opts=opts||{}
+  const editing=opts.id?(D.expenses||[]).find(e=>e.id===opts.id):null
+  _expensePhotoB64=null  // reset between opens
+  const today=td()
+  // If opts.jobId is passed (from openJob "+ Log a cost" button), pre-link.
+  const e=editing||{date:today,category:'gas',source:'manual',tax_deductible:true,job_id:opts.jobId||null}
+  const jobOpts=[`<option value="">— Not job-related —</option>`].concat(
+    (D.jobs||[]).filter(j=>j.status!=='cancelled').slice(0,200).map(j=>{
+      const loc=D.locs.find(l=>l.id===j.location_id)
+      const lbl=`${j.job_number||j.id.slice(0,8)} · ${loc?.name||'?'} · ${j.scheduled_date||'no date'}`
+      return `<option value="${j.id}"${e.job_id===j.id?' selected':''}>${esc(lbl)}</option>`
+    })
+  ).join('')
+  const catOpts=EXPENSE_CATEGORIES.map(c=>`<option value="${c.value}"${e.category===c.value?' selected':''}>${c.label}</option>`).join('')
+
+  push(`<div class="ov-hdr">
+    <button class="ov-back" onclick="pop()">‹</button>
+    <div class="ov-title">${editing?'Edit Expense':'New Expense'}</div>
+    ${editing?`<button class="del-btn" onclick="if(confirm('Delete this expense?'))delExpense('${editing.id}')">🗑</button>`:'<div style="width:60px"></div>'}
+  </div><div class="ov-body">
+
+    <!-- PHOTO -->
+    <div id="exp-photo-zone" style="margin-bottom:14px;text-align:center">
+      ${e.photo_url?`<img id="exp-photo-preview" src="${esc(e.photo_url)}" style="max-width:100%;max-height:240px;border-radius:var(--rs);border:1px solid var(--b1)">`:'<div id="exp-photo-preview" style="padding:30px 20px;background:var(--c1);border:1.5px dashed var(--b1);border-radius:var(--rs);color:var(--g2);font-size:13px">No photo yet</div>'}
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <label style="flex:1;padding:10px;border-radius:var(--rs);background:var(--c2);border:1px solid var(--b1);color:var(--w2);font-size:12px;font-weight:700;cursor:pointer;text-align:center;position:relative;overflow:hidden">📷 Snap Receipt
+          <input type="file" accept="image/*" capture="environment" style="position:absolute;opacity:0;width:0;height:0" onchange="handleExpensePhoto(event)">
+        </label>
+        <label style="flex:1;padding:10px;border-radius:var(--rs);background:var(--c2);border:1px solid var(--b1);color:var(--w2);font-size:12px;font-weight:700;cursor:pointer;text-align:center;position:relative;overflow:hidden">📁 Upload
+          <input type="file" accept="image/*" style="position:absolute;opacity:0;width:0;height:0" onchange="handleExpensePhoto(event)">
+        </label>
+      </div>
+    </div>
+
+    <!-- AMOUNT -->
+    <div class="fg"><label class="fg-l">Amount *</label>
+      <input id="exp-amount" type="number" step="0.01" inputmode="decimal" placeholder="0.00" value="${e.amount!=null?e.amount:''}" style="font-size:18px;font-weight:700">
+    </div>
+
+    <!-- CATEGORY -->
+    <div class="fg"><label class="fg-l">Category</label>
+      <select id="exp-category">${catOpts}</select>
+    </div>
+
+    <!-- VENDOR -->
+    <div class="fg"><label class="fg-l">Vendor / Where</label>
+      <input id="exp-vendor" placeholder="e.g. Shell, Home Depot, Mauros Grill" value="${esc(e.vendor||'')}">
+    </div>
+
+    <!-- DATE -->
+    <div class="fg"><label class="fg-l">Date</label>
+      <input id="exp-date" type="date" value="${esc(e.date||today)}">
+    </div>
+
+    <!-- LINK TO JOB -->
+    <div class="fg"><label class="fg-l">Link to Job (so it counts against that job's cost)</label>
+      <select id="exp-job">${jobOpts}</select>
+    </div>
+
+    <!-- DESCRIPTION / NOTES -->
+    <div class="fg"><label class="fg-l">Description / Notes</label>
+      <textarea id="exp-notes" placeholder="What was this for?" style="min-height:60px">${esc(e.description||e.notes||'')}</textarea>
+    </div>
+
+    <!-- PAID VIA -->
+    <div class="fg"><label class="fg-l">Paid Via</label>
+      <input id="exp-paid-via" placeholder="cash / Visa 4111 / ACH / check 1234" value="${esc(e.paid_via||'')}">
+    </div>
+
+    <!-- TOGGLES -->
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <label style="flex:1;display:flex;align-items:center;gap:6px;padding:10px;border-radius:var(--rs);background:var(--c2);border:1px solid var(--b1);font-size:12px;cursor:pointer">
+        <input id="exp-deductible" type="checkbox" ${e.tax_deductible!==false?'checked':''}> Tax deductible
+      </label>
+      <label style="flex:1;display:flex;align-items:center;gap:6px;padding:10px;border-radius:var(--rs);background:var(--c2);border:1px solid var(--b1);font-size:12px;cursor:pointer">
+        <input id="exp-reimbursable" type="checkbox" ${e.reimbursable?'checked':''}> Reimbursable
+      </label>
+    </div>
+
+    <button class="btn-p" id="exp-save-btn" onclick="saveExpense('${editing?editing.id:''}')">Save Expense</button>
+    <button class="btn-dim" style="margin-top:8px" onclick="pop()">Cancel</button>
+  </div>`)
+}
+
+async function handleExpensePhoto(ev){
+  const file=ev.target.files[0]; if(!file)return
+  toast('Resizing photo…')
+  try{
+    const b64=await resizePhoto(file,1600,0.85)
+    _expensePhotoB64=b64
+    const prev=document.getElementById('exp-photo-preview')
+    if(prev){
+      // Replace placeholder div with img if needed
+      if(prev.tagName.toLowerCase()!=='img'){
+        const img=document.createElement('img')
+        img.id='exp-photo-preview'
+        img.src=b64
+        img.style='max-width:100%;max-height:240px;border-radius:var(--rs);border:1px solid var(--b1)'
+        prev.replaceWith(img)
+      } else {
+        prev.src=b64
+      }
+    }
+    toast('Photo ready · saves with the expense')
+  }catch(e){console.error('expense photo:',e);toast('Photo error: '+e.message,false)}
+}
+
+async function saveExpense(existingId){
+  const amount=parseFloat(($('exp-amount')||{}).value||'0')
+  if(!amount||isNaN(amount)||amount<0){toast('Enter a valid amount',false);return}
+  const row={
+    amount,
+    category: ($('exp-category')||{}).value || 'other',
+    vendor: ($('exp-vendor')||{}).value || null,
+    date: ($('exp-date')||{}).value || td(),
+    job_id: (($('exp-job')||{}).value || '') || null,
+    description: ($('exp-notes')||{}).value || null,
+    paid_via: ($('exp-paid-via')||{}).value || null,
+    tax_deductible: !!($('exp-deductible')||{}).checked,
+    reimbursable: !!($('exp-reimbursable')||{}).checked,
+    tech_id: window._me?.tech?.id || null,
+    source: _expensePhotoB64 ? 'photo_capture' : 'manual',
+    updated_at: new Date().toISOString()
+  }
+  // Auto-fill location_id from the linked job
+  if(row.job_id){
+    const j=D.jobs.find(x=>x.id===row.job_id)
+    if(j?.location_id) row.location_id=j.location_id
+  }
+  setLoad('exp-save-btn',true)
+  let expId=existingId||null
+
+  // Upload photo first (if any) so we have the URL to store on the row.
+  // Storage path: expense-receipts/<yyyy>/<mm>/<uuid>.jpg
+  if(_expensePhotoB64){
+    try{
+      const blob=dataURItoBlob(_expensePhotoB64)
+      const dt=new Date(row.date+'T12:00:00')
+      const yr=dt.getFullYear(), mo=String(dt.getMonth()+1).padStart(2,'0')
+      const fname=(crypto.randomUUID?crypto.randomUUID():(Date.now()+'-'+Math.random().toString(36).slice(2,10)))+'.jpg'
+      const path=`${yr}/${mo}/${fname}`
+      const{error:upErr}=await SB.storage.from('expense-receipts').upload(path,blob,{contentType:'image/jpeg',upsert:false})
+      if(upErr)throw new Error(upErr.message)
+      const{data:pub}=SB.storage.from('expense-receipts').getPublicUrl(path)
+      row.photo_url=pub?.publicUrl||null
+      row.photo_path=path
+    }catch(e){
+      console.error('expense photo upload:',e)
+      toast('Photo upload failed: '+e.message,false)
+      setLoad('exp-save-btn',false)
+      return
+    }
+  }
+
+  if(existingId){
+    const{error}=await SB.from('expenses').update(row).eq('id',existingId)
+    if(error){setLoad('exp-save-btn',false);toast('Save failed: '+error.message,false);return}
+    expId=existingId
+  } else {
+    const{data:ins,error}=await SB.from('expenses').insert(row).select().single()
+    if(error){setLoad('exp-save-btn',false);toast('Save failed: '+error.message,false);return}
+    expId=ins.id
+  }
+
+  audit(existingId?'updated':'created','expense',expId,'jon',{amount:row.amount,category:row.category,job_id:row.job_id||null},`Expense ${existingId?'updated':'logged'}: ${fmt(row.amount)} · ${row.category}${row.vendor?' · '+row.vendor:''}`)
+  await load()
+  pop()
+  rCosts()
+  toast('✓ Expense saved')
+}
+
+async function delExpense(id){
+  // Soft-delete; the storage object stays so historical photos don't 404
+  const{error}=await SB.from('expenses').update({deleted_at:new Date().toISOString()}).eq('id',id)
+  if(error){toast('Delete failed: '+error.message,false);return}
+  audit('deleted','expense',id,'jon',null,'Expense soft-deleted')
+  await load()
+  pop()
+  rCosts()
+  toast('Expense deleted')
+}
+
+// Drill-down: list every expense linked to a specific job. Reached from the
+// Costs section inside openJob.
+function openJobCosts(jobId){
+  const j=D.jobs.find(x=>x.id===jobId)
+  const loc=j?D.locs.find(l=>l.id===j.location_id):null
+  const exps=(D.expenses||[]).filter(e=>e.job_id===jobId&&!e.deleted_at)
+    .sort((a,b)=>(b.date||'').localeCompare(a.date||''))
+  const total=exps.reduce((s,e)=>s+(+e.amount||0),0)
+  // Approx revenue: use the linked invoice's total (if any). Margin = rev - cost.
+  const inv=D.invs.find(i=>i.job_id===jobId)
+  const rev=inv?(+inv.total||0):0
+  const margin=rev-total
+
+  let h=`<div class="ov-hdr">
+    <button class="ov-back" onclick="pop()">‹</button>
+    <div class="ov-title">Job Costs</div>
+    <div style="width:60px"></div>
+  </div><div class="ov-body">
+
+    <div style="background:var(--c1);border:1px solid var(--b1);border-radius:var(--r);padding:12px 14px;margin-bottom:14px">
+      <div style="font-size:14px;font-weight:700;color:var(--w)">${esc(loc?.name||'Job')}</div>
+      <div style="font-size:11px;color:var(--g1);margin-top:2px">${j?.job_number||jobId.slice(0,8)} · ${j?.scheduled_date?fmtFullDate(j.scheduled_date):'unscheduled'}</div>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <div style="flex:1;padding:10px;background:var(--c1);border:1px solid var(--b1);border-radius:var(--rs);text-align:center">
+        <div style="font-size:14px;font-weight:800;color:var(--ok);font-variant-numeric:tabular-nums">${fmt(rev)}</div>
+        <div style="font-size:9px;color:var(--g2);text-transform:uppercase;letter-spacing:.8px;margin-top:2px">Revenue</div>
+      </div>
+      <div style="flex:1;padding:10px;background:var(--c1);border:1px solid var(--b1);border-radius:var(--rs);text-align:center">
+        <div style="font-size:14px;font-weight:800;color:var(--bad);font-variant-numeric:tabular-nums">-${fmt(total)}</div>
+        <div style="font-size:9px;color:var(--g2);text-transform:uppercase;letter-spacing:.8px;margin-top:2px">Cost</div>
+      </div>
+      <div style="flex:1;padding:10px;background:var(--c1);border:1px solid ${margin>=0?'var(--ok)':'var(--bad)'};border-radius:var(--rs);text-align:center">
+        <div style="font-size:14px;font-weight:800;color:${margin>=0?'var(--ok)':'var(--bad)'};font-variant-numeric:tabular-nums">${margin<0?'-':''}${fmt(Math.abs(margin))}</div>
+        <div style="font-size:9px;color:var(--g2);text-transform:uppercase;letter-spacing:.8px;margin-top:2px">Margin</div>
+      </div>
+    </div>
+
+    <button class="btn-p" style="margin-bottom:14px" onclick="openExpenseEntry({jobId:'${jobId}'})">+ Log Another Cost</button>`
+
+  if(!exps.length){
+    h+=`<div class="ey"><div class="ey-i">🧾</div><div class="ey-t">No costs logged for this job.</div></div>`
+  } else {
+    exps.forEach(e=>{
+      h+=`<div onclick="pop();openExpenseEntry({id:'${e.id}'})" style="display:flex;gap:10px;align-items:center;padding:10px 12px;margin-bottom:4px;background:var(--c1);border:1px solid var(--b1);border-radius:var(--rs);cursor:pointer">
+        ${e.photo_url?`<img src="${esc(e.photo_url)}" style="width:44px;height:44px;object-fit:cover;border-radius:6px;flex-shrink:0;border:1px solid var(--b1)">`:`<div style="width:44px;height:44px;border-radius:6px;background:var(--c2);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">${_expenseCatLabel(e.category).split(' ')[0]}</div>`}
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline">
+            <span style="font-size:13px;font-weight:700;color:var(--w);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(e.vendor||e.description||_expenseCatLabel(e.category))}</span>
+            <span style="font-size:14px;font-weight:800;color:var(--w);font-variant-numeric:tabular-nums;flex-shrink:0">${fmt(+e.amount||0)}</span>
+          </div>
+          <div style="font-size:11px;color:var(--g1);margin-top:2px">${_expenseCatLabel(e.category)} · ${e.date||''}</div>
+        </div>
+      </div>`
+    })
+  }
+
+  h+=`</div>`
+  push(h)
 }
 
 function openAddTech(){
@@ -3594,6 +3960,23 @@ async function openJob(id){
     </div>
     <div id="job-activity-${j.id}" style="font-size:12px"></div>
   </div>`
+
+  // COSTS LINKED TO THIS JOB — owner-only. Sum of expenses where job_id=j.id,
+  // tap-target opens the per-job expense list. "+ Cost" jumps straight into a
+  // new-expense overlay pre-linked to this job. Visible to owner only because
+  // employees shouldn't see what Jon spent.
+  if(_isOwner()){
+    const jobExps=(D.expenses||[]).filter(e=>e.job_id===j.id&&!e.deleted_at)
+    const jobCost=jobExps.reduce((s,e)=>s+(+e.amount||0),0)
+    h+=`<div class="ds owner-only" onclick="openJobCosts('${j.id}')" style="cursor:pointer">
+      <div class="ds-t" style="display:flex;justify-content:space-between;align-items:center">
+        <span>Costs ${jobExps.length?'· '+jobExps.length:''}</span>
+        <span style="font-size:13px;font-weight:800;color:${jobCost>0?'var(--bad)':'var(--g2)'};font-variant-numeric:tabular-nums">${jobCost?'-'+fmt(jobCost):'$0.00'}</span>
+      </div>
+      ${jobExps.length?`<div style="font-size:11px;color:var(--g1);margin-top:4px">${jobExps.slice(0,3).map(e=>esc(e.vendor||_expenseCatLabel(e.category))+' '+fmt(+e.amount||0)).join(' · ')}${jobExps.length>3?' · …':''}</div>`:'<div style="font-size:11px;color:var(--g2);margin-top:4px">No costs logged for this job</div>'}
+      <button onclick="event.stopPropagation();openExpenseEntry({jobId:'${j.id}'})" style="margin-top:8px;width:100%;padding:8px;border-radius:var(--rs);background:transparent;border:1px dashed var(--b1);color:var(--fire);font-size:12px;font-weight:700;cursor:pointer">+ Log a cost for this job</button>
+    </div>`
+  }
 
   // Extinguisher status removed — handled in extinguisher report
 
@@ -12420,8 +12803,10 @@ function applyOwnerGates(){
   const isOwner = _isOwner()
   const navMoney=document.getElementById('navMoney')
   const navTechs=document.getElementById('navTechs')
+  const navCosts=document.getElementById('navCosts')
   if(navMoney)navMoney.style.display=isOwner?'':'none'
   if(navTechs)navTechs.style.display=isOwner?'':'none'
+  if(navCosts)navCosts.style.display=isOwner?'':'none'
   // Sweep any rendered .owner-only elements.
   document.querySelectorAll('.owner-only').forEach(el=>{
     el.style.display=isOwner?'':'none'
