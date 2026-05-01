@@ -10966,9 +10966,18 @@ async function openSuppReport(jobId,sysId,preLocation){
   let checkState={} // id -> 'yes'|'no'|'na'
   checks.forEach((_,i)=>checkState[i]='')
 
-  // init state BEFORE building template (template reads these)
+  // init state BEFORE building template (template reads these).
+  // Per Jon (2026-04-30): items #7 ("Has system been discharged? report
+  // same") and #28 ("Secondary system operational") should NOT default to
+  // green-checked — both are conditional and should be a deliberate tap.
+  // Indexes are 0-based, so #7 → 6 and #28 → 27.
+  const NO_DEFAULT_YES = new Set([6, 27])
   window._rptCheckState=prev.checks||{}
-  checks.forEach((_,i)=>{if(window._rptCheckState[i]===undefined)window._rptCheckState[i]='yes'})
+  checks.forEach((_,i)=>{
+    if(window._rptCheckState[i]===undefined){
+      window._rptCheckState[i] = NO_DEFAULT_YES.has(i) ? '' : 'yes'
+    }
+  })
   window._rptServiceType=prev.serviceType||'semi'
   window._rptFuelType=prev.fuelType||''
 
