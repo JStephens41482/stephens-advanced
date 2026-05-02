@@ -155,12 +155,12 @@ module.exports = async function handler(req, res) {
       // (vs a completion signature) so he knows what to do next: a quote
       // approval = the job is now scheduled and needs to land on his route;
       // a completion = the work's done, sig captured, ready to invoice.
-      const subject = convertedQuote ? `✅ ${locName} approved the quote` : `✍️ ${locName} just signed`
+      const subject = convertedQuote ? `✅ ${locName} approved the quote — pick a date` : `✍️ ${locName} just signed`
       const payLabel = payment_method ? paymentLabel(payment_method, check_number) : ''
       const opts = convertedQuote ? {
-        headline: 'Quote approved',
+        headline: 'Quote approved — pick a visit date',
         subheadline: 'Stephens Advanced &mdash; quote → scheduled',
-        intro: `${signed_by_name} at ${locName} approved the quote. The job is now on the schedule — open it to confirm the visit time.`,
+        intro: `${signed_by_name} at ${locName} approved the quote. It's now a scheduled job in the app — open it and tap "TAP TO SCHEDULE" to lock in a visit date that works for both of you.`,
       } : {
         headline: 'Customer signed',
         subheadline: 'Stephens Advanced &mdash; offsite signer',
@@ -191,7 +191,7 @@ module.exports = async function handler(req, res) {
         const auth = Buffer.from(sid + ':' + twToken).toString('base64')
         const payNoteSms = payment_method ? ` · ${paymentLabel(payment_method, check_number)}` : ''
         const smsBody = convertedQuote
-          ? `${signed_by_name} approved the quote at ${locName}. Job is now on the schedule — open the app to confirm time.`
+          ? `${signed_by_name} approved the quote at ${locName}. Open the app & pick a visit date.`
           : `${signed_by_name} just signed for ${locName} (${invStr})${payNoteSms}.`
         const params = new URLSearchParams({
           To: '+12149944799',

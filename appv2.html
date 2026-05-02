@@ -3895,7 +3895,7 @@ function openCalDay(ds){
 function schedFromCal(date,time){
   window._preCalDate=date
   window._preCalTime=time||null
-  openSchedJob()
+  openSchedJob({asQuote:false})
 }
 
 function rJobsList(q){
@@ -4392,40 +4392,41 @@ async function openJob(id){
   h+=`</div>`
 
   if(isActive){
-    // checklist flags above Complete button — reactive to line item changes
-    h+=`<div id="job-checklist-${j.id}" style="padding:12px 0"></div>`
+    // For non-quote jobs: render the Build Invoice / Kitchen Hood Report
+    // checklist gates. QUOTES skip this entirely — those flags are about
+    // the work being done, not about pricing the proposal.
+    if(j.status !== 'quote'){
+      h+=`<div id="job-checklist-${j.id}" style="padding:12px 0"></div>`
+      setTimeout(()=>updateJobChecklist(),150)
+    }
     window._activeJobId=j.id
     window._activeJobLoc=l
     _jobDataDirty=false
     startJobAutoSave()
-    setTimeout(()=>updateJobChecklist(),150)
 
     // For QUOTES: replace the Review & Finalize CTA with quote-specific
     // actions — Send for Signature (remote), Get Signature Now (in-person
     // pad), or Mark Approved Manually. Once approved the quote flips to
     // status='scheduled' and the rest of the existing flow takes over.
     if(j.status==='quote'){
+      // Per Jon (2026-05-02): written quotes are remote-only. Kill the
+      // in-person button entirely (in-person = just create a regular job,
+      // not a quote). Two CTAs: Send the link, OR mark approved if
+      // customer responded yes outside the link flow (verbal / email reply).
       h+=`<div style="padding:0 0 max(env(safe-area-inset-bottom),12px)">
         <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1.4px;color:var(--g2);margin-bottom:8px;text-align:center">Customer approval</div>
         <button class="btn-p" style="background:#a855f7;color:#fff;display:flex;align-items:center;gap:12px;margin-bottom:8px;padding:14px 16px;text-align:left;width:100%" onclick="sendQuoteForSignature('${j.id}')">
-          <span style="font-size:22px;flex-shrink:0">✍️</span>
+          <span style="font-size:22px;flex-shrink:0">✉️</span>
           <div style="flex:1">
-            <div style="font-size:14px;font-weight:800;line-height:1.2">Send for Signature</div>
-            <div style="font-size:11px;opacity:.85;margin-top:2px">Text/email a sign link${j.quote_sent_at?' (already sent — re-send)':''}</div>
-          </div>
-        </button>
-        <button class="btn-p" style="background:var(--info);color:#fff;display:flex;align-items:center;gap:12px;margin-bottom:8px;padding:14px 16px;text-align:left;width:100%" onclick="approveQuoteInPerson('${j.id}')">
-          <span style="font-size:22px;flex-shrink:0">👤</span>
-          <div style="flex:1">
-            <div style="font-size:14px;font-weight:800;line-height:1.2">Mark In-Person Approval</div>
-            <div style="font-size:11px;opacity:.85;margin-top:2px">Customer is here and approved — capture name (signature pad coming)</div>
+            <div style="font-size:14px;font-weight:800;line-height:1.2">${j.quote_sent_at?'Re-Send Quote Link':'Send Quote Link'}</div>
+            <div style="font-size:11px;opacity:.85;margin-top:2px">Email + text the customer a link to approve. ${j.quote_sent_at?'Last sent '+new Date(j.quote_sent_at).toLocaleDateString('en-US',{month:'short',day:'numeric'}):'When they sign, the quote auto-converts to a scheduled job.'}</div>
           </div>
         </button>
         <button class="btn-p" style="background:var(--ok);color:#fff;display:flex;align-items:center;gap:12px;padding:14px 16px;text-align:left;width:100%" onclick="approveQuoteManual('${j.id}')">
           <span style="font-size:22px;flex-shrink:0">✓</span>
           <div style="flex:1">
-            <div style="font-size:14px;font-weight:800;line-height:1.2">Mark Approved (verbal/email)</div>
-            <div style="font-size:11px;opacity:.85;margin-top:2px">Customer said yes — convert to scheduled job</div>
+            <div style="font-size:14px;font-weight:800;line-height:1.2">Mark Approved</div>
+            <div style="font-size:11px;opacity:.85;margin-top:2px">Customer responded yes (verbal, email, etc) — convert to scheduled job (you'll pick the visit date next)</div>
           </div>
         </button>
       </div>`
@@ -5341,73 +5342,45 @@ async function markJobTentative(jobId){
 }
 
 // ─── QUOTE → SCHEDULED CONVERSION ──────────────────────────────
-// A quote is a pre-job pending customer approval. Three approval paths:
-//   1. sendQuoteForSignature — text/email a sign link, customer signs remotely
-//   2. approveQuoteInPerson — sig pad on Jon's phone, customer signs now
-//   3. approveQuoteManual — Jon got verbal/email approval, no signature
-// All three flip status to 'scheduled' (after prompting for a date) so the
-// existing scheduled-job flow takes over.
+// Two approval paths in v2 (per Jon 2026-05-02):
+//   1. sendQuoteForSignature — text + email a sign link, customer approves
+//      remotely. sign-job.js webhook auto-converts on signature.
+//   2. approveQuoteManual — Jon got verbal/email yes, flip without sig.
+// In-person is killed entirely (if customer is in person, just create a
+// regular job — not a quote).
+// Conversion does NOT prompt for a date. Status flips to 'scheduled' with
+// scheduled_date=null; Jon picks the visit date via the existing pill UI.
 
-// Helper: prompt for date/time, flip status, audit, optional signature.
 async function _convertQuoteToJob(jobId, opts){
   opts = opts || {}
   const j = D.jobs.find(x=>x.id===jobId)
   if(!j){toast('Job not found',false);return false}
   if(j.status !== 'quote'){toast('Not a quote — already converted',false);return false}
-  // Prompt for the visit date (default = job's proposed date, else tomorrow).
-  const defaultDate = j.scheduled_date || new Date(Date.now()+86400000).toISOString().split('T')[0]
-  const newDate = prompt(`When should this job be scheduled?\n(YYYY-MM-DD — leave blank to keep proposed/skip scheduling)`, defaultDate)
-  if(newDate === null) return false  // cancelled
-  const finalDate = newDate.trim() || j.scheduled_date || null
-  const finalTime = j.scheduled_time || (finalDate ? '09:00' : null)
   const upd = {
     status: 'scheduled',
     quote_approved_at: new Date().toISOString(),
-    quote_approved_by: opts.approved_by || 'jon (manual)',
-    scheduled_date: finalDate,
-    scheduled_time: finalTime,
-    // Approval IS confirmation regardless of channel — watcher caught the
-    // tentative=true on manual/verbal/remote was semantically wrong.
-    // "tentative" means "route logic chose this, Jon hasn't blessed it yet",
-    // not "waiting for customer". By the time we're here, customer + Jon
-    // are both committed.
+    quote_approved_by: opts.approved_by || 'manual approval',
+    // Wipe any "proposed" date that was on the quote so the openJob pill
+    // shows TAP TO SCHEDULE — Jon picks the real visit date now that the
+    // customer has approved.
+    scheduled_date: null,
+    scheduled_time: null,
     tentative: false
   }
-  if(opts.signature_data) upd.quote_signature_data = opts.signature_data
   const {error} = await SB.from('jobs').update(upd).eq('id', jobId)
   if(error){toast('Error: '+error.message,false);return false}
-  audit('updated','job',jobId,'jon',{from:'quote',to:'scheduled',approved_via:opts.via||'manual'},`Quote approved — converted to scheduled job${finalDate?' for '+finalDate:''}`)
-  // Sync to Google Calendar if we have a date
-  if(finalDate && finalTime){
-    try{ await syncJobToCalendar(jobId, j.location_id, finalDate, finalTime) }catch(e){console.error('cal sync after quote approve:',e)}
-  }
+  audit('updated','job',jobId,'jon',{from:'quote',to:'scheduled',approved_via:opts.via||'manual'},'Quote approved — needs visit date')
   await load()
   return true
 }
 
 async function approveQuoteManual(jobId){
-  if(!confirm('Mark this quote as approved (verbal/email confirmation)? Will convert it to a scheduled job.'))return
+  if(!confirm('Mark this quote as approved? It will become a scheduled job — you\'ll pick the visit date next.'))return
   const ok = await _convertQuoteToJob(jobId, {via:'manual', approved_by:'manual'})
-  if(ok){pop(); await openJob(jobId); toast('✓ Quote approved — now scheduled')}
-}
-
-async function approveQuoteInPerson(jobId){
-  // Reuse the existing in-person signature pad pattern. For v1 we use
-  // the simpler prompt approach — full sig-pad UX can come in a follow-up.
-  // The kiosk flow already has a signature canvas (initSig/clrSig); plumb
-  // it in next iteration. For now: confirm + capture name.
-  const customerName = prompt('Customer name (signing in person):')
-  if(!customerName)return
-  // Stub signature_data — 1x1 transparent png so the column is non-null
-  // for "approved" filter purposes. Full canvas signature in v2.
-  const sigStub = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkAAIAAAoAAv/lxKUAAAAASUVORK5CYII='
-  const ok = await _convertQuoteToJob(jobId, {
-    via:'in_person',
-    approved_by: customerName.trim(),
-    signed_in_person: true,
-    signature_data: sigStub
-  })
-  if(ok){pop(); await openJob(jobId); toast(`✓ Approved by ${customerName} — scheduled`)}
+  if(ok){
+    pop(); await openJob(jobId)
+    toast('✓ Approved — pick a visit date')
+  }
 }
 
 async function sendQuoteForSignature(jobId){
@@ -5417,27 +5390,42 @@ async function sendQuoteForSignature(jobId){
   const ba = l.billing_account_id ? D.bas.find(b=>b.id===l.billing_account_id) : null
   const email = l.contact_email || ba?.email || ''
   const phone = l.contact_phone || ba?.phone || ''
-  if(!email && !phone){toast('No customer email or phone on file. Add one first.',false);return}
+  // Pre-flight: refuse if no contact info BEFORE hitting the endpoint, so
+  // the toast is the actual reason instead of a generic 400.
+  if(!email && !phone){
+    toast('No customer email or phone on file — add one in the customer record first',false)
+    return
+  }
   const channels = [email&&'email', phone&&'text'].filter(Boolean).join(' + ')
-  if(!confirm(`Send a quote-approval link to ${l.name||'customer'}?\n\nDelivered via: ${channels}\nCustomer signs remotely; once they do, the quote auto-converts to a scheduled job.`))return
-  // Reuses the existing /api/send-signature-request endpoint that handles
-  // post-completion signatures. For v1, the SAME endpoint sends a sign
-  // link — the difference is: when the signature comes back and gets
-  // attached to the job, a follow-up cron / webhook should detect status='quote'
-  // + signature_data not null and call _convertQuoteToJob. That webhook
-  // doesn't exist yet, so for v1 we just stamp quote_sent_at and let Jon
-  // call approveQuoteManual when the customer replies.
+  if(!confirm(`Send the quote to ${l.name||'customer'} via ${channels}?\n\nWhen they tap the link and sign, the quote auto-converts to a scheduled job and you'll get a text.`))return
+  let sendBtn=null
   try{
     const res = await fetch('/api/send-signature-request',{
       method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({job_id:jobId, purpose:'quote_approval'})
     })
     const data = await res.json().catch(()=>({}))
-    if(!res.ok)throw new Error(data.error||'Send failed')
+    if(!res.ok){
+      console.error('[sendQuote] response not ok:', res.status, data)
+      throw new Error(data.error || ('HTTP '+res.status))
+    }
+    // Inspect actual delivery results — endpoint returns success even
+    // when individual channels failed (Resend / Twilio errors get
+    // captured per-channel). Be honest about what happened.
+    console.log('[sendQuote] response:', data)
+    const emailOk = !!(data.emailResult && data.emailResult.id)  // Resend returns {id} on success
+    const smsOk   = !!(data.smsResult && (data.smsResult.sid || data.smsResult.success))
+    const sentVia = [emailOk && 'email', smsOk && 'text'].filter(Boolean)
+    if(!sentVia.length){
+      // Both attempted but neither landed. Surface the underlying errors.
+      const emailErr = data.emailResult?.error || data.emailResult?.message || (email && 'email send failed silently')
+      const smsErr = data.smsResult?.error || data.smsResult?.message || (phone && 'sms send failed silently')
+      throw new Error([emailErr, smsErr].filter(Boolean).join(' · '))
+    }
     await SB.from('jobs').update({quote_sent_at: new Date().toISOString()}).eq('id', jobId)
-    audit('updated','job',jobId,'jon',{quote_sent_via: channels},'Quote signature link sent to '+(email||phone))
+    audit('updated','job',jobId,'jon',{quote_sent_via: sentVia.join('+')},'Quote sign link sent to '+(email||phone))
     await load(); pop(); await openJob(jobId)
-    toast(`✓ Sign link sent via ${channels}`)
+    toast(`✓ Quote sent via ${sentVia.join(' + ')}`)
   }catch(e){
     console.error('sendQuoteForSignature:',e)
     toast('Send failed: '+e.message, false)
@@ -8113,7 +8101,7 @@ function openNew(){
     <div class="mode-card" onclick="pop();openPhotoFlow()"><div class="mode-icon">📸</div><div><div class="mode-title">Photo / AI</div><div class="mode-desc">Snap a work order or note. Claude reads it and builds the invoice.</div></div></div>
     <div class="mode-card" onclick="pop();openManual(false)"><div class="mode-icon">✏️</div><div><div class="mode-title">Build Invoice</div><div class="mode-desc">Pick a customer, add line items, save or send.</div></div></div>
     <div class="mode-card" onclick="pop();openRecordInvoice()"><div class="mode-icon">🗂️</div><div><div class="mode-title">Record Invoice</div><div class="mode-desc">Snap a photo of an old invoice. AI reads it, detects if reinspection is due.</div></div></div>
-    <div class="mode-card" onclick="pop();openSchedJob()"><div class="mode-icon">📋</div><div><div class="mode-title">Schedule a Job</div><div class="mode-desc">Create a new job on the schedule.</div></div></div>
+    <div class="mode-card" onclick="pop();openSchedJob({asQuote:false})"><div class="mode-icon">📋</div><div><div class="mode-title">Schedule a Job</div><div class="mode-desc">Create a new job on the schedule.</div></div></div>
     <div class="mode-card" onclick="pop();openSchedJob({asQuote:true})" style="border-left:4px solid #a855f7"><div class="mode-icon">📝</div><div><div class="mode-title">Send a Written Quote</div><div class="mode-desc">Build a price proposal. Doesn't hit the schedule until customer approves it.</div></div></div>
     <div class="mode-card" onclick="pop();addNewCust()"><div class="mode-icon">👤</div><div><div class="mode-title">Add Client</div><div class="mode-desc">Add a new service location.</div></div></div>
   </div>`)
@@ -10374,7 +10362,7 @@ function schedFor(locId,locName,locAddr,locCity){
   // don't push if job form is already on top
   const top=stk[stk.length-1]
   if(top&&document.getElementById(top)?.querySelector('#saveJobBtn'))return
-  openSchedJob()
+  openSchedJob({asQuote:false})
 }
 
 function openSchedJob(preLocIdOrOpts,preScope){
@@ -10386,7 +10374,15 @@ function openSchedJob(preLocIdOrOpts,preScope){
   } else {
     opts = { preLocId: preLocIdOrOpts, preScope: preScope }
   }
-  window._asQuote = !!opts.asQuote
+  // Only set _asQuote when EXPLICITLY passed. selectSchedLoc and the
+  // new-customer toggle re-open this overlay with no args to refresh
+  // the form — they expect _asQuote to survive that round-trip.
+  // External entry points pass {asQuote:true} or {asQuote:false} to
+  // set state. The "+ JOB" button passes nothing, but _asQuote starts
+  // as false anyway (only set to true by quote entry points).
+  if ('asQuote' in opts) {
+    window._asQuote = !!opts.asQuote
+  }
   if(opts.preLocId){
     const pl=D.locs.find(x=>x.id===opts.preLocId)
     if(pl)nSt={loc:{id:pl.id,name:pl.name,address:pl.address||'',city:pl.city||'',ba:pl.billing_account_id||''},mk:false}
