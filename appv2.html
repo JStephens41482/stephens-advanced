@@ -8114,6 +8114,7 @@ function openNew(){
     <div class="mode-card" onclick="pop();openManual(false)"><div class="mode-icon">✏️</div><div><div class="mode-title">Build Invoice</div><div class="mode-desc">Pick a customer, add line items, save or send.</div></div></div>
     <div class="mode-card" onclick="pop();openRecordInvoice()"><div class="mode-icon">🗂️</div><div><div class="mode-title">Record Invoice</div><div class="mode-desc">Snap a photo of an old invoice. AI reads it, detects if reinspection is due.</div></div></div>
     <div class="mode-card" onclick="pop();openSchedJob()"><div class="mode-icon">📋</div><div><div class="mode-title">Schedule a Job</div><div class="mode-desc">Create a new job on the schedule.</div></div></div>
+    <div class="mode-card" onclick="pop();openSchedJob({asQuote:true})" style="border-left:4px solid #a855f7"><div class="mode-icon">📝</div><div><div class="mode-title">Send a Written Quote</div><div class="mode-desc">Build a price proposal. Doesn't hit the schedule until customer approves it.</div></div></div>
     <div class="mode-card" onclick="pop();addNewCust()"><div class="mode-icon">👤</div><div><div class="mode-title">Add Client</div><div class="mode-desc">Add a new service location.</div></div></div>
   </div>`)
 }
