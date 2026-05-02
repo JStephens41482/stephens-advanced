@@ -6027,6 +6027,20 @@ async function saveCustEdit(id){
   }).eq('id',id)
   if(error){if($('ec-err'))$('ec-err').textContent='Error: '+error.message;if(b){b.textContent='Save';b.style.opacity='';b.style.pointerEvents='';b.disabled=false}return}
   await load();toast('Client updated')
+  // If the user came here from a job/quote (Client > button on openJob),
+  // bring them BACK to that job after saving — they were almost certainly
+  // editing the customer to fix something missing on the job (no email,
+  // wrong phone, etc.) and want to get straight back to their work.
+  // Detect by walking the overlay stack for any slot tagged with jobId.
+  const jobSlot = OVS.find(o => stk.includes(o) && document.getElementById(o)?.dataset?.jobId)
+  if (jobSlot) {
+    const jobId = document.getElementById(jobSlot).dataset.jobId
+    popAll()
+    await openJob(jobId)
+    toast('← Back to your job')
+    return
+  }
+  // Otherwise (came from rCust list or direct deep-link), refresh openCust in place
   pop();pop();openCust(id)
 }
 
