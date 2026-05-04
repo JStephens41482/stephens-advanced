@@ -4671,16 +4671,16 @@ async function updateJobChecklist(){
 
   let flags=[]
 
-  // Invoice flag — was auto-marked done as soon as any line item existed,
-  // which was misleading: it'd flip green before Jon actually reviewed the
-  // numbers. Now it requires a manual toggle (jobs.invoice_built). The
-  // hasAnyLines check still gates whether the flag is tap-able at all.
+  // Invoice flag — flag click always handled by handleInvoiceFlagClick:
+  //   - if builder hidden → reveal it
+  //   - if builder visible + lines exist → toggle "built" status
+  //   - if done → tap unchecks (toggleInvoiceBuilt)
   const j_for_inv = D.jobs.find(x=>x.id===jid)
   const invBuilt = !!j_for_inv?.invoice_built
   flags.push({
     label:'Build Invoice',
     done: invBuilt,
-    action: hasAnyLines ? (invBuilt ? `toggleInvoiceBuilt('${jid}')` : `showInvoiceBuilder('${jid}')`) : null
+    action: `handleInvoiceFlagClick('${jid}')`
   })
 
   // Extinguisher report — removed from checklist (use photo paste on job card instead)
@@ -5298,6 +5298,29 @@ function showInvoiceBuilder(jobId){
     woSection.style.display='flex'
     woSection.scrollIntoView({behavior:'smooth',block:'nearest'})
   }
+}
+
+// Single entry point for the Build Invoice flag click.
+// Decides what to do based on current state:
+//   - builder hidden  → reveal it
+//   - builder visible + lines exist → toggle invoice_built (mark done / undone)
+//   - builder visible, no lines → toast a hint
+async function handleInvoiceFlagClick(jobId){
+  const j=D.jobs.find(x=>x.id===jobId)
+  if(!j){toast('Job not found',false);return}
+  const woSection=$('wo-section-'+jobId)
+  const isHidden=!woSection||woSection.style.display==='none'
+  if(isHidden && !j.invoice_built){
+    showInvoiceBuilder(jobId)
+    return
+  }
+  const hasLines=(jobLines||[]).some(l=>(l.desc||'').trim())
+  if(!hasLines && !j.invoice_built){
+    toast('Add at least one line item first',false)
+    showInvoiceBuilder(jobId)
+    return
+  }
+  await toggleInvoiceBuilt(jobId)
 }
 
 // Flip the Build Invoice checklist flag. Jon explicitly asked for this to
@@ -10445,17 +10468,37 @@ function newJobForLoc(locId){
   }
 }
 
-function schedFor(locId,locName,locAddr,locCity){
-  // if called with just locId, look up the rest
-  if(!locName){
-    const loc=D.locs.find(x=>x.id===locId)
-    if(loc){locName=loc.name;locAddr=loc.address||'';locCity=loc.city||''}
-  }
-  nSt={loc:{id:locId,name:locName||'',address:locAddr||'',city:locCity||'',ba:''},mk:false}
-  // don't push if job form is already on top
-  const top=stk[stk.length-1]
-  if(top&&document.getElementById(top)?.querySelector('#saveJobBtn'))return
-  openSchedJob({asQuote:false})
+// Create a job directly with sensible defaults (today + now, tentative=true,
+// auto-detected scope) and open it. Skips the schedule form — Jon adjusts
+// the time via the tentative pill on the job card. Used when a customer is
+// already known (clicked + New Job from a customer page).
+async function schedFor(locId,locName,locAddr,locCity){
+  const loc=D.locs.find(x=>x.id===locId)
+  if(!loc){toast('Customer not found',false);return}
+  // auto-detect scope from equipment on file
+  let scope=[]
+  if(loc.suppression_systems?.length)scope.push('suppression')
+  if(loc.extinguishers?.length)scope.push('extinguishers')
+  if(loc.emergency_lights?.[0]?.fixture_count)scope.push('elights')
+  if(!scope.length)scope=['extinguishers','suppression']
+  // defaults: today, current time rounded to next 15 min
+  const now=new Date()
+  const date=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0')
+  const mins=Math.ceil(now.getMinutes()/15)*15
+  const tHr=mins>=60?now.getHours()+1:now.getHours()
+  const tMn=mins>=60?0:mins
+  const time=String(tHr).padStart(2,'0')+':'+String(tMn).padStart(2,'0')
+  const{data:newJob,error}=await SB.from('jobs').insert({
+    location_id:locId, billing_account_id:loc.billing_account_id||null,
+    type:'inspection', scope, scheduled_date:date, scheduled_time:time,
+    status:'scheduled', tentative:true
+  }).select().single()
+  if(error){toast('Error creating job: '+error.message,false);return}
+  audit('created','job',newJob.id,'jon',{scheduled_date:date,scheduled_time:time,scope,via:'quick_create'},'Job created (quick) for '+(loc.name||'?'))
+  try{await syncJobToCalendar(newJob.id,locId,date,time)}catch(e){console.error('cal sync:',e)}
+  await load()
+  popAll()
+  setTimeout(()=>openJob(newJob.id),100)
 }
 
 function openSchedJob(preLocIdOrOpts,preScope){
