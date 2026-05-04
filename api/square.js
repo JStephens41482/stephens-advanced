@@ -209,7 +209,7 @@ module.exports = async function handler(req, res) {
             accepted_payment_methods: { apple_pay: true, google_pay: true },
             ask_for_shipping_address: false
           },
-          pre_populated_data: { buyer_email: email || undefined },
+          ...(email ? { pre_populated_data: { buyer_email: email } } : {}),
           payment_note: `${invoiceNumber || ''} — ${customerName || ''}`,
           ...(customerId ? { order: { customer_id: customerId } } : {})
         })

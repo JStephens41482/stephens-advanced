@@ -3534,31 +3534,6 @@ function rCal(){
       </div>
     </div>`
   }
-  // Urgent notifications banner
-  const urgentNotifs=(D.notifications||[]).filter(n=>n.priority==='urgent')
-  if(urgentNotifs.length){
-    top+=`<div style="background:var(--bads);border:1.5px solid var(--bad);border-radius:var(--r);padding:12px 14px;margin-bottom:12px;cursor:pointer" onclick="openNotifPanel()">
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <div><span style="font-size:13px;font-weight:800;color:var(--bad)">⚠️ ${urgentNotifs.length} Urgent</span>
-          <div style="font-size:11px;color:var(--w2);margin-top:2px">${urgentNotifs[0].title}${urgentNotifs.length>1?' + '+(urgentNotifs.length-1)+' more':''}</div>
-        </div>
-        <span style="background:var(--bad);color:#fff;font-size:13px;font-weight:900;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center">${urgentNotifs.length}</span>
-      </div>
-    </div>`
-  }
-  // Today's Route Ready banner
-  const routePool=D.jobs.filter(j=>j.status==='scheduled'&&j.scheduled_date<=t)
-  if(routePool.length&&!sessionStorage.getItem('route_dismissed_'+t)){
-    top+=`<div style="background:var(--infos);border:1.5px solid var(--info);border-radius:var(--r);padding:12px 14px;margin-bottom:12px;cursor:pointer;position:relative" onclick="openRouteView()">
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <div><span style="font-size:13px;font-weight:800;color:var(--info)">Today's Route Ready</span>
-          <div style="font-size:11px;color:var(--w2);margin-top:2px">${routePool.length} job${routePool.length>1?'s':''} optimized · Tap to view</div>
-        </div>
-        <span style="font-size:20px">🗺</span>
-      </div>
-      <button onclick="event.stopPropagation();sessionStorage.setItem('route_dismissed_'+td(),1);rCal()" style="position:absolute;top:6px;right:6px;background:none;border:none;font-size:14px;color:var(--g2);cursor:pointer;padding:4px 8px">✕</button>
-    </div>`
-  }
   // Today card is the default home (audit #07). ?home=v1 is the escape
   // hatch back to calendar-first if anything needs it.
   const homeParam=new URLSearchParams(location.search).get('home')
@@ -4159,7 +4134,7 @@ async function openJob(id){
   let h=`<div class="ov-hdr">
     <button class="ov-back" onclick="pop()">‹</button>
     <div class="ov-title">${esc(l.name||'Job')}</div>
-    <button class="ov-act" onclick="openCust('${l.id}')">Client ›</button>
+    <button style="padding:6px 12px;background:var(--c2);border:1px solid var(--b1);border-radius:var(--rs);color:var(--w2);font-size:12px;font-weight:700;cursor:pointer" onclick="openCust('${l.id}')">Edit Client Info</button>
     <button class="del-btn" style="margin-left:8px" onclick="toggleDelConfirm('del-job-${j.id}')">🗑</button>
   </div><div class="ov-body">
   <div class="del-confirm" id="del-job-${j.id}">
@@ -4274,9 +4249,9 @@ async function openJob(id){
 
   // Extinguisher status removed — handled in extinguisher report
 
-  // WORK ORDER / LINE ITEMS (editable when active)
+  // WORK ORDER / LINE ITEMS (editable when active) — hidden by default, shown via "Tap to fill"
   if(isActive){
-    h+=`<div class="ds"><div class="ds-t" style="display:flex;justify-content:space-between;align-items:center">
+    h+=`<div id="wo-section-${j.id}" class="ds" style="display:none"><div class="ds-t" style="display:flex;justify-content:space-between;align-items:center">
       <span>Work Order</span>
       <span id="wo-total" style="font-size:13px;font-weight:800;color:var(--ok)">$0</span>
     </div>
@@ -4705,7 +4680,7 @@ async function updateJobChecklist(){
   flags.push({
     label:'Build Invoice',
     done: invBuilt,
-    action: hasAnyLines ? `toggleInvoiceBuilt('${jid}')` : null
+    action: hasAnyLines ? (invBuilt ? `toggleInvoiceBuilt('${jid}')` : `showInvoiceBuilder('${jid}')`) : null
   })
 
   // Extinguisher report — removed from checklist (use photo paste on job card instead)
@@ -5316,10 +5291,19 @@ async function confirmTentativeTime(jobId){
   toast('✓ Time confirmed')
 }
 
+// Show the invoice builder section when "Tap to fill" is clicked
+function showInvoiceBuilder(jobId){
+  const woSection=$('wo-section-'+jobId)
+  if(woSection){
+    woSection.style.display='flex'
+    woSection.scrollIntoView({behavior:'smooth',block:'nearest'})
+  }
+}
+
 // Flip the Build Invoice checklist flag. Jon explicitly asked for this to
 // require a tap rather than auto-mark when line items exist — gives him a
 // "I've reviewed the numbers" gate before the Review & Finalize button
-// turns green.
+// turns green. Also hides the invoice builder section when unchecked.
 async function toggleInvoiceBuilt(jobId){
   const j=D.jobs.find(x=>x.id===jobId)
   if(!j){toast('Job not found',false);return}
@@ -5327,6 +5311,11 @@ async function toggleInvoiceBuilt(jobId){
   const{error}=await SB.from('jobs').update({invoice_built:next}).eq('id',jobId)
   if(error){toast('Error: '+error.message,false);return}
   j.invoice_built=next  // mutate cached row so the next render sees it
+  // Hide the work order section when unchecking
+  if(!next){
+    const woSection=$('wo-section-'+jobId)
+    if(woSection)woSection.style.display='none'
+  }
   await updateJobChecklist()
   toast(next?'✓ Invoice marked built':'Build Invoice unchecked')
 }
@@ -5465,8 +5454,16 @@ async function openCust(id){
   <div class="stats s2" style="margin-bottom:16px">
     <div class="st" style="cursor:pointer" onclick="${locJobs.length===1?`openJob('${locJobs[0]?.id}')`:`document.getElementById('cust-jobs-section')?.scrollIntoView({behavior:'smooth',block:'start'})`}"><div class="sn i">${locJobs.length}</div><div class="sl">Jobs · Invoices</div></div>
     <div class="st" style="cursor:pointer" onclick="document.getElementById('cust-jobs-section')?.scrollIntoView({behavior:'smooth',block:'start'})"><div class="sn ${owed>0?'r':'g'}">${fmt(owed)}</div><div class="sl">Owed</div></div>
-  </div>
-  <div class="ds"><div class="ds-t">Contact Info</div>`
+  </div>`
+  // Check for open jobs (unfinished)
+  const openJobs=locJobs.filter(j=>j.status!=='completed')
+  if(openJobs.length){
+    h+=`<div style="background:rgba(59,130,246,.08);border:1.5px solid var(--info);border-radius:var(--rs);padding:12px 14px;margin-bottom:16px;cursor:pointer" onclick="openJob('${openJobs[0].id}')">
+      <div style="font-size:13px;font-weight:800;color:var(--info)">📌 Open job for this customer</div>
+      <div style="font-size:11px;color:var(--w2);margin-top:4px">${openJobs.length===1?'Finish it here':''+openJobs.length+' job to complete'}</div>
+    </div>`
+  }
+  h+=`<div class="ds"><div class="ds-t">Contact Info</div>`
   if(a)h+=`<div class="ds-row"><div class="ds-lbl">Address</div><div class="ds-val">${esc(a)}</div></div>`
   if(l.contact_name)h+=`<div class="ds-row"><div class="ds-lbl">Contact</div><div class="ds-val">${esc(l.contact_name)}</div></div>`
   if(l.contact_phone)h+=`<div class="ds-row"><div class="ds-lbl">Phone</div><div class="ds-val"><a href="tel:${l.contact_phone}" style="color:var(--fire)">${l.contact_phone}</a></div></div>`
@@ -9095,21 +9092,59 @@ async function saveAIInv(ro){
 function openManual(ro){
   recOnly=ro;manLines=[{desc:'',qty:1,price:0}]
   const today=td(),due=new Date();due.setDate(due.getDate()+15);const dueStr=due.toISOString().split('T')[0]
+  // Build Invoice path: simplified to a searchable customer picker only.
+  // After selecting (or creating) a customer, route to the customer page.
+  if(!ro){
+    push(`<div class="ov-hdr">
+      <button class="ov-back" onclick="pop()">‹</button>
+      <div class="ov-title">Build Invoice</div>
+    </div><div class="ov-body">
+      <div class="fg"><label class="fg-l">Customer *</label>
+        <input id="bi-search" type="text" placeholder="Type to search..." autocomplete="off" oninput="renderBiCustList(this.value)" style="margin-bottom:8px">
+        <div id="bi-cust-list" style="max-height:60vh;overflow-y:auto;border:1px solid var(--b1);border-radius:var(--rs);background:var(--c2)"></div>
+      </div>
+    </div>`)
+    renderBiCustList('')
+    setTimeout(()=>{const i=$('bi-search');if(i)i.focus()},80)
+    return
+  }
   const locOpts=D.locs.map(l=>`<option value="${l.id}">${esc(l.name)}${l.city?' — '+esc(l.city):''}</option>`).join('')
   push(`<div class="ov-hdr">
     <button class="ov-back" onclick="pop()">‹</button>
-    <div class="ov-title">${ro?'Record Invoice':'Build Invoice'}</div>
+    <div class="ov-title">Record Invoice</div>
   </div><div class="ov-body">
     <div class="fg"><label class="fg-l">Customer *</label><select id="man-loc"><option value="">-- Select --</option>${locOpts}</select></div>
     <div class="fg"><label class="fg-l">Service Date</label><input type="date" id="man-date" value="${today}"></div>
-    ${!ro?`<div class="fg"><label class="fg-l">Due Date</label><input type="date" id="man-due" value="${dueStr}"></div>`:''}
     <div class="fg"><label class="fg-l">Service Type</label><select id="man-type"><option>Semi-Annual Inspection</option><option>Annual Inspection</option><option>Emergency Service</option><option>Installation</option><option>Repair</option><option>Hydrostatic Test</option><option>Other</option></select></div>
     <div class="fg"><label class="fg-l">Line Items</label><div id="man-li"></div><button class="btn-dim" onclick="addManLine()" style="margin-top:6px;width:auto;padding:10px 16px;font-size:13px">+ Add Line</button></div>
     <div class="fg"><label class="fg-l">Notes</label><textarea id="man-notes" placeholder="Optional..."></textarea></div>
-    <button class="btn-p" id="manSaveBtn" onclick="saveManInv()">${ro?'Record Invoice':'Save Invoice'}</button>
+    <button class="btn-p" id="manSaveBtn" onclick="saveManInv()">Record Invoice</button>
     <div class="err" id="man-err"></div>
   </div>`)
   renderManLines()
+}
+
+// Filter the customer list as you type. "Add New Client" stays pinned at top.
+function renderBiCustList(q){
+  const wrap=$('bi-cust-list');if(!wrap)return
+  const ql=(q||'').toLowerCase().trim()
+  const matches=D.locs.filter(l=>{
+    if(!ql)return true
+    return (l.name||'').toLowerCase().includes(ql) || (l.city||'').toLowerCase().includes(ql) || (l.address||'').toLowerCase().includes(ql)
+  }).sort((a,b)=>(a.name||'').localeCompare(b.name||''))
+  let h=`<div onclick="pop();addNewCust()" style="padding:14px 14px;border-bottom:1px solid var(--b1);cursor:pointer;display:flex;align-items:center;gap:10px;background:rgba(245,84,17,.08)">
+    <span style="font-size:18px;color:var(--fire);font-weight:900">+</span>
+    <span style="font-size:14px;font-weight:800;color:var(--fire)">Add New Client</span>
+  </div>`
+  if(!matches.length){
+    h+=`<div style="padding:18px 14px;font-size:12px;color:var(--g2);text-align:center">No matches</div>`
+  }else{
+    h+=matches.map(l=>`<div onclick="pop();openCust('${l.id}')" style="padding:12px 14px;border-bottom:1px solid var(--b1);cursor:pointer">
+      <div style="font-size:13px;font-weight:700;color:var(--w)">${esc(l.name||'')}</div>
+      ${l.city?`<div style="font-size:11px;color:var(--g2);margin-top:2px">${esc(l.city)}</div>`:''}
+    </div>`).join('')
+  }
+  wrap.innerHTML=h
 }
 
 function renderManLines(){
@@ -9808,22 +9843,66 @@ async function kioskPayNewCard(){
 
 async function kioskPayOffline(method){
   const d=window._kiosk;if(!d)return
-  await kioskSaveSignatureToJob()
-  let note='',status=null
+  // For check: show in-kiosk overlay (replaces prompt() which locks up
+  // iOS Safari/PWA after the customer hands the phone back)
   if(method==='check'){
-    const num=prompt('Check number (optional):')||''
-    status='paid';note='Check'+(num?' #'+num.trim():'')+' — collected at kiosk'
-  }else if(method==='cash'){
-    if(!confirm('Mark paid in full — cash?'))return
-    status='paid';note='Cash — collected at kiosk'
-  }else{
-    note='Customer chose pay-later at kiosk'
+    kioskShowCheckPrompt()
+    return
   }
+  // For cash: show in-kiosk confirmation overlay (replaces confirm())
+  if(method==='cash'){
+    kioskShowCashConfirm()
+    return
+  }
+  // pay-later: no prompt, just save
+  await _kioskFinalizeOffline(method,'','Customer chose pay-later at kiosk')
+}
+
+// Step-4 input overlay for entering a check number. Replaces native prompt(),
+// which is unreliable in iOS Safari/PWA after focus changes (customer hands
+// the phone back to Jon → prompt fails to render and the kiosk locks up).
+function kioskShowCheckPrompt(){
+  const body=`<div style="padding:24px 20px">
+    <div style="font-size:18px;font-weight:800;color:var(--w);margin-bottom:6px;text-align:center">Check Number</div>
+    <div style="font-size:12px;color:var(--g1);text-align:center;margin-bottom:20px">Enter the check number (optional)</div>
+    <input id="kiosk-check-num" type="text" inputmode="numeric" placeholder="Check #" style="width:100%;padding:14px 16px;font-size:18px;font-weight:700;text-align:center;background:var(--c2);border:1.5px solid var(--b1);border-radius:var(--r);color:var(--w);margin-bottom:20px" autocomplete="off">
+    <button style="width:100%;min-height:54px;background:var(--ok);color:#fff;border:none;border-radius:var(--r);font-size:15px;font-weight:800;cursor:pointer;margin-bottom:10px" onclick="kioskSubmitCheck()">✓ Mark Paid</button>
+    <button style="width:100%;min-height:48px;background:var(--c2);color:var(--w2);border:1px solid var(--b1);border-radius:var(--r);font-size:13px;font-weight:700;cursor:pointer" onclick="kioskGotoStep4()">‹ Back</button>
+  </div>`
+  const html=_kioskShell('Check Payment',body,4,4)
+  const slot=stk[stk.length-1];if(slot){const el=document.getElementById(slot);if(el){el.innerHTML=html;setTimeout(()=>{const inp=document.getElementById('kiosk-check-num');if(inp)inp.focus()},80)}}
+}
+
+function kioskSubmitCheck(){
+  const inp=document.getElementById('kiosk-check-num')
+  const num=(inp?.value||'').trim()
+  const note='Check'+(num?' #'+num:'')+' — collected at kiosk'
+  _kioskFinalizeOffline('check','paid',note)
+}
+
+// In-kiosk confirmation for cash payment (replaces confirm())
+function kioskShowCashConfirm(){
+  const d=window._kiosk;if(!d)return
+  const body=`<div style="padding:24px 20px;text-align:center">
+    <div style="font-size:48px;margin-bottom:12px">💵</div>
+    <div style="font-size:18px;font-weight:800;color:var(--w);margin-bottom:6px">Confirm Cash Payment</div>
+    <div style="font-size:13px;color:var(--g1);margin-bottom:8px">Mark this invoice paid in full?</div>
+    <div style="font-size:22px;font-weight:900;color:var(--ok);margin-bottom:24px">$${d.total.toFixed(2)}</div>
+    <button style="width:100%;min-height:54px;background:var(--ok);color:#fff;border:none;border-radius:var(--r);font-size:15px;font-weight:800;cursor:pointer;margin-bottom:10px" onclick="_kioskFinalizeOffline('cash','paid','Cash — collected at kiosk')">✓ Yes, Mark Paid</button>
+    <button style="width:100%;min-height:48px;background:var(--c2);color:var(--w2);border:1px solid var(--b1);border-radius:var(--r);font-size:13px;font-weight:700;cursor:pointer" onclick="kioskGotoStep4()">‹ Back</button>
+  </div>`
+  const html=_kioskShell('Cash Payment',body,4,4)
+  const slot=stk[stk.length-1];if(slot){const el=document.getElementById(slot);if(el)el.innerHTML=html}
+}
+
+async function _kioskFinalizeOffline(method,status,note){
+  const d=window._kiosk;if(!d)return
+  await kioskSaveSignatureToJob()
   kioskShowLoading('Saving…')
   try{
-    const upd=status?{status:'paid',payment_method:method,paid_at:new Date().toISOString(),payment_note:note}:{payment_note:note}
+    const upd=status==='paid'?{status:'paid',payment_method:method,paid_at:new Date().toISOString(),payment_note:note}:{payment_note:note}
     await SB.from('invoices').update(upd).eq('id',d.invId)
-    audit(status?'paid':'updated','invoice',d.invId,'jon',{method},note)
+    audit(status==='paid'?'paid':'updated','invoice',d.invId,'jon',{method},note)
     await kioskEmailInvoice(status==='paid')
     const msg=method==='check'?'Marked paid — '+note:method==='cash'?'Marked paid — cash':'Invoice emailed — payment due by due date'
     kioskShowThankYou(status||'pending',msg)
